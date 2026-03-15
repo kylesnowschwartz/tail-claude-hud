@@ -19,10 +19,10 @@ var Registry = map[string]RenderFunc{
 	"model":     Model,
 	"context":   Context,
 	"directory": Directory,
-	"git":       placeholder, // Phase 2
-	"env":       placeholder, // Phase 2
-	"duration":  placeholder, // Phase 2
-	"usage":     placeholder, // Phase 2
+	"git":       Git,
+	"env":       Env,
+	"duration":  Duration,
+	"usage":     Usage,
 	"tools":     placeholder, // Phase 3
 	"agents":    placeholder, // Phase 3
 	"todos":     placeholder, // Phase 3
