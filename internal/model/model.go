@@ -61,13 +61,13 @@ type EnvCounts struct {
 
 // GitStatus holds the current git repository state for the working directory.
 type GitStatus struct {
-	Branch     string
-	Dirty      bool
-	AheadBy    int
-	BehindBy   int
-	Untracked  int
-	Modified   int
-	Staged     int
+	Branch    string
+	Dirty     bool
+	AheadBy   int
+	BehindBy  int
+	Untracked int
+	Modified  int
+	Staged    int
 }
 
 // UsageData holds token usage and context window information for the current session.
@@ -91,8 +91,8 @@ type StdinData struct {
 		DisplayName string `json:"display_name"`
 	} `json:"model"`
 	ContextWindow *struct {
-		Size        int      `json:"context_window_size"`
-		UsedPercent *float64 `json:"used_percentage"`
+		Size         int      `json:"context_window_size"`
+		UsedPercent  *float64 `json:"used_percentage"`
 		CurrentUsage *struct {
 			InputTokens              int `json:"input_tokens"`
 			CacheCreationInputTokens int `json:"cache_creation_input_tokens"`

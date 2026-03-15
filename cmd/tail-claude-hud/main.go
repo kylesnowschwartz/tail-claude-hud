@@ -25,7 +25,7 @@ func main() {
 	// No gather coordinator yet — that comes in Phase 4.
 	ctx := &model.RenderContext{
 		ContextPercent: input.ContextPercent,
-		Cwd:           input.Cwd,
+		Cwd:            input.Cwd,
 	}
 	if input.Model != nil {
 		ctx.ModelID = input.Model.ID
