@@ -1,19 +1,17 @@
 {
-  "transcript_path": "/Users/kyle/.claude/projects/-Users-kyle-Code-my-projects-tail-claude-hud/abc123def456.jsonl",
+  "transcript_path": "",
   "cwd": "/Users/kyle/Code/my-projects/tail-claude-hud",
   "model": {
-    "id": "claude-sonnet-4-6",
-    "display_name": "Sonnet"
+    "id": "claude-sonnet-4-20250514",
+    "display_name": "Claude Sonnet 4"
   },
   "context_window": {
     "context_window_size": 200000,
+    "used_percentage": 42.5,
     "current_usage": {
-      "input_tokens": 42381,
-      "output_tokens": 8204,
-      "cache_creation_input_tokens": 31200,
-      "cache_read_input_tokens": 18500
-    },
-    "used_percentage": 50.14,
-    "remaining_percentage": 49.86
+      "input_tokens": 45000,
+      "cache_creation_input_tokens": 12000,
+      "cache_read_input_tokens": 8000
+    }
   }
 }
