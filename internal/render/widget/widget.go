@@ -14,7 +14,6 @@ import (
 type RenderFunc func(ctx *model.RenderContext, cfg *config.Config) string
 
 // Registry maps widget names to their render functions.
-// Phase 2 and Phase 3 widgets use placeholder until implemented.
 var Registry = map[string]RenderFunc{
 	"model":     Model,
 	"context":   Context,
@@ -23,12 +22,10 @@ var Registry = map[string]RenderFunc{
 	"env":       Env,
 	"duration":  Duration,
 	"usage":     Usage,
-	"tools":     placeholder, // Phase 3
-	"agents":    placeholder, // Phase 3
-	"todos":     placeholder, // Phase 3
+	"tools":     Tools,
+	"agents":    Agents,
+	"todos":     Todos,
 }
-
-func placeholder(_ *model.RenderContext, _ *config.Config) string { return "" }
 
 // Icons holds the icon strings for a given display mode (nerdfont, unicode, ascii).
 type Icons struct {

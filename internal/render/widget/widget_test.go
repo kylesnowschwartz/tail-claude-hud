@@ -131,17 +131,192 @@ func TestRegistryHasAllWidgets(t *testing.T) {
 	}
 }
 
-func TestPlaceholderReturnsEmpty(t *testing.T) {
-	ctx := &model.RenderContext{}
+func TestTranscriptWidgets_NilTranscriptReturnsEmpty(t *testing.T) {
+	ctx := &model.RenderContext{Transcript: nil}
 	cfg := defaultCfg()
 
-	// Phase 3 placeholders — still unimplemented.
-	placeholders := []string{"tools", "agents", "todos"}
-	for _, name := range placeholders {
+	// All transcript-powered widgets must return "" when Transcript is nil.
+	widgets := []string{"tools", "agents", "todos"}
+	for _, name := range widgets {
 		fn := Registry[name]
 		if got := fn(ctx, cfg); got != "" {
-			t.Errorf("placeholder widget %q returned %q, expected empty", name, got)
+			t.Errorf("widget %q with nil Transcript: expected empty, got %q", name, got)
 		}
+	}
+}
+
+// -- Tools widget -------------------------------------------------------------
+
+func TestToolsWidget_EmptyToolsReturnsEmpty(t *testing.T) {
+	ctx := &model.RenderContext{Transcript: &model.TranscriptData{}}
+	cfg := defaultCfg()
+
+	if got := Tools(ctx, cfg); got != "" {
+		t.Errorf("Tools with empty tools: expected empty, got %q", got)
+	}
+}
+
+func TestToolsWidget_RunningToolShowsSpinner(t *testing.T) {
+	// Count == 0 signals running.
+	ctx := &model.RenderContext{Transcript: &model.TranscriptData{
+		Tools: []model.ToolEntry{{Name: "Read", Count: 0}},
+	}}
+	cfg := defaultCfg()
+	cfg.Style.Icons = "ascii"
+
+	got := Tools(ctx, cfg)
+	icons := IconsFor("ascii")
+	if !strings.Contains(got, icons.Spinner) {
+		t.Errorf("Tools running: expected spinner icon %q, got %q", icons.Spinner, got)
+	}
+	if !strings.Contains(got, "Read") {
+		t.Errorf("Tools running: expected tool name 'Read', got %q", got)
+	}
+}
+
+func TestToolsWidget_CompletedToolShowsCheck(t *testing.T) {
+	// Count > 0 signals completed.
+	ctx := &model.RenderContext{Transcript: &model.TranscriptData{
+		Tools: []model.ToolEntry{{Name: "Write", Count: 3}},
+	}}
+	cfg := defaultCfg()
+	cfg.Style.Icons = "ascii"
+
+	got := Tools(ctx, cfg)
+	icons := IconsFor("ascii")
+	if !strings.Contains(got, icons.Check) {
+		t.Errorf("Tools completed: expected check icon %q, got %q", icons.Check, got)
+	}
+	if !strings.Contains(got, "Write") {
+		t.Errorf("Tools completed: expected tool name 'Write', got %q", got)
+	}
+}
+
+func TestToolsWidget_CompletedCountAboveOneShown(t *testing.T) {
+	ctx := &model.RenderContext{Transcript: &model.TranscriptData{
+		Tools: []model.ToolEntry{{Name: "Read", Count: 5}},
+	}}
+	cfg := defaultCfg()
+
+	got := Tools(ctx, cfg)
+	if !strings.Contains(got, "5") {
+		t.Errorf("Tools: expected count '5' in output, got %q", got)
+	}
+}
+
+// -- Agents widget ------------------------------------------------------------
+
+func TestAgentsWidget_EmptyAgentsReturnsEmpty(t *testing.T) {
+	ctx := &model.RenderContext{Transcript: &model.TranscriptData{}}
+	cfg := defaultCfg()
+
+	if got := Agents(ctx, cfg); got != "" {
+		t.Errorf("Agents with empty agents: expected empty, got %q", got)
+	}
+}
+
+func TestAgentsWidget_RunningAgentShowsSpinner(t *testing.T) {
+	ctx := &model.RenderContext{Transcript: &model.TranscriptData{
+		Agents: []model.AgentEntry{{Name: "TaskWorker", Status: "running"}},
+	}}
+	cfg := defaultCfg()
+	cfg.Style.Icons = "ascii"
+
+	got := Agents(ctx, cfg)
+	icons := IconsFor("ascii")
+	if !strings.Contains(got, icons.Spinner) {
+		t.Errorf("Agents running: expected spinner icon %q, got %q", icons.Spinner, got)
+	}
+	if !strings.Contains(got, "TaskWorker") {
+		t.Errorf("Agents running: expected name 'TaskWorker', got %q", got)
+	}
+}
+
+func TestAgentsWidget_CompletedAgentShowsCheck(t *testing.T) {
+	ctx := &model.RenderContext{Transcript: &model.TranscriptData{
+		Agents: []model.AgentEntry{{Name: "SearchAgent", Status: "completed"}},
+	}}
+	cfg := defaultCfg()
+	cfg.Style.Icons = "ascii"
+
+	got := Agents(ctx, cfg)
+	icons := IconsFor("ascii")
+	if !strings.Contains(got, icons.Check) {
+		t.Errorf("Agents completed: expected check icon %q, got %q", icons.Check, got)
+	}
+}
+
+func TestAgentsWidget_ShowsStatusLabel(t *testing.T) {
+	ctx := &model.RenderContext{Transcript: &model.TranscriptData{
+		Agents: []model.AgentEntry{{Name: "Worker", Status: "running"}},
+	}}
+	cfg := defaultCfg()
+
+	got := Agents(ctx, cfg)
+	if !strings.Contains(got, "running") {
+		t.Errorf("Agents: expected status 'running' in output, got %q", got)
+	}
+}
+
+// -- Todos widget -------------------------------------------------------------
+
+func TestTodosWidget_EmptyTodosReturnsEmpty(t *testing.T) {
+	ctx := &model.RenderContext{Transcript: &model.TranscriptData{}}
+	cfg := defaultCfg()
+
+	if got := Todos(ctx, cfg); got != "" {
+		t.Errorf("Todos with empty list: expected empty, got %q", got)
+	}
+}
+
+func TestTodosWidget_AllDoneShowsGreenCheck(t *testing.T) {
+	ctx := &model.RenderContext{Transcript: &model.TranscriptData{
+		Todos: []model.TodoItem{
+			{ID: "1", Content: "First", Done: true},
+			{ID: "2", Content: "Second", Done: true},
+		},
+	}}
+	cfg := defaultCfg()
+	cfg.Style.Icons = "ascii"
+
+	got := Todos(ctx, cfg)
+	icons := IconsFor("ascii")
+	if !strings.Contains(got, icons.Check) {
+		t.Errorf("Todos all done: expected check icon %q, got %q", icons.Check, got)
+	}
+	if !strings.Contains(got, "2/2") {
+		t.Errorf("Todos all done: expected '2/2', got %q", got)
+	}
+}
+
+func TestTodosWidget_PartialDoneShowsCount(t *testing.T) {
+	ctx := &model.RenderContext{Transcript: &model.TranscriptData{
+		Todos: []model.TodoItem{
+			{ID: "1", Content: "First", Done: true},
+			{ID: "2", Content: "Second", Done: false},
+			{ID: "3", Content: "Third", Done: false},
+		},
+	}}
+	cfg := defaultCfg()
+
+	got := Todos(ctx, cfg)
+	if !strings.Contains(got, "1/3") {
+		t.Errorf("Todos partial: expected '1/3', got %q", got)
+	}
+}
+
+func TestTodosWidget_NoneDoneShowsDimCount(t *testing.T) {
+	ctx := &model.RenderContext{Transcript: &model.TranscriptData{
+		Todos: []model.TodoItem{
+			{ID: "1", Content: "First", Done: false},
+			{ID: "2", Content: "Second", Done: false},
+		},
+	}}
+	cfg := defaultCfg()
+
+	got := Todos(ctx, cfg)
+	if !strings.Contains(got, "0/2") {
+		t.Errorf("Todos none done: expected '0/2', got %q", got)
 	}
 }
 
