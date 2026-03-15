@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/config"
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/model"
 )
@@ -63,6 +64,138 @@ func TestRender_SkipsEmptyLines(t *testing.T) {
 
 	if buf.String() != "" {
 		t.Errorf("expected no output for empty context, got %q", buf.String())
+	}
+}
+
+func TestReadTerminalWidth_COLUMNSSet(t *testing.T) {
+	t.Setenv("COLUMNS", "80")
+	got := readTerminalWidth()
+	if got != 80 {
+		t.Errorf("expected 80, got %d", got)
+	}
+}
+
+func TestReadTerminalWidth_COLUMNSUnset(t *testing.T) {
+	t.Setenv("COLUMNS", "")
+	got := readTerminalWidth()
+	if got != 0 {
+		t.Errorf("expected 0 when COLUMNS is empty, got %d", got)
+	}
+}
+
+func TestReadTerminalWidth_COLUMNSInvalid(t *testing.T) {
+	t.Setenv("COLUMNS", "notanumber")
+	got := readTerminalWidth()
+	if got != 0 {
+		t.Errorf("expected 0 for non-numeric COLUMNS, got %d", got)
+	}
+}
+
+func TestReadTerminalWidth_COLUMNSZero(t *testing.T) {
+	t.Setenv("COLUMNS", "0")
+	got := readTerminalWidth()
+	if got != 0 {
+		t.Errorf("expected 0 for COLUMNS=0, got %d", got)
+	}
+}
+
+func TestRender_TruncatesLongLines(t *testing.T) {
+	// Build a model name long enough that the rendered line will exceed a narrow width.
+	longName := strings.Repeat("X", 100)
+	ctx := &model.RenderContext{
+		ModelDisplayName: longName,
+		TerminalWidth:    20,
+	}
+	cfg := config.LoadHud()
+	cfg.Lines = []config.Line{
+		{Widgets: []string{"model"}},
+	}
+
+	var buf bytes.Buffer
+	Render(&buf, ctx, cfg)
+
+	line := strings.TrimRight(buf.String(), "\n")
+	// Visual width must not exceed TerminalWidth.
+	w := ansi.StringWidth(line)
+	if w > 20 {
+		t.Errorf("expected visual width <= 20, got %d for %q", w, line)
+	}
+	// Truncated lines must contain the suffix (ANSI reset codes may follow it).
+	if !strings.Contains(line, truncateSuffix) {
+		t.Errorf("expected %q in truncated line, got %q", truncateSuffix, line)
+	}
+}
+
+func TestRender_NoTruncationWhenWidthZero(t *testing.T) {
+	// When TerminalWidth is 0, output should not be truncated regardless of length.
+	longName := strings.Repeat("Y", 200)
+	ctx := &model.RenderContext{
+		ModelDisplayName: longName,
+		TerminalWidth:    0,
+	}
+	cfg := config.LoadHud()
+	cfg.Lines = []config.Line{
+		{Widgets: []string{"model"}},
+	}
+
+	// Ensure COLUMNS is unset so readTerminalWidth returns 0 too.
+	t.Setenv("COLUMNS", "")
+
+	var buf bytes.Buffer
+	Render(&buf, ctx, cfg)
+
+	line := strings.TrimRight(buf.String(), "\n")
+	if !strings.Contains(line, longName) {
+		t.Errorf("expected full name in output when no width limit, got %q", line)
+	}
+}
+
+func TestRender_NoTruncationWhenLineShortEnough(t *testing.T) {
+	ctx := &model.RenderContext{
+		ModelDisplayName: "Sonnet",
+		TerminalWidth:    200,
+	}
+	cfg := config.LoadHud()
+	cfg.Lines = []config.Line{
+		{Widgets: []string{"model"}},
+	}
+
+	var buf bytes.Buffer
+	Render(&buf, ctx, cfg)
+
+	line := strings.TrimRight(buf.String(), "\n")
+	if strings.HasSuffix(line, truncateSuffix) {
+		t.Errorf("expected no truncation for short line, got %q", line)
+	}
+	if !strings.Contains(line, "Sonnet") {
+		t.Errorf("expected 'Sonnet' in untruncated output, got %q", line)
+	}
+}
+
+func TestRender_PopulatesTerminalWidthFromCOLUMNS(t *testing.T) {
+	// When ctx.TerminalWidth is 0 and COLUMNS is set, Render should populate
+	// TerminalWidth and apply truncation.
+	t.Setenv("COLUMNS", "15")
+	longName := strings.Repeat("Z", 100)
+	ctx := &model.RenderContext{
+		ModelDisplayName: longName,
+		TerminalWidth:    0, // deliberately zero — Render should fill from env
+	}
+	cfg := config.LoadHud()
+	cfg.Lines = []config.Line{
+		{Widgets: []string{"model"}},
+	}
+
+	var buf bytes.Buffer
+	Render(&buf, ctx, cfg)
+
+	line := strings.TrimRight(buf.String(), "\n")
+	w := ansi.StringWidth(line)
+	if w > 15 {
+		t.Errorf("expected visual width <= 15 after env-driven truncation, got %d for %q", w, line)
+	}
+	if ctx.TerminalWidth != 15 {
+		t.Errorf("expected ctx.TerminalWidth to be updated to 15, got %d", ctx.TerminalWidth)
 	}
 }
 
