@@ -4,6 +4,8 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/config"
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/model"
@@ -55,17 +57,94 @@ func main() {
 }
 
 // readFromFile resolves the transcript path from CLI args or the environment
-// and delegates to readFileInput. It prefers a positional argument (first
-// non-flag arg), then falls back to CLAUDE_TRANSCRIPT_PATH.
+// and delegates to readFileInput. Priority order:
+//  1. positional argument (first non-flag arg)
+//  2. CLAUDE_TRANSCRIPT_PATH env var
+//  3. auto-discover: most recently modified .jsonl in ~/.claude/projects/<cwd-slug>/
 func readFromFile() (*model.StdinData, error) {
 	path := flag.Arg(0)
 	if path == "" {
 		path = os.Getenv("CLAUDE_TRANSCRIPT_PATH")
 	}
 	if path == "" {
-		return nil, fmt.Errorf("--dump-current requires a transcript path argument or CLAUDE_TRANSCRIPT_PATH env var")
+		var err error
+		path, err = findCurrentTranscript()
+		if err != nil {
+			return nil, err
+		}
 	}
 	return readFileInput(path)
+}
+
+// findCurrentTranscript auto-discovers the most recently modified .jsonl file
+// in ~/.claude/projects/<cwd-slug>/. The cwd-slug is computed from the current
+// working directory using Claude Code's path encoding scheme.
+func findCurrentTranscript() (string, error) {
+	projectDir, err := currentProjectDir()
+	if err != nil {
+		return "", fmt.Errorf("--dump-current: resolve project dir: %w", err)
+	}
+
+	entries, err := os.ReadDir(projectDir)
+	if err != nil {
+		return "", fmt.Errorf("--dump-current: no transcript found (could not read %s): %w", projectDir, err)
+	}
+
+	var newest string
+	var newestTime int64
+	for _, de := range entries {
+		if de.IsDir() || !strings.HasSuffix(de.Name(), ".jsonl") {
+			continue
+		}
+		info, err := de.Info()
+		if err != nil {
+			continue
+		}
+		if mt := info.ModTime().UnixNano(); mt > newestTime {
+			newestTime = mt
+			newest = filepath.Join(projectDir, de.Name())
+		}
+	}
+
+	if newest == "" {
+		return "", fmt.Errorf("--dump-current: no .jsonl transcript found in %s", projectDir)
+	}
+	return newest, nil
+}
+
+// currentProjectDir returns ~/.claude/projects/<encoded-cwd>. Symlinks in the
+// cwd are resolved so the encoded path matches what Claude Code produces on
+// disk (e.g. macOS /tmp -> /private/tmp).
+func currentProjectDir() (string, error) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+
+	// Resolve symlinks so the encoded path matches Claude Code's on-disk output.
+	if resolved, err := filepath.EvalSymlinks(cwd); err == nil {
+		cwd = resolved
+	}
+
+	encoded := encodePath(cwd)
+	return filepath.Join(home, ".claude", "projects", encoded), nil
+}
+
+// encodePath encodes an absolute filesystem path into a Claude Code project
+// directory name. Three characters are replaced with "-": path separators (/),
+// dots (.), and underscores (_). Ported from tail-claude's parser/session.go
+// and verified empirically across 273 project directories.
+func encodePath(absPath string) string {
+	r := strings.NewReplacer(
+		string(filepath.Separator), "-",
+		".", "-",
+		"_", "-",
+	)
+	return r.Replace(absPath)
 }
 
 // readFileInput opens path and parses it through the stdin pipeline.

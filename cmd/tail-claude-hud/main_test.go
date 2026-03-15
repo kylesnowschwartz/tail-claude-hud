@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -84,5 +85,122 @@ func TestReadFromFile_MissingFile_ReturnsError(t *testing.T) {
 	_, err := readFileInput("/nonexistent/path/transcript.json")
 	if err == nil {
 		t.Error("expected error for missing file, got nil")
+	}
+}
+
+// TestEncodePath verifies Claude Code's path encoding: /, ., and _ all become -.
+func TestEncodePath(t *testing.T) {
+	cases := []struct {
+		input string
+		want  string
+	}{
+		{
+			input: "/Users/kyle/Code/proj",
+			want:  "-Users-kyle-Code-proj",
+		},
+		{
+			// Dot in directory name (e.g. .claude, .config)
+			input: "/Users/kyle/.config",
+			want:  "-Users-kyle--config",
+		},
+		{
+			// Underscore in directory name
+			input: "/Users/kyle/my_project",
+			want:  "-Users-kyle-my-project",
+		},
+		{
+			// Mixed: worktree path with dots and underscores
+			input: "/Users/kyle/.claude/worktrees/agent_abc123",
+			want:  "-Users-kyle--claude-worktrees-agent-abc123",
+		},
+		{
+			// macOS temp resolved path
+			input: "/private/tmp/some_dir",
+			want:  "-private-tmp-some-dir",
+		},
+	}
+
+	for _, tc := range cases {
+		got := encodePath(tc.input)
+		if got != tc.want {
+			t.Errorf("encodePath(%q) = %q, want %q", tc.input, got, tc.want)
+		}
+	}
+}
+
+// TestFindCurrentTranscript_NoFiles verifies that findCurrentTranscript returns
+// an error when the project directory contains no .jsonl files.
+func TestFindCurrentTranscript_NoFiles(t *testing.T) {
+	// Override HOME so currentProjectDir resolves into our temp dir.
+	tmp := t.TempDir()
+	t.Setenv("HOME", tmp)
+
+	// Create the project dir but put no .jsonl files in it.
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	// Resolve symlinks to match currentProjectDir's behaviour.
+	if resolved, err := filepath.EvalSymlinks(cwd); err == nil {
+		cwd = resolved
+	}
+	projectDir := filepath.Join(tmp, ".claude", "projects", encodePath(cwd))
+	if err := os.MkdirAll(projectDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	_, err = findCurrentTranscript()
+	if err == nil {
+		t.Error("expected error when no .jsonl files present, got nil")
+	}
+}
+
+// TestFindCurrentTranscript_ReturnsNewest verifies that findCurrentTranscript
+// picks the most recently modified .jsonl file.
+func TestFindCurrentTranscript_ReturnsNewest(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("HOME", tmp)
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if resolved, err := filepath.EvalSymlinks(cwd); err == nil {
+		cwd = resolved
+	}
+	projectDir := filepath.Join(tmp, ".claude", "projects", encodePath(cwd))
+	if err := os.MkdirAll(projectDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	// Write two files; give the second a newer mod time via Chtimes.
+	olderPath := filepath.Join(projectDir, "older.jsonl")
+	newerPath := filepath.Join(projectDir, "newer.jsonl")
+	for _, p := range []string{olderPath, newerPath} {
+		if err := os.WriteFile(p, []byte("{}"), 0o644); err != nil {
+			t.Fatalf("write %s: %v", p, err)
+		}
+	}
+
+	// Make newerPath demonstrably newer.
+	import_time := func(p string) int64 {
+		info, _ := os.Stat(p)
+		return info.ModTime().UnixNano()
+	}
+	olderMT := import_time(olderPath)
+	_ = olderMT
+	// Chtimes: bump newer by 2 seconds.
+	newerInfo, _ := os.Stat(newerPath)
+	newTime := newerInfo.ModTime().Add(2e9) // +2s
+	if err := os.Chtimes(newerPath, newTime, newTime); err != nil {
+		t.Fatalf("chtimes: %v", err)
+	}
+
+	got, err := findCurrentTranscript()
+	if err != nil {
+		t.Fatalf("findCurrentTranscript: %v", err)
+	}
+	if got != newerPath {
+		t.Errorf("got %q, want %q", got, newerPath)
 	}
 }
