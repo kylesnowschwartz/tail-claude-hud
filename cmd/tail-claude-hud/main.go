@@ -16,7 +16,16 @@ import (
 
 func main() {
 	dumpCurrent := flag.Bool("dump-current", false, "render the statusline from a transcript file instead of stdin")
+	initConfig := flag.Bool("init", false, "generate a default config file at ~/.config/tail-claude-hud/config.toml")
 	flag.Parse()
+
+	if *initConfig {
+		if err := config.Init(); err != nil {
+			fmt.Fprintf(os.Stderr, "tail-claude-hud: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
 
 	var input *model.StdinData
 	var err error
