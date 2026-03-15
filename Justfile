@@ -3,45 +3,21 @@
 # Default: run tests
 default: test
 
-# -----------------------------------------------------------
-# Build
-# -----------------------------------------------------------
-
 # Build the binary
 build:
     go build -o bin/tail-claude-hud ./cmd/tail-claude-hud
 
-# Build with version info
-build-release version:
-    go build -ldflags "-X main.version={{version}}" -o bin/tail-claude-hud ./cmd/tail-claude-hud
-
-# Install to GOPATH/bin
-install:
-    go install ./cmd/tail-claude-hud
-
-# -----------------------------------------------------------
-# Test
-# -----------------------------------------------------------
-
 # Run all tests
 test:
-    go test ./...
-
-# Run tests with verbose output
-test-verbose:
-    go test -v ./...
+    go test ./... -count=1
 
 # Run tests with race detector
 test-race:
-    go test -race ./...
+    go test -race ./... -count=1
 
 # Run benchmarks
 bench:
-    go test -bench=. -benchmem ./internal/...
-
-# -----------------------------------------------------------
-# Lint
-# -----------------------------------------------------------
+    go test -bench=. -benchmem ./internal/... -count=1
 
 # Format code
 fmt:
@@ -51,23 +27,17 @@ fmt:
 vet:
     go vet ./...
 
-# Run all checks
+# Format, vet, and test
 check: fmt vet test
 
-# -----------------------------------------------------------
-# Dev
-# -----------------------------------------------------------
+# Render the statusline from the current session's transcript
+dump: build
+    ./bin/tail-claude-hud --dump-current
 
-# Run with sample stdin (pipe a JSON file)
+# Pipe sample stdin through the binary (no transcript)
 run-sample:
     cat testdata/sample-stdin.json | go run ./cmd/tail-claude-hud
 
-# Benchmark a single render tick
-bench-tick:
-    @echo "Build first, then use hyperfine:"
-    @echo "  just build"
-    @echo "  hyperfine --warmup 3 'cat testdata/sample-stdin.json | ./bin/tail-claude-hud'"
-
 # Clean build artifacts
 clean:
-    rm -rf bin/ cpu.prof mem.prof
+    rm -rf bin/
