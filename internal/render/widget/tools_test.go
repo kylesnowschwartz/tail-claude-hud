@@ -62,7 +62,7 @@ func containsInOrder(output string, want []string) bool {
 // rather than the misleading "0.0s".
 func TestFormatDuration_RenderedInCompletedTool(t *testing.T) {
 	tools := []model.ToolEntry{
-		{Name: "Grep", Count: 1, DurationMs: 50, Category: "search"},
+		{Name: "Grep", Completed: true, DurationMs: 50, Category: "search"},
 	}
 	ctx := toolsCtx(tools)
 	cfg := defaultCfg()
@@ -79,8 +79,8 @@ func TestFormatDuration_RenderedInCompletedTool(t *testing.T) {
 
 // Spec 1: 3 running + 4 completed → running tools shown first, then newest completed.
 //
-// The Tools slice is oldest-first.  Running tools (Count==0) appear before
-// completed tools (Count>0) in the rendered output, and completed tools are
+// The Tools slice is oldest-first.  Running tools (Completed==false) appear before
+// completed tools (Completed==true) in the rendered output, and completed tools are
 // shown newest-first, capped at maxVisibleTools=5 total.
 //
 // With 3 running + 4 completed we have 7 entries; only 5 are shown:
@@ -88,14 +88,14 @@ func TestFormatDuration_RenderedInCompletedTool(t *testing.T) {
 func TestTools_RunningFirstThenNewestCompleted(t *testing.T) {
 	tools := []model.ToolEntry{
 		// completed (oldest first)
-		{Name: "C1", Count: 1, DurationMs: 100, Category: "internal"},
-		{Name: "C2", Count: 1, DurationMs: 100, Category: "internal"},
-		{Name: "C3", Count: 1, DurationMs: 100, Category: "internal"},
-		{Name: "C4", Count: 1, DurationMs: 100, Category: "internal"},
+		{Name: "C1", Completed: true, DurationMs: 100, Category: "internal"},
+		{Name: "C2", Completed: true, DurationMs: 100, Category: "internal"},
+		{Name: "C3", Completed: true, DurationMs: 100, Category: "internal"},
+		{Name: "C4", Completed: true, DurationMs: 100, Category: "internal"},
 		// running
-		{Name: "R1", Count: 0, Category: "internal"},
-		{Name: "R2", Count: 0, Category: "internal"},
-		{Name: "R3", Count: 0, Category: "internal"},
+		{Name: "R1", Category: "internal"},
+		{Name: "R2", Category: "internal"},
+		{Name: "R3", Category: "internal"},
 	}
 	ctx := toolsCtx(tools)
 	cfg := defaultCfg()
@@ -142,12 +142,12 @@ func TestTools_RunningFirstThenNewestCompleted(t *testing.T) {
 // newest-first, then caps at 5.  The oldest (C1) must not appear.
 func TestTools_SixCompleted_OldestDropped(t *testing.T) {
 	tools := []model.ToolEntry{
-		{Name: "C1", Count: 1, DurationMs: 100, Category: "internal"}, // oldest — should be dropped
-		{Name: "C2", Count: 1, DurationMs: 200, Category: "internal"},
-		{Name: "C3", Count: 1, DurationMs: 300, Category: "internal"},
-		{Name: "C4", Count: 1, DurationMs: 400, Category: "internal"},
-		{Name: "C5", Count: 1, DurationMs: 500, Category: "internal"},
-		{Name: "C6", Count: 1, DurationMs: 600, Category: "internal"}, // newest — should appear first
+		{Name: "C1", Completed: true, DurationMs: 100, Category: "internal"}, // oldest — should be dropped
+		{Name: "C2", Completed: true, DurationMs: 200, Category: "internal"},
+		{Name: "C3", Completed: true, DurationMs: 300, Category: "internal"},
+		{Name: "C4", Completed: true, DurationMs: 400, Category: "internal"},
+		{Name: "C5", Completed: true, DurationMs: 500, Category: "internal"},
+		{Name: "C6", Completed: true, DurationMs: 600, Category: "internal"}, // newest — should appear first
 	}
 	ctx := toolsCtx(tools)
 	cfg := defaultCfg()
@@ -196,9 +196,9 @@ func TestTools_OutOfOrderCompletion_DisplayOrderCorrect(t *testing.T) {
 	// B was started second (index 1) and has already completed.
 	// C was started third (index 2) and has already completed.
 	tools := []model.ToolEntry{
-		{Name: "ToolA", Count: 0, Category: "shell"},                    // still running
-		{Name: "ToolB", Count: 1, DurationMs: 500, Category: "file"},    // completed first
-		{Name: "ToolC", Count: 1, DurationMs: 1000, Category: "search"}, // completed second
+		{Name: "ToolA", Category: "shell"},                                        // still running
+		{Name: "ToolB", Completed: true, DurationMs: 500, Category: "file"},    // completed first
+		{Name: "ToolC", Completed: true, DurationMs: 1000, Category: "search"}, // completed second
 	}
 	ctx := toolsCtx(tools)
 	cfg := defaultCfg()
@@ -246,7 +246,7 @@ func TestTools_MaxToolsBufferFillsAndPrunes(t *testing.T) {
 		tools[i] = model.ToolEntry{
 			// Names T06 through T25 (matching the surviving window after 5 pruned).
 			Name:       "T" + fmt.Sprintf("%02d", i+6),
-			Count:      1,
+			Completed:  true,
 			DurationMs: (i + 6) * 100,
 			Category:   "internal",
 		}
@@ -288,7 +288,7 @@ func TestTools_MaxToolsBufferFillsAndPrunes(t *testing.T) {
 func TestTools_DividerHighlight(t *testing.T) {
 	t.Run("single tool has no separator", func(t *testing.T) {
 		tools := []model.ToolEntry{
-			{Name: "Solo", Count: 1, DurationMs: 100, Category: "internal"},
+			{Name: "Solo", Completed: true, DurationMs: 100, Category: "internal"},
 		}
 		ctx := toolsCtx(tools)
 		cfg := defaultCfg()
@@ -302,8 +302,8 @@ func TestTools_DividerHighlight(t *testing.T) {
 
 	t.Run("two tools: highlight cycles between sole separator position", func(t *testing.T) {
 		tools := []model.ToolEntry{
-			{Name: "A", Count: 1, DurationMs: 100, Category: "internal"},
-			{Name: "B", Count: 1, DurationMs: 200, Category: "internal"},
+			{Name: "A", Completed: true, DurationMs: 100, Category: "internal"},
+			{Name: "B", Completed: true, DurationMs: 200, Category: "internal"},
 		}
 		cfg := defaultCfg()
 
@@ -318,9 +318,9 @@ func TestTools_DividerHighlight(t *testing.T) {
 
 	t.Run("three tools: highlight position wraps", func(t *testing.T) {
 		tools := []model.ToolEntry{
-			{Name: "A", Count: 1, DurationMs: 100, Category: "internal"},
-			{Name: "B", Count: 1, DurationMs: 200, Category: "internal"},
-			{Name: "C", Count: 1, DurationMs: 300, Category: "internal"},
+			{Name: "A", Completed: true, DurationMs: 100, Category: "internal"},
+			{Name: "B", Completed: true, DurationMs: 200, Category: "internal"},
+			{Name: "C", Completed: true, DurationMs: 300, Category: "internal"},
 		}
 		cfg := defaultCfg()
 
@@ -357,10 +357,10 @@ func TestTools_DividerHighlight(t *testing.T) {
 		// 4 tools = 3 separator positions. Offset 3→6 should cycle through
 		// positions 0, 1, 2, 0, 1, 2...
 		tools := []model.ToolEntry{
-			{Name: "T1", Count: 1, DurationMs: 100, Category: "internal"},
-			{Name: "T2", Count: 1, DurationMs: 200, Category: "internal"},
-			{Name: "T3", Count: 1, DurationMs: 300, Category: "internal"},
-			{Name: "T4", Count: 1, DurationMs: 400, Category: "internal"},
+			{Name: "T1", Completed: true, DurationMs: 100, Category: "internal"},
+			{Name: "T2", Completed: true, DurationMs: 200, Category: "internal"},
+			{Name: "T3", Completed: true, DurationMs: 300, Category: "internal"},
+			{Name: "T4", Completed: true, DurationMs: 400, Category: "internal"},
 		}
 		cfg := defaultCfg()
 

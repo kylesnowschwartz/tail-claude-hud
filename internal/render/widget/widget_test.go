@@ -308,9 +308,8 @@ func TestToolsWidget_EmptyToolsReturnsEmpty(t *testing.T) {
 
 // Spec 8: running tool renders with category icon + name + elapsed.
 func TestToolsWidget_RunningToolShowsCategoryIconAndName(t *testing.T) {
-	// Count == 0 signals running.
 	ctx := &model.RenderContext{Transcript: &model.TranscriptData{
-		Tools: []model.ToolEntry{{Name: "Read", Count: 0, Category: "file"}},
+		Tools: []model.ToolEntry{{Name: "Read", Category: "file"}},
 	}}
 	cfg := defaultCfg()
 	cfg.Style.Icons = "ascii"
@@ -327,7 +326,7 @@ func TestToolsWidget_RunningToolShowsCategoryIconAndName(t *testing.T) {
 
 func TestToolsWidget_RunningToolShowsYellowIconNoSpinner(t *testing.T) {
 	ctx := &model.RenderContext{Transcript: &model.TranscriptData{
-		Tools: []model.ToolEntry{{Name: "Bash", Count: 0, Category: "shell"}},
+		Tools: []model.ToolEntry{{Name: "Bash", Category: "shell"}},
 	}}
 	cfg := defaultCfg()
 	cfg.Style.Icons = "ascii"
@@ -348,9 +347,8 @@ func TestToolsWidget_RunningToolShowsYellowIconNoSpinner(t *testing.T) {
 
 // Spec 9: completed tool renders with dim category icon + name + duration.
 func TestToolsWidget_CompletedToolShowsDimCategoryIconAndDuration(t *testing.T) {
-	// Count > 0 signals completed.
 	ctx := &model.RenderContext{Transcript: &model.TranscriptData{
-		Tools: []model.ToolEntry{{Name: "Write", Count: 1, Category: "file", DurationMs: 300}},
+		Tools: []model.ToolEntry{{Name: "Write", Completed: true, Category: "file", DurationMs: 300}},
 	}}
 	cfg := defaultCfg()
 	cfg.Style.Icons = "ascii"
@@ -372,7 +370,7 @@ func TestToolsWidget_CompletedToolShowsDimCategoryIconAndDuration(t *testing.T) 
 // Spec 10: error tool renders with red error icon + name + "err".
 func TestToolsWidget_ErrorToolShowsRedCategoryIcon(t *testing.T) {
 	ctx := &model.RenderContext{Transcript: &model.TranscriptData{
-		Tools: []model.ToolEntry{{Name: "Bash", Count: 1, Category: "shell", DurationMs: 500, HasError: true}},
+		Tools: []model.ToolEntry{{Name: "Bash", Completed: true, Category: "shell", DurationMs: 500, HasError: true}},
 	}}
 	cfg := defaultCfg()
 	cfg.Style.Icons = "ascii"
@@ -392,12 +390,12 @@ func TestToolsWidget_ErrorToolShowsRedCategoryIcon(t *testing.T) {
 func TestToolsWidget_MaxFiveToolsShown(t *testing.T) {
 	// Six completed tools — only 5 should be rendered.
 	tools := []model.ToolEntry{
-		{Name: "T1", Count: 1, DurationMs: 100},
-		{Name: "T2", Count: 1, DurationMs: 100},
-		{Name: "T3", Count: 1, DurationMs: 100},
-		{Name: "T4", Count: 1, DurationMs: 100},
-		{Name: "T5", Count: 1, DurationMs: 100},
-		{Name: "T6", Count: 1, DurationMs: 100},
+		{Name: "T1", Completed: true, DurationMs: 100},
+		{Name: "T2", Completed: true, DurationMs: 100},
+		{Name: "T3", Completed: true, DurationMs: 100},
+		{Name: "T4", Completed: true, DurationMs: 100},
+		{Name: "T5", Completed: true, DurationMs: 100},
+		{Name: "T6", Completed: true, DurationMs: 100},
 	}
 	ctx := &model.RenderContext{Transcript: &model.TranscriptData{Tools: tools}}
 	cfg := defaultCfg()

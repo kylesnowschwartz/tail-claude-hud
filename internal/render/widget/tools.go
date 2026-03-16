@@ -34,11 +34,11 @@ func Tools(ctx *model.RenderContext, cfg *config.Config) string {
 		return ""
 	}
 
-	// Separate running (Count==0) from completed/error (Count>0).
+	// Separate running from completed/error tools.
 	var running []model.ToolEntry
 	var completed []model.ToolEntry
 	for _, t := range tools {
-		if t.Count == 0 {
+		if !t.Completed {
 			running = append(running, t)
 		} else {
 			completed = append(completed, t)
@@ -101,7 +101,7 @@ func joinWithHighlight(parts []string, highlightIdx int) string {
 func renderToolEntry(icons Icons, t model.ToolEntry) string {
 	catIcon := CategoryIcon(icons, t.Category)
 
-	if t.Count == 0 {
+	if !t.Completed {
 		// Running: yellow category icon only; name uses default foreground to match
 		// the completed-tool pattern where only the icon carries color.
 		icon := yellowStyle.Render(catIcon)

@@ -204,11 +204,11 @@ func BenchmarkRender_FullContext(b *testing.B) {
 			Path:        "/tmp/bench-session.jsonl",
 			SessionName: "Bench Session",
 			Tools: []model.ToolEntry{
-				{Name: "Bash", Count: 12},
-				{Name: "Read", Count: 8},
-				{Name: "Write", Count: 5},
-				{Name: "Grep", Count: 4},
-				{Name: "Edit", Count: 3},
+				{Name: "Bash", Completed: true},
+				{Name: "Read", Completed: true},
+				{Name: "Write", Completed: true},
+				{Name: "Grep", Completed: true},
+				{Name: "Edit", Completed: true},
 			},
 			Agents: []model.AgentEntry{
 				{Name: "worker-1", Status: "done"},

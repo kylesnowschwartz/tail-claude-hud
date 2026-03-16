@@ -71,9 +71,9 @@ func TestProcessEntry_ToolUse_RecordsRunning(t *testing.T) {
 	if tool.Name != "Read" {
 		t.Errorf("expected Name=Read, got %q", tool.Name)
 	}
-	// Count == 0 means running (per convention).
-	if tool.Count != 0 {
-		t.Errorf("expected Count=0 (running), got %d", tool.Count)
+	// Completed == false means running.
+	if tool.Completed {
+		t.Errorf("expected Completed=false (running), got true")
 	}
 }
 
@@ -101,21 +101,21 @@ func TestProcessEntry_ToolResult_MarksCompleted(t *testing.T) {
 	if len(data.Tools) != 1 {
 		t.Fatalf("expected 1 tool, got %d", len(data.Tools))
 	}
-	if data.Tools[0].Count != 1 {
-		t.Errorf("expected Count=1 (completed), got %d", data.Tools[0].Count)
+	if !data.Tools[0].Completed {
+		t.Errorf("expected Completed=true, got false")
 	}
 }
 
 func TestProcessEntry_ToolResult_IsError_StillMarksCompleted(t *testing.T) {
-	// is_error tools are still marked as "completed" from the model perspective
-	// (Count > 0 = not running). The error distinction is tracked internally.
+	// is_error tools are still marked as completed. The error distinction is
+	// tracked via HasError.
 	es := NewExtractionState()
 	es.ProcessEntry(makeToolUseEntry("id-2", "Bash", map[string]interface{}{"command": "exit 1"}))
 	es.ProcessEntry(makeToolResultEntry("id-2", true))
 
 	data := es.ToTranscriptData()
-	if data.Tools[0].Count != 1 {
-		t.Errorf("expected Count=1 for error tool, got %d", data.Tools[0].Count)
+	if !data.Tools[0].Completed {
+		t.Errorf("expected Completed=true for error tool, got false")
 	}
 }
 
@@ -1056,15 +1056,15 @@ func TestMarshalUnmarshalSnapshot_ToolsRoundTrip(t *testing.T) {
 	if data.Tools[0].Name != "Read" {
 		t.Errorf("expected restored tool Name=Read, got %q", data.Tools[0].Name)
 	}
-	if data.Tools[0].Count != 1 {
-		t.Errorf("expected restored tool Count=1 (completed), got %d", data.Tools[0].Count)
+	if !data.Tools[0].Completed {
+		t.Errorf("expected restored tool Completed=true, got false")
 	}
 	// The second tool (new) should be running.
 	if data.Tools[1].Name != "Bash" {
 		t.Errorf("expected new tool Name=Bash, got %q", data.Tools[1].Name)
 	}
-	if data.Tools[1].Count != 0 {
-		t.Errorf("expected new tool Count=0 (running), got %d", data.Tools[1].Count)
+	if data.Tools[1].Completed {
+		t.Errorf("expected new tool Completed=false (running), got true")
 	}
 }
 
@@ -1260,8 +1260,8 @@ func TestSnapshotSpec1_ToolUseAndResultSameEntry(t *testing.T) {
 		t.Fatalf("expected 1 tool, got %d", len(data.Tools))
 	}
 	tool := data.Tools[0]
-	if tool.Count != 1 {
-		t.Errorf("expected Count=1 (completed), got %d", tool.Count)
+	if !tool.Completed {
+		t.Errorf("expected Completed=true, got false")
 	}
 	if tool.DurationMs != 0 {
 		t.Errorf("expected DurationMs=0 for zero-delta same-entry, got %d", tool.DurationMs)
@@ -1285,8 +1285,8 @@ func TestSnapshotSpec1_ToolUseAndResultSameEntry(t *testing.T) {
 	if len(data2.Tools) != 1 {
 		t.Fatalf("expected 1 tool after restore, got %d", len(data2.Tools))
 	}
-	if data2.Tools[0].Count != 1 {
-		t.Errorf("restored tool: expected Count=1, got %d", data2.Tools[0].Count)
+	if !data2.Tools[0].Completed {
+		t.Errorf("restored tool: expected Completed=true, got false")
 	}
 	// The tool must NOT be in the toolMap (it is completed — no pending result needed).
 	if _, ok := es2.toolMap["same-id-1"]; ok {
@@ -1328,8 +1328,8 @@ func TestSnapshotSpec1_ZeroDeltaIsNotStuck(t *testing.T) {
 
 	data := es2.ToTranscriptData()
 	for _, tool := range data.Tools {
-		if tool.Count == 0 {
-			t.Errorf("tool %q is stuck as running after restore; expected Count>0", tool.Name)
+		if !tool.Completed {
+			t.Errorf("tool %q is stuck as running after restore; expected Completed=true", tool.Name)
 		}
 	}
 }
@@ -1358,8 +1358,8 @@ func TestSnapshotSpec2_MultiHopToolRestore(t *testing.T) {
 		t.Fatalf("invocation 2 UnmarshalSnapshot: %v", err)
 	}
 	// Tool is still running after restore.
-	if data := es2.ToTranscriptData(); data.Tools[0].Count != 0 {
-		t.Fatalf("invocation 2: expected tool still running (Count=0), got Count=%d", data.Tools[0].Count)
+	if data := es2.ToTranscriptData(); data.Tools[0].Completed {
+		t.Fatalf("invocation 2: expected tool still running (Completed=false), got Completed=true")
 	}
 	// toolMap must contain the running tool so the result can be matched.
 	if _, ok := es2.toolMap["multi-hop-1"]; !ok {
@@ -1391,8 +1391,8 @@ func TestSnapshotSpec2_MultiHopToolRestore(t *testing.T) {
 		t.Fatalf("invocation 4: expected 1 tool, got %d", len(data.Tools))
 	}
 	tool := data.Tools[0]
-	if tool.Count != 1 {
-		t.Errorf("invocation 4: expected Count=1 (completed), got %d", tool.Count)
+	if !tool.Completed {
+		t.Errorf("invocation 4: expected Completed=true, got false")
 	}
 	if tool.HasError {
 		t.Error("invocation 4: expected HasError=false")
@@ -1681,8 +1681,8 @@ func TestSnapshotSpec5_NoToolsStuckRunning(t *testing.T) {
 	// After resolution, no tool should be running.
 	data := es.ToTranscriptData()
 	for _, tool := range data.Tools {
-		if tool.Count == 0 {
-			t.Errorf("tool %q is still running (Count=0) after tool_result was processed", tool.Name)
+		if !tool.Completed {
+			t.Errorf("tool %q is still running after tool_result was processed", tool.Name)
 		}
 	}
 
@@ -1692,7 +1692,7 @@ func TestSnapshotSpec5_NoToolsStuckRunning(t *testing.T) {
 	_ = es2.UnmarshalSnapshot(snap)
 	data2 := es2.ToTranscriptData()
 	for _, tool := range data2.Tools {
-		if tool.Count == 0 {
+		if !tool.Completed {
 			t.Errorf("tool %q is stuck as running after snapshot restore", tool.Name)
 		}
 	}
@@ -1761,16 +1761,16 @@ func TestSnapshotSpec5_MixedRunningAndCompletedAfterRestore(t *testing.T) {
 	}
 
 	// done-tool must be completed and absent from toolMap.
-	if data.Tools[0].Count != 1 {
-		t.Errorf("done-tool: expected Count=1, got %d", data.Tools[0].Count)
+	if !data.Tools[0].Completed {
+		t.Errorf("done-tool: expected Completed=true, got false")
 	}
 	if _, ok := es2.toolMap["done-tool"]; ok {
 		t.Error("done-tool should not be in toolMap after restore")
 	}
 
 	// running-tool must be running and present in toolMap for future result matching.
-	if data.Tools[1].Count != 0 {
-		t.Errorf("running-tool: expected Count=0 (running), got %d", data.Tools[1].Count)
+	if data.Tools[1].Completed {
+		t.Errorf("running-tool: expected Completed=false (running), got true")
 	}
 	if _, ok := es2.toolMap["running-tool"]; !ok {
 		t.Error("running-tool should be in toolMap after restore for future result matching")
@@ -1810,8 +1810,8 @@ func TestSnapshotSpec6_DurationAccuracyAcrossInvocations(t *testing.T) {
 		t.Fatalf("expected 1 tool, got %d", len(data.Tools))
 	}
 	tool := data.Tools[0]
-	if tool.Count != 1 {
-		t.Errorf("expected Count=1 (completed), got %d", tool.Count)
+	if !tool.Completed {
+		t.Errorf("expected Completed=true, got false")
 	}
 
 	// Duration must be within 100ms of the expected 7300ms.

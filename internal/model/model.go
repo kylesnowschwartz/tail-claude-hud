@@ -64,7 +64,7 @@ type TranscriptData struct {
 // ToolEntry records a single tool invocation observed in the transcript.
 type ToolEntry struct {
 	Name       string
-	Count      int
+	Completed  bool   // false = still running, true = completed or error
 	DurationMs int    // 0 = still running or unknown
 	HasError   bool   // true when the tool_result had is_error set
 	Category   string // file, shell, search, web, agent, internal

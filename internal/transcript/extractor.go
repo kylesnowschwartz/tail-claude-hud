@@ -355,21 +355,12 @@ func (es *ExtractionState) processToolResult(b ToolResultBlock, ts time.Time) {
 
 // ToTranscriptData collapses the current extraction state into a
 // model.TranscriptData snapshot for the render layer.
-//
-// The model.ToolEntry convention used by widgets:
-//   - Count == 0 means the tool is still running.
-//   - Count > 0 means the tool completed (Count is always 1 here; aggregation
-//     across duplicate names is left to the widgets if needed).
 func (es *ExtractionState) ToTranscriptData() *model.TranscriptData {
 	tools := make([]model.ToolEntry, 0, len(es.displayTools))
 	for _, t := range es.displayTools {
-		count := 0
-		if t.completed {
-			count = 1
-		}
 		tools = append(tools, model.ToolEntry{
 			Name:       t.name,
-			Count:      count,
+			Completed:  t.completed,
 			DurationMs: t.durationMs,
 			HasError:   t.hasError,
 			Category:   t.category,
