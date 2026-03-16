@@ -91,6 +91,11 @@ type ExtractionState struct {
 	// spinnerFrame is a monotonic counter incremented on each statusline invocation.
 	// It is persisted in the snapshot so successive invocations always advance the frame.
 	spinnerFrame int
+
+	// lastSeenToolCount is the number of tools that were present when MarshalSnapshot
+	// was last called. On the next invocation, fresh tools = len(displayTools) - lastSeenToolCount.
+	// Persisted in the snapshot so the boundary survives across invocations.
+	lastSeenToolCount int
 }
 
 // NewExtractionState returns an initialised, empty ExtractionState.
@@ -381,13 +386,14 @@ func (es *ExtractionState) ToTranscriptData() *model.TranscriptData {
 	copy(todos, es.Todos)
 
 	return &model.TranscriptData{
-		SessionName:    es.sessionName,
-		Tools:          tools,
-		Agents:         agents,
-		Todos:          todos,
-		ThinkingActive: es.thinkingActive,
-		ThinkingCount:  es.thinkingCount,
-		SpinnerFrame:   es.spinnerFrame,
+		SessionName:        es.sessionName,
+		Tools:              tools,
+		Agents:             agents,
+		Todos:              todos,
+		ThinkingActive:     es.thinkingActive,
+		ThinkingCount:      es.thinkingCount,
+		SpinnerFrame:       es.spinnerFrame,
+		FreshBoundaryCount: es.lastSeenToolCount,
 	}
 }
 
@@ -492,13 +498,14 @@ func normalizeStatusDone(status string) bool {
 // StartTime is intentionally excluded — it is only meaningful within a single
 // invocation for elapsed-time computation. Restored entries use DurationMs directly.
 type extractionSnapshot struct {
-	Tools          []snapshotTool   `json:"tools"`
-	Agents         []snapshotAgent  `json:"agents"`
-	Todos          []model.TodoItem `json:"todos"`
-	SessionName    string           `json:"session_name"`
-	ThinkingActive bool             `json:"thinking_active"`
-	ThinkingCount  int              `json:"thinking_count"`
-	SpinnerFrame   int              `json:"spinner_frame"`
+	Tools              []snapshotTool   `json:"tools"`
+	Agents             []snapshotAgent  `json:"agents"`
+	Todos              []model.TodoItem `json:"todos"`
+	SessionName        string           `json:"session_name"`
+	ThinkingActive     bool             `json:"thinking_active"`
+	ThinkingCount      int              `json:"thinking_count"`
+	SpinnerFrame       int              `json:"spinner_frame"`
+	LastSeenToolCount  int              `json:"last_seen_tool_count"`
 }
 
 type snapshotTool struct {
@@ -562,14 +569,17 @@ func (es *ExtractionState) MarshalSnapshot() (json.RawMessage, error) {
 	todos := make([]model.TodoItem, len(es.Todos))
 	copy(todos, es.Todos)
 
+	// Record the current tool count as the boundary. On the next invocation,
+	// any tools beyond this count are considered "fresh" for the colored separator.
 	snap := extractionSnapshot{
-		Tools:          tools,
-		Agents:         agents,
-		Todos:          todos,
-		SessionName:    es.sessionName,
-		ThinkingActive: es.thinkingActive,
-		ThinkingCount:  es.thinkingCount,
-		SpinnerFrame:   es.spinnerFrame,
+		Tools:             tools,
+		Agents:            agents,
+		Todos:             todos,
+		SessionName:       es.sessionName,
+		ThinkingActive:    es.thinkingActive,
+		ThinkingCount:     es.thinkingCount,
+		SpinnerFrame:      es.spinnerFrame,
+		LastSeenToolCount: len(es.displayTools),
 	}
 	return json.Marshal(snap)
 }
@@ -647,6 +657,7 @@ func (es *ExtractionState) UnmarshalSnapshot(data json.RawMessage) error {
 	es.thinkingActive = snap.ThinkingActive
 	es.thinkingCount = snap.ThinkingCount
 	es.spinnerFrame = snap.SpinnerFrame
+	es.lastSeenToolCount = snap.LastSeenToolCount
 	return nil
 }
 

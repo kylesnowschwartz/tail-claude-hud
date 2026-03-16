@@ -2002,3 +2002,62 @@ func TestSpinnerFrame_NoWallClockDependency(t *testing.T) {
 		t.Errorf("back-to-back counter increments produced same frame %d — counter not advancing", frame1)
 	}
 }
+
+// TestLastSeenToolCount_SnapshotRoundTrip verifies that lastSeenToolCount
+// (the fresh-boundary marker) survives a marshal/unmarshal cycle, and that
+// FreshBoundaryCount in TranscriptData reflects it correctly on the next
+// invocation after new tools are added.
+//
+// Flow:
+//   Invocation 1: 2 tools → MarshalSnapshot records LastSeenToolCount=2.
+//   Invocation 2: restore snapshot (lastSeenToolCount=2) + 1 new tool.
+//                 ToTranscriptData must expose FreshBoundaryCount=2.
+//                 The widget computes freshCount = 3 - 2 = 1.
+func TestLastSeenToolCount_SnapshotRoundTrip(t *testing.T) {
+	// Invocation 1: process 2 completed tools and take a snapshot.
+	es1 := NewExtractionState()
+	es1.ProcessEntry(makeToolUseEntry("id-1", "Read", map[string]interface{}{"file_path": "a.go"}))
+	es1.ProcessEntry(makeToolResultEntry("id-1", false))
+	es1.ProcessEntry(makeToolUseEntry("id-2", "Write", map[string]interface{}{"file_path": "b.go"}))
+	es1.ProcessEntry(makeToolResultEntry("id-2", false))
+
+	snap, err := es1.MarshalSnapshot()
+	if err != nil {
+		t.Fatalf("MarshalSnapshot: %v", err)
+	}
+
+	// Invocation 2: restore snapshot, then add one new tool.
+	es2 := NewExtractionState()
+	if err := es2.UnmarshalSnapshot(snap); err != nil {
+		t.Fatalf("UnmarshalSnapshot: %v", err)
+	}
+	es2.ProcessEntry(makeToolUseEntry("id-3", "Bash", map[string]interface{}{"command": "ls"}))
+
+	data := es2.ToTranscriptData()
+
+	// FreshBoundaryCount must equal the tool count at the last snapshot (2),
+	// not the current total (3).
+	if data.FreshBoundaryCount != 2 {
+		t.Errorf("FreshBoundaryCount = %d, want 2 (tool count at last snapshot)", data.FreshBoundaryCount)
+	}
+
+	// Sanity check: total tools is 3.
+	if len(data.Tools) != 3 {
+		t.Errorf("expected 3 tools total, got %d", len(data.Tools))
+	}
+}
+
+// TestLastSeenToolCount_NoSnapshot verifies that FreshBoundaryCount is 0
+// when no prior snapshot exists. The widget interprets this as "all fresh,
+// no colored separator".
+func TestLastSeenToolCount_NoSnapshot(t *testing.T) {
+	es := NewExtractionState()
+	es.ProcessEntry(makeToolUseEntry("id-1", "Read", map[string]interface{}{"file_path": "a.go"}))
+	es.ProcessEntry(makeToolResultEntry("id-1", false))
+
+	data := es.ToTranscriptData()
+
+	if data.FreshBoundaryCount != 0 {
+		t.Errorf("FreshBoundaryCount = %d, want 0 (no prior snapshot)", data.FreshBoundaryCount)
+	}
+}

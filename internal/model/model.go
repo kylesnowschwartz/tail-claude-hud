@@ -53,6 +53,12 @@ type TranscriptData struct {
 	// Widgets use it instead of wall-clock time to guarantee spinner advancement
 	// on every render regardless of when within a tick the binary runs.
 	SpinnerFrame int
+
+	// FreshBoundaryCount is the number of tools that existed in the last saved
+	// snapshot. The tools widget uses this to compute how many tools are "fresh"
+	// (added since the last invocation) so the yellow separator can be positioned
+	// after the fresh tools rather than always after position 0.
+	FreshBoundaryCount int
 }
 
 // ToolEntry records a single tool invocation observed in the transcript.

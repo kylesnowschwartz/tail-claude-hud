@@ -11,9 +11,24 @@ import (
 // toolsCtx is a helper that builds a RenderContext with a given tools slice.
 // The slice is expected to be in oldest-first order, matching how
 // ExtractionState.ToTranscriptData produces the Tools field.
+// FreshBoundaryCount defaults to 0 (no prior snapshot — all tools are fresh,
+// no colored separator shown).
 func toolsCtx(tools []model.ToolEntry) *model.RenderContext {
 	return &model.RenderContext{
 		Transcript: &model.TranscriptData{Tools: tools},
+	}
+}
+
+// toolsCtxWithBoundary builds a RenderContext with both a tools slice and a
+// FreshBoundaryCount simulating a prior-invocation snapshot. freshBoundary is
+// the number of tools that existed at the last snapshot save; tools added since
+// then are considered "fresh" and the colored separator is placed after them.
+func toolsCtxWithBoundary(tools []model.ToolEntry, freshBoundary int) *model.RenderContext {
+	return &model.RenderContext{
+		Transcript: &model.TranscriptData{
+			Tools:              tools,
+			FreshBoundaryCount: freshBoundary,
+		},
 	}
 }
 
@@ -268,45 +283,75 @@ func TestTools_MaxToolsBufferFillsAndPrunes(t *testing.T) {
 	}
 }
 
-// TestTools_ColoredFirstSeparator verifies that the separator between the first
-// and second tool entries is visually distinct (uses freshSep, yellow-colored)
-// while subsequent separators use the dim style.
+// TestTools_FreshBoundarySeparator verifies the colored separator behavior.
 //
-// Spec 1: the separator after the newest tool (index 0) must differ from the
-// separator between later tools.
-// Spec 2: when a new tool arrives at the front, the colored separator shifts
-// with it — validated by checking the first separator is always freshSep.
-// Spec 3: the colored separator matches the running-tool color scheme (yellow).
-func TestTools_ColoredFirstSeparator(t *testing.T) {
-	t.Run("two completed tools has colored first separator", func(t *testing.T) {
+// The yellow separator marks the boundary between "fresh" tools (added since
+// the last snapshot) and "old" tools (present in the prior snapshot). This
+// boundary is tracked via FreshBoundaryCount in TranscriptData.
+//
+// Spec 1: the separator position persists via FreshBoundaryCount.
+// Spec 2: when new tools are prepended, the colored separator shifts rightward.
+// Spec 3: when all tools are newer than the last snapshot (FreshBoundaryCount==0),
+//         the colored separator does not appear.
+func TestTools_FreshBoundarySeparator(t *testing.T) {
+	t.Run("no prior snapshot means no colored separator", func(t *testing.T) {
+		// FreshBoundaryCount=0 (zero value, no prior snapshot) — all tools are fresh,
+		// so no colored separator is emitted.
 		tools := []model.ToolEntry{
 			{Name: "OldTool", Count: 1, DurationMs: 100, Category: "internal"},
 			{Name: "NewTool", Count: 1, DurationMs: 200, Category: "internal"},
 		}
-		ctx := toolsCtx(tools)
+		ctx := toolsCtx(tools) // FreshBoundaryCount defaults to 0
 		cfg := defaultCfg()
 
 		got := Tools(ctx, cfg)
 
-		// The fresh separator (yellow) must appear between the two entries.
-		if !strings.Contains(got, freshSep) {
-			t.Errorf("expected fresh (yellow) separator in output, got %q", got)
+		if strings.Contains(got, freshSep) {
+			t.Errorf("expected no fresh separator when FreshBoundaryCount=0 (all fresh), got %q", got)
 		}
 	})
 
-	t.Run("three tools: first separator is fresh, second is dim", func(t *testing.T) {
+	t.Run("one old tool: colored separator after first (fresh) tool", func(t *testing.T) {
+		// 2 tools total, 1 was in the prior snapshot. The newest tool is fresh,
+		// the older one is old. Separator goes between them.
+		// Visible (newest-first): NewTool [freshSep] OldTool
+		tools := []model.ToolEntry{
+			{Name: "OldTool", Count: 1, DurationMs: 100, Category: "internal"},
+			{Name: "NewTool", Count: 1, DurationMs: 200, Category: "internal"},
+		}
+		ctx := toolsCtxWithBoundary(tools, 1) // 1 tool at last snapshot
+		cfg := defaultCfg()
+
+		got := Tools(ctx, cfg)
+
+		if !strings.Contains(got, freshSep) {
+			t.Errorf("expected fresh (yellow) separator, got %q", got)
+		}
+
+		// freshSep must appear before OldTool (the old tool is to the right).
+		freshIdx := strings.Index(got, freshSep)
+		oldToolIdx := strings.Index(got, "OldTool")
+		if freshIdx < 0 || oldToolIdx < 0 {
+			t.Fatalf("missing fresh separator or OldTool in %q", got)
+		}
+		if freshIdx > oldToolIdx {
+			t.Errorf("fresh separator (pos %d) should precede OldTool (pos %d)", freshIdx, oldToolIdx)
+		}
+	})
+
+	t.Run("three tools, one fresh: separator after first, then dim separators", func(t *testing.T) {
+		// 3 tools total, 2 in prior snapshot. Only C is fresh.
+		// Visible (newest-first): C [freshSep] B [dimSep] A
 		tools := []model.ToolEntry{
 			{Name: "A", Count: 1, DurationMs: 100, Category: "internal"},
 			{Name: "B", Count: 1, DurationMs: 200, Category: "internal"},
 			{Name: "C", Count: 1, DurationMs: 300, Category: "internal"},
 		}
-		ctx := toolsCtx(tools)
+		ctx := toolsCtxWithBoundary(tools, 2) // 2 tools at last snapshot
 		cfg := defaultCfg()
 
 		got := Tools(ctx, cfg)
 
-		// Visible order: C (newest), B, A.
-		// Separators: C [freshSep] B [dimSep] A.
 		freshIdx := strings.Index(got, freshSep)
 		dimIdx := strings.Index(got, dimSep)
 
@@ -339,43 +384,53 @@ func TestTools_ColoredFirstSeparator(t *testing.T) {
 		}
 	})
 
-	t.Run("fresh separator shifts when new tool arrives at front", func(t *testing.T) {
-		// Simulate before: two completed tools.
-		before := []model.ToolEntry{
-			{Name: "Tool1", Count: 1, DurationMs: 100, Category: "internal"},
-			{Name: "Tool2", Count: 1, DurationMs: 200, Category: "internal"},
-		}
-		// Simulate after: a third (newer) tool is added.
-		after := []model.ToolEntry{
+	t.Run("separator shifts rightward when new tool arrives", func(t *testing.T) {
+		// Invocation 1: 2 tools, snapshot saves FreshBoundaryCount=2.
+		// Invocation 2: 3 tools (Tool3 is new). FreshBoundaryCount=2.
+		// freshCount = 3 - 2 = 1. Separator after position 1 (between Tool3 and Tool2).
+		// Visible (newest-first): Tool3 [freshSep] Tool2 [dimSep] Tool1
+
+		toolsAfter := []model.ToolEntry{
 			{Name: "Tool1", Count: 1, DurationMs: 100, Category: "internal"},
 			{Name: "Tool2", Count: 1, DurationMs: 200, Category: "internal"},
 			{Name: "Tool3", Count: 1, DurationMs: 300, Category: "internal"},
 		}
 		cfg := defaultCfg()
 
-		gotBefore := Tools(toolsCtx(before), cfg)
-		gotAfter := Tools(toolsCtx(after), cfg)
+		// Simulate the state after the second invocation:
+		// FreshBoundaryCount=2 (Tool1 and Tool2 were present at last snapshot).
+		gotAfter := Tools(toolsCtxWithBoundary(toolsAfter, 2), cfg)
 
-		// In "before", freshSep appears after Tool2 (the newest at that time).
-		// In "after", freshSep appears after Tool3 (now the newest).
-		// Both must contain freshSep and it must precede Tool1 in both cases
-		// (Tool1 is always the oldest visible).
-		if !strings.Contains(gotBefore, freshSep) {
-			t.Errorf("before: expected fresh separator, got %q", gotBefore)
-		}
 		if !strings.Contains(gotAfter, freshSep) {
-			t.Errorf("after: expected fresh separator, got %q", gotAfter)
+			t.Errorf("expected fresh separator after new tool arrived, got %q", gotAfter)
 		}
 
-		// After adding Tool3, the fresh separator must appear before Tool2 and Tool1
-		// (Tool3 is at index 0, so freshSep sits between Tool3 and Tool2).
+		// freshSep must appear before Tool2 (Tool3 is fresh, Tool2 is old).
 		freshIdxAfter := strings.Index(gotAfter, freshSep)
 		tool2IdxAfter := strings.Index(gotAfter, "Tool2")
 		if freshIdxAfter < 0 || tool2IdxAfter < 0 {
-			t.Fatalf("after: missing fresh separator or Tool2 in %q", gotAfter)
+			t.Fatalf("missing fresh separator or Tool2 in %q", gotAfter)
 		}
 		if freshIdxAfter > tool2IdxAfter {
-			t.Errorf("after: fresh separator (pos %d) should precede Tool2 (pos %d)", freshIdxAfter, tool2IdxAfter)
+			t.Errorf("fresh separator (pos %d) should precede Tool2 (pos %d)", freshIdxAfter, tool2IdxAfter)
+		}
+	})
+
+	t.Run("all visible tools are old: colored separator does not appear at end", func(t *testing.T) {
+		// 2 tools total, FreshBoundaryCount=5 (boundary from a longer past invocation).
+		// freshCount = 2 - 5 = -1 → clamped to 0 → all visible are fresh, no separator.
+		tools := []model.ToolEntry{
+			{Name: "Tool1", Count: 1, DurationMs: 100, Category: "internal"},
+			{Name: "Tool2", Count: 1, DurationMs: 200, Category: "internal"},
+		}
+		ctx := toolsCtxWithBoundary(tools, 5)
+		cfg := defaultCfg()
+
+		got := Tools(ctx, cfg)
+
+		// freshCount clamps to 0 — all tools treated as fresh, no separator.
+		if strings.Contains(got, freshSep) {
+			t.Errorf("no fresh separator expected when freshCount<=0, got %q", got)
 		}
 	})
 }
