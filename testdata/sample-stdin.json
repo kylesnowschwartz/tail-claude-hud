@@ -13,5 +13,15 @@
       "cache_creation_input_tokens": 12000,
       "cache_read_input_tokens": 8000
     }
+  },
+  "cost": {
+    "total_cost_usd": 0.1234,
+    "total_duration_ms": 185000,
+    "total_api_duration_ms": 42000,
+    "total_lines_added": 87,
+    "total_lines_removed": 23
+  },
+  "output_style": {
+    "name": "auto"
   }
 }

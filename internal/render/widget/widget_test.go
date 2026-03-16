@@ -1303,3 +1303,60 @@ func TestIconsFor_RunningFieldNonEmpty(t *testing.T) {
 		}
 	}
 }
+
+// -- Duration widget: stdin TotalDurationMs priority -------------------------
+
+// When TotalDurationMs is set, the duration widget must use it rather than
+// deriving elapsed time from SessionStart. This ensures the authoritative
+// Claude Code duration takes precedence over the transcript-derived estimate.
+func TestDurationWidget_PrefersStdinDuration(t *testing.T) {
+	// TotalDurationMs = 3 minutes 5 seconds (185 000 ms).
+	// SessionStart is set to a very old time so that transcript-derived duration
+	// would yield a completely different result, confirming we used TotalDurationMs.
+	ctx := &model.RenderContext{
+		TotalDurationMs: 185_000,
+		SessionStart:    time.Now().Add(-10 * time.Hour).UTC().Format(time.RFC3339),
+	}
+	cfg := defaultCfg()
+
+	got := Duration(ctx, cfg)
+	// 185 000 ms rounds to 3m 5s — check both components.
+	if !strings.Contains(got, "3m") {
+		t.Errorf("Duration with TotalDurationMs=185000: expected '3m', got %q", got)
+	}
+	if !strings.Contains(got, "5s") {
+		t.Errorf("Duration with TotalDurationMs=185000: expected '5s', got %q", got)
+	}
+	// Confirm it did NOT derive from the 10-hour SessionStart (would be "10h ...").
+	if strings.Contains(got, "10h") {
+		t.Errorf("Duration with TotalDurationMs set: must not fall back to SessionStart, got %q", got)
+	}
+}
+
+// When TotalDurationMs is zero, the widget must fall back to SessionStart.
+func TestDurationWidget_FallsBackToSessionStartWhenNoDuration(t *testing.T) {
+	ctx := &model.RenderContext{
+		TotalDurationMs: 0,
+		SessionStart:    time.Now().Add(-5*time.Minute - 30*time.Second).UTC().Format(time.RFC3339),
+	}
+	cfg := defaultCfg()
+
+	got := Duration(ctx, cfg)
+	// Should show minutes (≈5m).
+	if !strings.Contains(got, "m") {
+		t.Errorf("Duration fallback to SessionStart: expected 'm' in output, got %q", got)
+	}
+}
+
+// When both TotalDurationMs and SessionStart are absent, the widget returns "".
+func TestDurationWidget_NeitherSourceReturnsEmpty(t *testing.T) {
+	ctx := &model.RenderContext{
+		TotalDurationMs: 0,
+		SessionStart:    "",
+	}
+	cfg := defaultCfg()
+
+	if got := Duration(ctx, cfg); got != "" {
+		t.Errorf("Duration with no data: expected empty, got %q", got)
+	}
+}

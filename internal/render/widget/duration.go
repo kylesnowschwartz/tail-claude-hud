@@ -13,17 +13,29 @@ import (
 
 var durationStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
 
-// Duration renders the session elapsed time from ctx.SessionStart.
-// ctx.SessionStart is an RFC3339 timestamp string representing when the session
-// started. The widget computes elapsed time from that timestamp.
+// Duration renders the session elapsed time.
+//
+// Source priority:
+//  1. ctx.TotalDurationMs (from Claude Code's stdin cost object) — authoritative,
+//     measured by Claude Code itself and includes time before the HUD started.
+//  2. ctx.SessionStart (RFC3339 timestamp derived from the transcript) — used as
+//     a fallback when stdin duration is not available.
+//
 // Format: "Xh Ym" for sessions >= 1 hour, "Ym Xs" for shorter sessions.
-// Returns "" when ctx.SessionStart is empty.
+// Returns "" when neither source provides usable data.
 func Duration(ctx *model.RenderContext, cfg *config.Config) string {
+	icons := IconsFor(cfg.Style.Icons)
+
+	// Prefer the authoritative duration from stdin when available.
+	if ctx.TotalDurationMs > 0 {
+		elapsed := time.Duration(ctx.TotalDurationMs) * time.Millisecond
+		return durationStyle.Render(fmt.Sprintf("%s%s", icons.Clock, formatElapsed(elapsed)))
+	}
+
+	// Fall back to transcript-derived start time.
 	if ctx.SessionStart == "" {
 		return ""
 	}
-
-	icons := IconsFor(cfg.Style.Icons)
 
 	start, err := time.Parse(time.RFC3339, ctx.SessionStart)
 	if err != nil {

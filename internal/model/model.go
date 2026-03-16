@@ -26,6 +26,20 @@ type RenderContext struct {
 	CacheCreation int
 	CacheRead     int
 
+	// Cost and duration fields from StdinData.Cost.
+	// SessionCostUSD is 0 when no cost data is available.
+	// TotalDurationMs is the authoritative session duration from Claude Code;
+	// prefer it over transcript-derived duration when non-zero.
+	SessionCostUSD  float64
+	TotalDurationMs int
+	ApiDurationMs   int
+	LinesAdded      int
+	LinesRemoved    int
+
+	// OutputStyle is the current output style name (e.g. "auto", "verbose").
+	// Empty string when not provided by Claude Code.
+	OutputStyle string
+
 	// Pointer fields — all may be nil when the corresponding data is unavailable.
 	Transcript *TranscriptData
 	EnvCounts  *EnvCounts
@@ -115,6 +129,21 @@ func (g *GitStatus) IsDirty() bool {
 	return g.Dirty || g.Modified > 0 || g.Staged > 0 || g.Untracked > 0
 }
 
+// Cost holds session-level cost and duration metrics from Claude Code's stdin JSON.
+// All fields are optional; zero values indicate the data was not provided.
+type Cost struct {
+	TotalCostUSD      float64 `json:"total_cost_usd"`
+	TotalDurationMs   int     `json:"total_duration_ms"`
+	TotalAPIDurationMs int    `json:"total_api_duration_ms"`
+	TotalLinesAdded   int     `json:"total_lines_added"`
+	TotalLinesRemoved int     `json:"total_lines_removed"`
+}
+
+// OutputStyle holds the current output style configuration from Claude Code.
+type OutputStyle struct {
+	Name string `json:"name"`
+}
+
 // StdinData is the raw decoded form of the JSON blob Claude Code pipes to stdin.
 // It is produced by the stdin package and then transformed into RenderContext fields.
 type StdinData struct {
@@ -133,6 +162,12 @@ type StdinData struct {
 			CacheReadInputTokens     int `json:"cache_read_input_tokens"`
 		} `json:"current_usage"`
 	} `json:"context_window"`
+
+	// Cost is nil when Claude Code does not include cost data in the stdin payload.
+	Cost *Cost `json:"cost"`
+
+	// OutputStyle is nil when Claude Code does not include output_style in the stdin payload.
+	OutputStyle *OutputStyle `json:"output_style"`
 
 	// ContextPercent is computed by the stdin package — not decoded from JSON.
 	ContextPercent int `json:"-"`

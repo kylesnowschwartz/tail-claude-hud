@@ -112,3 +112,79 @@ func TestRead_EmptyInput_ReturnsError(t *testing.T) {
 		t.Errorf("expected nil data on error, got %+v", data)
 	}
 }
+
+func TestRead_CostFields_DecodedCorrectly(t *testing.T) {
+	const payload = `{
+		"transcript_path": "/tmp/t.jsonl",
+		"cwd": "/home/user",
+		"cost": {
+			"total_cost_usd": 0.1234,
+			"total_duration_ms": 185000,
+			"total_api_duration_ms": 42000,
+			"total_lines_added": 87,
+			"total_lines_removed": 23
+		},
+		"output_style": {"name": "auto"}
+	}`
+
+	f := writeTemp(t, payload)
+	defer f.Close()
+
+	data, err := Read(f)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if data == nil {
+		t.Fatal("expected non-nil StdinData")
+	}
+	if data.Cost == nil {
+		t.Fatal("expected non-nil Cost")
+	}
+	if data.Cost.TotalCostUSD != 0.1234 {
+		t.Errorf("TotalCostUSD: got %v, want 0.1234", data.Cost.TotalCostUSD)
+	}
+	if data.Cost.TotalDurationMs != 185000 {
+		t.Errorf("TotalDurationMs: got %d, want 185000", data.Cost.TotalDurationMs)
+	}
+	if data.Cost.TotalAPIDurationMs != 42000 {
+		t.Errorf("TotalAPIDurationMs: got %d, want 42000", data.Cost.TotalAPIDurationMs)
+	}
+	if data.Cost.TotalLinesAdded != 87 {
+		t.Errorf("TotalLinesAdded: got %d, want 87", data.Cost.TotalLinesAdded)
+	}
+	if data.Cost.TotalLinesRemoved != 23 {
+		t.Errorf("TotalLinesRemoved: got %d, want 23", data.Cost.TotalLinesRemoved)
+	}
+	if data.OutputStyle == nil {
+		t.Fatal("expected non-nil OutputStyle")
+	}
+	if data.OutputStyle.Name != "auto" {
+		t.Errorf("OutputStyle.Name: got %q, want %q", data.OutputStyle.Name, "auto")
+	}
+}
+
+func TestRead_MissingCostObject_NilCost(t *testing.T) {
+	// When cost is absent from the payload, StdinData.Cost must be nil
+	// so callers can distinguish "no cost data" from "zero cost".
+	const payload = `{
+		"transcript_path": "/tmp/t.jsonl",
+		"cwd": "/home/user"
+	}`
+
+	f := writeTemp(t, payload)
+	defer f.Close()
+
+	data, err := Read(f)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if data == nil {
+		t.Fatal("expected non-nil StdinData")
+	}
+	if data.Cost != nil {
+		t.Errorf("expected nil Cost when absent from JSON, got %+v", data.Cost)
+	}
+	if data.OutputStyle != nil {
+		t.Errorf("expected nil OutputStyle when absent from JSON, got %+v", data.OutputStyle)
+	}
+}

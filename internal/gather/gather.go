@@ -50,6 +50,16 @@ func Gather(input *model.StdinData, cfg *config.Config) *model.RenderContext {
 			ctx.CacheRead = input.ContextWindow.CurrentUsage.CacheReadInputTokens
 		}
 	}
+	if input.Cost != nil {
+		ctx.SessionCostUSD = input.Cost.TotalCostUSD
+		ctx.TotalDurationMs = input.Cost.TotalDurationMs
+		ctx.ApiDurationMs = input.Cost.TotalAPIDurationMs
+		ctx.LinesAdded = input.Cost.TotalLinesAdded
+		ctx.LinesRemoved = input.Cost.TotalLinesRemoved
+	}
+	if input.OutputStyle != nil {
+		ctx.OutputStyle = input.OutputStyle.Name
+	}
 
 	// Determine which widget names are active across all configured lines.
 	active := activeWidgets(cfg)
