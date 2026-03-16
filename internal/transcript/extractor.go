@@ -310,12 +310,19 @@ func (es *ExtractionState) processToolResult(b ToolResultBlock, ts time.Time) {
 	if t, ok := es.toolMap[b.ToolUseID]; ok {
 		t.completed = true
 		t.hasError = b.IsError
-		t.durationMs = int(ts.Sub(t.startTime).Milliseconds())
+		// Only compute duration when startTime is set. Snapshot-restored tools
+		// have zero startTime — leave their durationMs at 0 rather than
+		// computing a nonsensical delta from the year 0001.
+		if !t.startTime.IsZero() {
+			t.durationMs = int(ts.Sub(t.startTime).Milliseconds())
+		}
 	}
 
 	if a, ok := es.agentMap[b.ToolUseID]; ok {
 		a.status = "completed"
-		a.durationMs = int(ts.Sub(a.startTime).Milliseconds())
+		if !a.startTime.IsZero() {
+			a.durationMs = int(ts.Sub(a.startTime).Milliseconds())
+		}
 	}
 }
 
