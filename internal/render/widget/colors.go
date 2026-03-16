@@ -17,6 +17,29 @@ func AgentColorStyle(colorIndex int) lipgloss.Style {
 	return lipgloss.NewStyle().Foreground(lipgloss.Color(color))
 }
 
+var (
+	opusStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("204"))
+	sonnetStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("75"))
+	haikuStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("114"))
+	defaultModelStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("87"))
+)
+
+// ModelFamily returns the model family name ("opus", "sonnet", "haiku") from
+// a model identifier string. Returns "" for unrecognized models.
+func ModelFamily(modelName string) string {
+	lower := strings.ToLower(modelName)
+	switch {
+	case strings.Contains(lower, "opus"):
+		return "opus"
+	case strings.Contains(lower, "sonnet"):
+		return "sonnet"
+	case strings.Contains(lower, "haiku"):
+		return "haiku"
+	default:
+		return ""
+	}
+}
+
 // ModelFamilyColor returns a foreground lipgloss.Style based on the Claude model family.
 // Detection is case-insensitive via strings.Contains on the lowercased model name:
 //   - "opus"   → coral (204)
@@ -24,15 +47,14 @@ func AgentColorStyle(colorIndex int) lipgloss.Style {
 //   - "haiku"  → green (114)
 //   - default  → cyan (87)
 func ModelFamilyColor(modelName string) lipgloss.Style {
-	lower := strings.ToLower(modelName)
-	switch {
-	case strings.Contains(lower, "opus"):
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("204"))
-	case strings.Contains(lower, "sonnet"):
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("75"))
-	case strings.Contains(lower, "haiku"):
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("114"))
+	switch ModelFamily(modelName) {
+	case "opus":
+		return opusStyle
+	case "sonnet":
+		return sonnetStyle
+	case "haiku":
+		return haikuStyle
 	default:
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("87"))
+		return defaultModelStyle
 	}
 }

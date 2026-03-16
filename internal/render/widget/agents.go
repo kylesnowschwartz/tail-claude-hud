@@ -76,19 +76,10 @@ func formatAgentEntry(a model.AgentEntry, icons Icons) string {
 	return dimColorStyle.Render(label) + " " + greenStyle.Render(icons.Check) + " " + dimStyle.Render(duration)
 }
 
-// modelFamilySuffix returns a dim parenthetical suffix for the model family if
-// the model string is non-empty, e.g. " (haiku)". Returns "" when unrecognized.
-func modelFamilySuffix(model string) string {
-	lower := strings.ToLower(model)
-	var family string
-	switch {
-	case strings.Contains(lower, "opus"):
-		family = "opus"
-	case strings.Contains(lower, "sonnet"):
-		family = "sonnet"
-	case strings.Contains(lower, "haiku"):
-		family = "haiku"
-	}
+// modelFamilySuffix returns a parenthetical suffix for the model family if
+// recognized, e.g. " (haiku)". Returns "" for unrecognized models.
+func modelFamilySuffix(modelName string) string {
+	family := ModelFamily(modelName)
 	if family == "" {
 		return ""
 	}
