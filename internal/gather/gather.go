@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"sync"
 
+	"github.com/charmbracelet/x/term"
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/config"
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/git"
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/model"
@@ -193,10 +194,23 @@ func sessionStart(td *model.TranscriptData, path string) string {
 	return t.Format("2006-01-02T15:04:05Z07:00")
 }
 
-// terminalWidth reads the COLUMNS environment variable and returns it as an
-// integer. Returns 0 when COLUMNS is unset or not a positive integer, which
-// signals the render layer to skip truncation.
+// terminalWidth returns the current terminal width by querying the TTY via
+// ioctl first, falling back to the COLUMNS environment variable. Returns 0
+// when neither source provides a positive value, which signals the render
+// layer to skip truncation.
+//
+// Querying the TTY directly (rather than relying on COLUMNS) ensures we get
+// the actual width when the terminal is split or resized, because shells only
+// update COLUMNS on receipt of a SIGWINCH signal — Claude Code may not
+// propagate that signal to the subprocess before invoking the HUD.
 func terminalWidth() int {
+	// Try stdin fd first — works when the process has a real TTY attached.
+	if w, _, err := term.GetSize(os.Stdin.Fd()); err == nil && w > 0 {
+		return w
+	}
+
+	// Fall back to COLUMNS for contexts where stdin is not a TTY (e.g. pipes,
+	// tests, or non-interactive environments).
 	s := os.Getenv("COLUMNS")
 	if s == "" {
 		return 0

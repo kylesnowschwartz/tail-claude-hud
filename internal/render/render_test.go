@@ -181,9 +181,9 @@ func TestRender_NoTruncationWhenLineShortEnough(t *testing.T) {
 }
 
 func TestRender_PopulatesTerminalWidthFromCOLUMNS(t *testing.T) {
-	// When ctx.TerminalWidth is 0 and COLUMNS is set, Render should populate
-	// TerminalWidth and apply truncation.
-	t.Setenv("COLUMNS", "15")
+	// When ctx.TerminalWidth is 0 and COLUMNS is set to a value >= minTruncateWidth,
+	// Render should populate TerminalWidth and apply truncation.
+	t.Setenv("COLUMNS", "30")
 	longName := strings.Repeat("Z", 100)
 	ctx := &model.RenderContext{
 		ModelDisplayName: longName,
@@ -199,11 +199,38 @@ func TestRender_PopulatesTerminalWidthFromCOLUMNS(t *testing.T) {
 
 	line := strings.TrimRight(buf.String(), "\n")
 	w := ansi.StringWidth(line)
-	if w > 15 {
-		t.Errorf("expected visual width <= 15 after env-driven truncation, got %d for %q", w, line)
+	if w > 30 {
+		t.Errorf("expected visual width <= 30 after env-driven truncation, got %d for %q", w, line)
 	}
-	if ctx.TerminalWidth != 15 {
-		t.Errorf("expected ctx.TerminalWidth to be updated to 15, got %d", ctx.TerminalWidth)
+	if ctx.TerminalWidth != 30 {
+		t.Errorf("expected ctx.TerminalWidth to be updated to 30, got %d", ctx.TerminalWidth)
+	}
+}
+
+func TestRender_NoTruncationBelowMinWidth(t *testing.T) {
+	// When TerminalWidth is below the minimum (20), truncation is skipped
+	// entirely so the HUD does not collapse to "..." in very narrow terminals.
+	ctx := &model.RenderContext{
+		ModelDisplayName: "claude-sonnet-4-5",
+		TerminalWidth:    10, // below minTruncateWidth
+	}
+	cfg := config.LoadHud()
+	cfg.Lines = []config.Line{
+		{Widgets: []string{"model"}},
+	}
+
+	var buf bytes.Buffer
+	Render(&buf, ctx, cfg)
+
+	line := strings.TrimRight(buf.String(), "\n")
+	// Line must not be just "..." — some real content must appear.
+	if line == truncateSuffix {
+		t.Errorf("expected real content at narrow width, got only %q", line)
+	}
+	// The full model name may or may not fit, but the suffix must NOT appear
+	// since truncation is skipped below minTruncateWidth.
+	if strings.HasSuffix(line, truncateSuffix) {
+		t.Errorf("expected no truncation suffix below min width, got %q", line)
 	}
 }
 

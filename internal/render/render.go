@@ -19,6 +19,11 @@ import (
 // truncateSuffix is appended when a line is truncated to fit terminal width.
 const truncateSuffix = "..."
 
+// minTruncateWidth is the smallest terminal width at which truncation is
+// applied. Below this threshold the suffix itself would consume most of the
+// available space and produce output that is less useful than the raw text.
+const minTruncateWidth = 20
+
 // readTerminalWidth returns the value of the COLUMNS environment variable, or
 // 0 if COLUMNS is unset or not a positive integer. A width of 0 means no
 // truncation is applied.
@@ -41,10 +46,11 @@ func readTerminalWidth() int {
 // Lines where all widgets return empty strings are skipped entirely.
 //
 // If ctx.TerminalWidth is zero, Render reads the COLUMNS environment variable
-// to populate it. When TerminalWidth is positive, each output line is
-// truncated to that width using ANSI-aware grapheme counting so that escape
-// sequences and wide characters are measured correctly. Truncated lines gain a
-// "..." suffix.
+// to populate it. When TerminalWidth is at least minTruncateWidth (20), each
+// output line is truncated to that width using ANSI-aware grapheme counting so
+// that escape sequences and wide characters are measured correctly. Truncated
+// lines gain a "..." suffix. Below the minimum, truncation is skipped so that
+// very narrow terminals still receive content rather than collapsing to "...".
 func Render(w io.Writer, ctx *model.RenderContext, cfg *config.Config) {
 	// Populate terminal width from environment when the caller hasn't set it.
 	if ctx.TerminalWidth == 0 {
@@ -71,7 +77,7 @@ func Render(w io.Writer, ctx *model.RenderContext, cfg *config.Config) {
 
 		output := strings.Join(parts, sep)
 
-		if ctx.TerminalWidth > 0 {
+		if ctx.TerminalWidth >= minTruncateWidth {
 			output = ansi.Truncate(output, ctx.TerminalWidth, truncateSuffix)
 		}
 
