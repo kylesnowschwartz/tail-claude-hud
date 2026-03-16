@@ -19,6 +19,7 @@ var Registry = map[string]RenderFunc{
 	"context":   Context,
 	"directory": Directory,
 	"git":       Git,
+	"project":   Project,
 	"env":       Env,
 	"duration":  Duration,
 	"tools":     Tools,
