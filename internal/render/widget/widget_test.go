@@ -306,51 +306,182 @@ func TestToolsWidget_EmptyToolsReturnsEmpty(t *testing.T) {
 	}
 }
 
-func TestToolsWidget_RunningToolShowsSpinner(t *testing.T) {
+// Spec 8: running tool renders with category icon + name + elapsed.
+func TestToolsWidget_RunningToolShowsCategoryIconAndName(t *testing.T) {
 	// Count == 0 signals running.
 	ctx := &model.RenderContext{Transcript: &model.TranscriptData{
-		Tools: []model.ToolEntry{{Name: "Read", Count: 0}},
+		Tools: []model.ToolEntry{{Name: "Read", Count: 0, Category: "file"}},
 	}}
 	cfg := defaultCfg()
 	cfg.Style.Icons = "ascii"
 
 	got := Tools(ctx, cfg)
 	icons := IconsFor("ascii")
-	if !strings.Contains(got, icons.Spinner) {
-		t.Errorf("Tools running: expected spinner icon %q, got %q", icons.Spinner, got)
+	if !strings.Contains(got, icons.Read) {
+		t.Errorf("Tools running: expected Read category icon %q, got %q", icons.Read, got)
 	}
 	if !strings.Contains(got, "Read") {
 		t.Errorf("Tools running: expected tool name 'Read', got %q", got)
 	}
 }
 
-func TestToolsWidget_CompletedToolShowsCheck(t *testing.T) {
+func TestToolsWidget_RunningToolShowsElapsedIndicator(t *testing.T) {
+	// No DurationMs — should show "..." as the elapsed placeholder.
+	ctx := &model.RenderContext{Transcript: &model.TranscriptData{
+		Tools: []model.ToolEntry{{Name: "Bash", Count: 0, Category: "shell", DurationMs: 0}},
+	}}
+	cfg := defaultCfg()
+
+	got := Tools(ctx, cfg)
+	if !strings.Contains(got, "...") {
+		t.Errorf("Tools running without DurationMs: expected '...' indicator, got %q", got)
+	}
+}
+
+func TestToolsWidget_RunningToolWithDurationShowsElapsed(t *testing.T) {
+	// DurationMs set while still running (partial elapsed).
+	ctx := &model.RenderContext{Transcript: &model.TranscriptData{
+		Tools: []model.ToolEntry{{Name: "Bash", Count: 0, Category: "shell", DurationMs: 1500}},
+	}}
+	cfg := defaultCfg()
+
+	got := Tools(ctx, cfg)
+	if !strings.Contains(got, "1.5s") {
+		t.Errorf("Tools running with DurationMs=1500: expected '1.5s', got %q", got)
+	}
+}
+
+// Spec 9: completed tool renders with dim category icon + name + duration.
+func TestToolsWidget_CompletedToolShowsDimCategoryIconAndDuration(t *testing.T) {
 	// Count > 0 signals completed.
 	ctx := &model.RenderContext{Transcript: &model.TranscriptData{
-		Tools: []model.ToolEntry{{Name: "Write", Count: 3}},
+		Tools: []model.ToolEntry{{Name: "Write", Count: 1, Category: "file", DurationMs: 300}},
+	}}
+	cfg := defaultCfg()
+	cfg.Style.Icons = "ascii"
+
+	got := Tools(ctx, cfg)
+	if !strings.Contains(got, "Write") {
+		t.Errorf("Tools completed: expected tool name 'Write', got %q", got)
+	}
+	if !strings.Contains(got, "0.3s") {
+		t.Errorf("Tools completed: expected duration '0.3s', got %q", got)
+	}
+	// No error icon should appear for a non-error entry.
+	icons := IconsFor("ascii")
+	if strings.Contains(got, icons.Error) {
+		t.Errorf("Tools completed (no error): unexpected error icon in %q", got)
+	}
+}
+
+// Spec 10: error tool renders with red error icon + name + "err".
+func TestToolsWidget_ErrorToolShowsErrorIconAndSuffix(t *testing.T) {
+	ctx := &model.RenderContext{Transcript: &model.TranscriptData{
+		Tools: []model.ToolEntry{{Name: "Bash", Count: 1, Category: "shell", DurationMs: 500, HasError: true}},
 	}}
 	cfg := defaultCfg()
 	cfg.Style.Icons = "ascii"
 
 	got := Tools(ctx, cfg)
 	icons := IconsFor("ascii")
-	if !strings.Contains(got, icons.Check) {
-		t.Errorf("Tools completed: expected check icon %q, got %q", icons.Check, got)
+	if !strings.Contains(got, icons.Error) {
+		t.Errorf("Tools error: expected error icon %q, got %q", icons.Error, got)
 	}
-	if !strings.Contains(got, "Write") {
-		t.Errorf("Tools completed: expected tool name 'Write', got %q", got)
+	if !strings.Contains(got, "err") {
+		t.Errorf("Tools error: expected 'err' suffix, got %q", got)
+	}
+	if !strings.Contains(got, "Bash") {
+		t.Errorf("Tools error: expected tool name 'Bash', got %q", got)
 	}
 }
 
-func TestToolsWidget_CompletedCountAboveOneShown(t *testing.T) {
-	ctx := &model.RenderContext{Transcript: &model.TranscriptData{
-		Tools: []model.ToolEntry{{Name: "Read", Count: 5}},
-	}}
+// Spec 11: max 5 tools shown.
+func TestToolsWidget_MaxFiveToolsShown(t *testing.T) {
+	// Six completed tools — only 5 should be rendered.
+	tools := []model.ToolEntry{
+		{Name: "T1", Count: 1, DurationMs: 100},
+		{Name: "T2", Count: 1, DurationMs: 100},
+		{Name: "T3", Count: 1, DurationMs: 100},
+		{Name: "T4", Count: 1, DurationMs: 100},
+		{Name: "T5", Count: 1, DurationMs: 100},
+		{Name: "T6", Count: 1, DurationMs: 100},
+	}
+	ctx := &model.RenderContext{Transcript: &model.TranscriptData{Tools: tools}}
 	cfg := defaultCfg()
 
 	got := Tools(ctx, cfg)
-	if !strings.Contains(got, "5") {
-		t.Errorf("Tools: expected count '5' in output, got %q", got)
+	// Count separator occurrences: 4 " | " means 5 parts.
+	count := strings.Count(got, " | ")
+	if count != 4 {
+		t.Errorf("Tools max 5: expected 4 separators (5 items), got %d in %q", count, got)
+	}
+	// T1 is the oldest; with newest-first reversal, T6 is first and T2 is last visible.
+	if strings.Contains(got, "T1") {
+		t.Errorf("Tools max 5: oldest tool T1 should be excluded, got %q", got)
+	}
+}
+
+// Spec 12: empty when no tools.
+func TestToolsWidget_NilTranscriptReturnsEmpty(t *testing.T) {
+	ctx := &model.RenderContext{Transcript: nil}
+	cfg := defaultCfg()
+
+	if got := Tools(ctx, cfg); got != "" {
+		t.Errorf("Tools nil transcript: expected empty, got %q", got)
+	}
+}
+
+// -- formatDuration -----------------------------------------------------------
+
+func TestFormatDuration(t *testing.T) {
+	tests := []struct {
+		ms   int
+		want string
+	}{
+		{0, "0.0s"},
+		{-100, "0.0s"},
+		{99, "0.0s"},
+		{100, "0.1s"},
+		{300, "0.3s"},
+		{999, "0.9s"},
+		{1000, "1s"},
+		{1500, "1.5s"},
+		{10000, "10s"},
+		{12300, "12.3s"},
+		{59999, "59.9s"},
+		{60000, "1m 0s"},
+		{90000, "1m 30s"},
+		{3661000, "61m 1s"},
+	}
+	for _, tt := range tests {
+		got := formatDuration(tt.ms)
+		if got != tt.want {
+			t.Errorf("formatDuration(%d) = %q, want %q", tt.ms, got, tt.want)
+		}
+	}
+}
+
+// -- formatTokenCost ----------------------------------------------------------
+
+func TestFormatTokenCost(t *testing.T) {
+	tests := []struct {
+		n    int
+		want string
+	}{
+		{0, "0"},
+		{500, "500"},
+		{999, "999"},
+		{1000, "1.0k"},
+		{1200, "1.2k"},
+		{99999, "100.0k"},
+		{100000, "100k"},
+		{123456, "123k"},
+	}
+	for _, tt := range tests {
+		got := formatTokenCost(tt.n)
+		if got != tt.want {
+			t.Errorf("formatTokenCost(%d) = %q, want %q", tt.n, got, tt.want)
+		}
 	}
 }
 
