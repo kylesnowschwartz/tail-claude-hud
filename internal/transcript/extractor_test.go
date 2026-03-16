@@ -25,6 +25,11 @@ func makeToolUseEntry(id, name string, input map[string]interface{}) Entry {
 
 // makeToolResultEntry builds a minimal Entry containing a single tool_result block.
 func makeToolResultEntry(toolUseID string, isError bool) Entry {
+	return makeToolResultEntryAt(toolUseID, isError, time.Now())
+}
+
+// makeToolResultEntryAt builds a tool_result Entry with an explicit timestamp.
+func makeToolResultEntryAt(toolUseID string, isError bool, ts time.Time) Entry {
 	contentItem := map[string]interface{}{
 		"type":        "tool_result",
 		"tool_use_id": toolUseID,
@@ -35,7 +40,14 @@ func makeToolResultEntry(toolUseID string, isError bool) Entry {
 	var e Entry
 	e.Message.Content = content
 	e.Message.Role = "user"
-	e.Timestamp = time.Now().Format(time.RFC3339Nano)
+	e.Timestamp = ts.Format(time.RFC3339Nano)
+	return e
+}
+
+// makeToolUseEntryAt builds a tool_use Entry with an explicit timestamp.
+func makeToolUseEntryAt(id, name string, input map[string]interface{}, ts time.Time) Entry {
+	e := makeToolUseEntry(id, name, input)
+	e.Timestamp = ts.Format(time.RFC3339Nano)
 	return e
 }
 
@@ -517,14 +529,13 @@ func TestToTranscriptData_HasError_FalseWhenStillRunning(t *testing.T) {
 	}
 }
 
-func TestToTranscriptData_DurationMs_ZeroByDefault(t *testing.T) {
-	// durationMs is not yet populated (reserved for a future card); must be 0.
+func TestToTranscriptData_DurationMs_ZeroWhenRunning(t *testing.T) {
+	// A tool with no result yet must have DurationMs=0.
 	es := NewExtractionState()
 	es.ProcessEntry(makeToolUseEntry("id-1", "Read", map[string]interface{}{"file_path": "x.go"}))
-	es.ProcessEntry(makeToolResultEntry("id-1", false))
 	data := es.ToTranscriptData()
 	if data.Tools[0].DurationMs != 0 {
-		t.Errorf("expected DurationMs=0 (not yet populated), got %d", data.Tools[0].DurationMs)
+		t.Errorf("expected DurationMs=0 for running tool, got %d", data.Tools[0].DurationMs)
 	}
 }
 
@@ -736,5 +747,76 @@ func TestProcessEntry_Slug_NotOverridenByLaterSlug(t *testing.T) {
 	data := es.ToTranscriptData()
 	if data.SessionName != "first-slug" {
 		t.Errorf("expected first slug to be retained, got %q", data.SessionName)
+	}
+}
+
+// ---- Tool duration computation from timestamp deltas -----------------------
+
+func TestToolDuration_ComputedFromTimestampDelta(t *testing.T) {
+	// tool_use at T=0, tool_result at T=1.5s => DurationMs=1500.
+	es := NewExtractionState()
+	t0 := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	t1 := t0.Add(1500 * time.Millisecond)
+
+	es.ProcessEntry(makeToolUseEntryAt("id-1", "Bash", map[string]interface{}{"command": "sleep 1"}, t0))
+	es.ProcessEntry(makeToolResultEntryAt("id-1", false, t1))
+
+	data := es.ToTranscriptData()
+	if len(data.Tools) != 1 {
+		t.Fatalf("expected 1 tool, got %d", len(data.Tools))
+	}
+	if data.Tools[0].DurationMs != 1500 {
+		t.Errorf("expected DurationMs=1500, got %d", data.Tools[0].DurationMs)
+	}
+}
+
+func TestToolDuration_ZeroWhenStillRunning(t *testing.T) {
+	// A tool with no result yet must have DurationMs=0.
+	es := NewExtractionState()
+	t0 := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	es.ProcessEntry(makeToolUseEntryAt("id-1", "Read", map[string]interface{}{"file_path": "x.go"}, t0))
+
+	data := es.ToTranscriptData()
+	if data.Tools[0].DurationMs != 0 {
+		t.Errorf("expected DurationMs=0 for running tool, got %d", data.Tools[0].DurationMs)
+	}
+}
+
+// ---- Agent duration computation from timestamp deltas ----------------------
+
+func TestAgentDuration_ComputedFromTimestampDelta(t *testing.T) {
+	// agent tool_use at T=0, tool_result at T=3s => DurationMs=3000.
+	es := NewExtractionState()
+	t0 := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
+	t1 := t0.Add(3000 * time.Millisecond)
+
+	es.ProcessEntry(makeToolUseEntryAt("agent-1", "Task", map[string]interface{}{
+		"subagent_type": "coding",
+		"model":         "claude-haiku",
+	}, t0))
+	es.ProcessEntry(makeToolResultEntryAt("agent-1", false, t1))
+
+	data := es.ToTranscriptData()
+	if len(data.Agents) != 1 {
+		t.Fatalf("expected 1 agent, got %d", len(data.Agents))
+	}
+	if data.Agents[0].DurationMs != 3000 {
+		t.Errorf("expected DurationMs=3000, got %d", data.Agents[0].DurationMs)
+	}
+}
+
+func TestAgentDuration_ZeroWhenStillRunning(t *testing.T) {
+	// An agent with no result yet must have DurationMs=0.
+	es := NewExtractionState()
+	t0 := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	es.ProcessEntry(makeToolUseEntryAt("agent-1", "Task", map[string]interface{}{
+		"subagent_type": "research",
+	}, t0))
+
+	data := es.ToTranscriptData()
+	if data.Agents[0].DurationMs != 0 {
+		t.Errorf("expected DurationMs=0 for running agent, got %d", data.Agents[0].DurationMs)
 	}
 }

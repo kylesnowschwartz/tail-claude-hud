@@ -112,7 +112,7 @@ func (es *ExtractionState) ProcessEntry(e Entry) {
 	}
 
 	for _, b := range blocks.ToolResult {
-		es.processToolResult(b)
+		es.processToolResult(b, ts)
 	}
 }
 
@@ -284,15 +284,18 @@ func (es *ExtractionState) handleTaskUpdate(b ToolUseBlock) {
 	}
 }
 
-// processToolResult marks the matching tool or agent as completed/error.
-func (es *ExtractionState) processToolResult(b ToolResultBlock) {
+// processToolResult marks the matching tool or agent as completed/error and
+// computes duration from the delta between result timestamp and start time.
+func (es *ExtractionState) processToolResult(b ToolResultBlock, ts time.Time) {
 	if t, ok := es.toolMap[b.ToolUseID]; ok {
 		t.completed = true
 		t.hasError = b.IsError
+		t.durationMs = int(ts.Sub(t.startTime).Milliseconds())
 	}
 
 	if a, ok := es.agentMap[b.ToolUseID]; ok {
 		a.status = "completed"
+		a.durationMs = int(ts.Sub(a.startTime).Milliseconds())
 	}
 }
 
