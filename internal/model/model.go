@@ -54,11 +54,11 @@ type TranscriptData struct {
 	// on every render regardless of when within a tick the binary runs.
 	SpinnerFrame int
 
-	// FreshBoundaryCount is the number of tools that existed in the last saved
-	// snapshot. The tools widget uses this to compute how many tools are "fresh"
-	// (added since the last invocation) so the yellow separator can be positioned
-	// after the fresh tools rather than always after position 0.
-	FreshBoundaryCount int
+	// DividerOffset is a monotonic counter incremented once per new tool_use.
+	// The tools widget uses it to highlight one separator: position = offset %
+	// (numVisible - 1). This creates a scrolling ticker effect where the
+	// highlighted divider advances with each new tool call and wraps around.
+	DividerOffset int
 }
 
 // ToolEntry records a single tool invocation observed in the transcript.

@@ -7,13 +7,12 @@ import (
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/model"
 )
 
-// freshSep is the colored separator placed after the fresh tools to mark the
-// boundary between tools added since the last snapshot and older ones.
-// It uses yellowStyle (matching running-tool color) to signal the "fresh boundary":
-// everything to its left is newer than everything to its right.
-var freshSep = yellowStyle.Render(" | ")
+// highlightSep is the colored separator used for the scrolling ticker position.
+// It uses yellowStyle to give the user a visual anchor that advances with each
+// new tool call and wraps around the visible separator positions.
+var highlightSep = yellowStyle.Render(" | ")
 
-// dimSep is the normal separator used between all non-fresh tool entries.
+// dimSep is the normal separator used between all non-highlighted tool entries.
 var dimSep = dimStyle.Render(" | ")
 
 const maxVisibleTools = 5
@@ -64,51 +63,34 @@ func Tools(ctx *model.RenderContext, cfg *config.Config) string {
 		parts = append(parts, renderToolEntry(icons, t))
 	}
 
-	// Compute the fresh boundary index for the visible slice.
-	//
-	// displayTools is oldest-first; visible is built newest-first (running first,
-	// then reversed completed). FreshBoundaryCount is the number of tools that
-	// existed at the last snapshot save. Tools beyond that count are "fresh".
-	//
-	// freshCount = total tools now - tools at last snapshot
-	// These fresh tools occupy positions 0..freshCount-1 in the visible slice
-	// (because the visible slice is newest-first). The colored separator goes
-	// after the last fresh entry, i.e. at index freshCount.
-	//
-	// When freshCount >= len(visible), all visible tools are fresh — no separator.
-	// When FreshBoundaryCount == 0 (no prior snapshot), treat all as fresh — no separator.
-	totalTools := len(ctx.Transcript.Tools)
-	freshCount := totalTools - ctx.Transcript.FreshBoundaryCount
-	if freshCount < 0 {
-		freshCount = 0
+	// Compute the highlighted separator position using wrapping ticker logic.
+	// DividerOffset is a monotonic counter incremented per tool_use. The
+	// highlighted separator cycles through the visible positions so the user
+	// has a stable visual anchor that advances with each new tool call.
+	numSeps := len(parts) - 1
+	if numSeps <= 0 {
+		return joinWithHighlight(parts, -1)
 	}
-	// Cap at visible length — can't place separator beyond the list.
-	if freshCount > len(visible) {
-		freshCount = len(visible)
-	}
+	highlightIdx := ctx.Transcript.DividerOffset % numSeps
 
-	return joinWithFreshBoundary(parts, freshCount)
+	return joinWithHighlight(parts, highlightIdx)
 }
 
-// joinWithFreshBoundary joins tool entry parts with colored separators.
+// joinWithHighlight joins tool entry parts with separators, highlighting one.
 //
-// freshBoundaryIdx is the position where the colored (yellow) separator is
-// inserted: between parts[freshBoundaryIdx-1] and parts[freshBoundaryIdx].
-// Parts before that index are "fresh" (added since the last snapshot); parts
-// at and after it are "old". All other separators use the dim style.
-//
-// If freshBoundaryIdx <= 0 or >= len(parts), no colored separator is emitted
-// (either all tools are fresh, or there are no old tools to mark the boundary
-// against). When only one entry is present no separator is emitted at all.
-func joinWithFreshBoundary(parts []string, freshBoundaryIdx int) string {
+// highlightIdx is the 0-based separator position to highlight (0 = between
+// parts[0] and parts[1], 1 = between parts[1] and parts[2], etc.).
+// A negative value means no separator is highlighted.
+// When only one entry is present no separator is emitted at all.
+func joinWithHighlight(parts []string, highlightIdx int) string {
 	if len(parts) == 0 {
 		return ""
 	}
 	out := parts[0]
 	for i := 1; i < len(parts); i++ {
 		sep := dimSep
-		if i == freshBoundaryIdx {
-			sep = freshSep
+		if i-1 == highlightIdx {
+			sep = highlightSep
 		}
 		out += sep + parts[i]
 	}

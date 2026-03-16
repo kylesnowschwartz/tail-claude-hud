@@ -92,18 +92,10 @@ type ExtractionState struct {
 	// It is persisted in the snapshot so successive invocations always advance the frame.
 	spinnerFrame int
 
-	// lastSeenToolCount is the tool count restored from the previous snapshot.
-	// On the next invocation, fresh tools = len(displayTools) - lastSeenToolCount.
-	// Persisted in the snapshot so the boundary survives across invocations.
-	lastSeenToolCount int
-
-	// toolCountAtRestore records len(displayTools) immediately after UnmarshalSnapshot
-	// completes. It is NOT persisted — it is a runtime-only anchor that marks where
-	// the old tools end. MarshalSnapshot writes this value as LastSeenToolCount so
-	// the boundary advances to the restore-point rather than the current tool count.
-	// This prevents the separator from resetting on every tick when saves happen
-	// faster than new tools arrive.
-	toolCountAtRestore int
+	// dividerOffset is a monotonic counter incremented once per new tool_use.
+	// Persisted in the snapshot so the scrolling ticker position survives
+	// across statusline invocations.
+	dividerOffset int
 }
 
 // NewExtractionState returns an initialised, empty ExtractionState.
@@ -195,6 +187,7 @@ func (es *ExtractionState) handleRegularToolUse(b ToolUseBlock, ts time.Time) {
 	}
 	es.toolMap[b.ID] = t
 	es.displayTools = append(es.displayTools, t)
+	es.dividerOffset++
 
 	if len(es.displayTools) > maxTools {
 		// Prune the oldest entry from both the display slice and the map.
@@ -401,14 +394,14 @@ func (es *ExtractionState) ToTranscriptData() *model.TranscriptData {
 	copy(todos, es.Todos)
 
 	return &model.TranscriptData{
-		SessionName:        es.sessionName,
-		Tools:              tools,
-		Agents:             agents,
-		Todos:              todos,
-		ThinkingActive:     es.thinkingActive,
-		ThinkingCount:      es.thinkingCount,
-		SpinnerFrame:       es.spinnerFrame,
-		FreshBoundaryCount: es.lastSeenToolCount,
+		SessionName:    es.sessionName,
+		Tools:          tools,
+		Agents:         agents,
+		Todos:          todos,
+		ThinkingActive: es.thinkingActive,
+		ThinkingCount:  es.thinkingCount,
+		SpinnerFrame:   es.spinnerFrame,
+		DividerOffset:  es.dividerOffset,
 	}
 }
 
@@ -513,18 +506,18 @@ func normalizeStatusDone(status string) bool {
 // StartTime is intentionally excluded — it is only meaningful within a single
 // invocation for elapsed-time computation. Restored entries use DurationMs directly.
 type extractionSnapshot struct {
-	Tools              []snapshotTool   `json:"tools"`
-	Agents             []snapshotAgent  `json:"agents"`
-	Todos              []model.TodoItem `json:"todos"`
-	SessionName        string           `json:"session_name"`
-	ThinkingActive     bool             `json:"thinking_active"`
-	ThinkingCount      int              `json:"thinking_count"`
-	SpinnerFrame       int              `json:"spinner_frame"`
-	LastSeenToolCount  int              `json:"last_seen_tool_count"`
+	Tools          []snapshotTool   `json:"tools"`
+	Agents         []snapshotAgent  `json:"agents"`
+	Todos          []model.TodoItem `json:"todos"`
+	SessionName    string           `json:"session_name"`
+	ThinkingActive bool             `json:"thinking_active"`
+	ThinkingCount  int              `json:"thinking_count"`
+	SpinnerFrame   int              `json:"spinner_frame"`
+	DividerOffset  int              `json:"divider_offset"`
 }
 
 type snapshotTool struct {
-	ID         string `json:"id,omitempty"`         // tool_use ID; needed to correlate tool_result across invocations
+	ID         string `json:"id,omitempty"` // tool_use ID; needed to correlate tool_result across invocations
 	Name       string `json:"name"`
 	Target     string `json:"target"`
 	Category   string `json:"category"`
@@ -535,7 +528,7 @@ type snapshotTool struct {
 }
 
 type snapshotAgent struct {
-	ID          string `json:"id,omitempty"`         // tool_use ID; needed to correlate tool_result across invocations
+	ID          string `json:"id,omitempty"` // tool_use ID; needed to correlate tool_result across invocations
 	AgentType   string `json:"agent_type"`
 	Model       string `json:"model"`
 	Description string `json:"description"`
@@ -585,14 +578,14 @@ func (es *ExtractionState) MarshalSnapshot() (json.RawMessage, error) {
 	copy(todos, es.Todos)
 
 	snap := extractionSnapshot{
-		Tools:             tools,
-		Agents:            agents,
-		Todos:             todos,
-		SessionName:       es.sessionName,
-		ThinkingActive:    es.thinkingActive,
-		ThinkingCount:     es.thinkingCount,
-		SpinnerFrame:      es.spinnerFrame,
-		LastSeenToolCount: es.lastSeenToolCountForSave(),
+		Tools:          tools,
+		Agents:         agents,
+		Todos:          todos,
+		SessionName:    es.sessionName,
+		ThinkingActive: es.thinkingActive,
+		ThinkingCount:  es.thinkingCount,
+		SpinnerFrame:   es.spinnerFrame,
+		DividerOffset:  es.dividerOffset,
 	}
 	return json.Marshal(snap)
 }
@@ -670,32 +663,8 @@ func (es *ExtractionState) UnmarshalSnapshot(data json.RawMessage) error {
 	es.thinkingActive = snap.ThinkingActive
 	es.thinkingCount = snap.ThinkingCount
 	es.spinnerFrame = snap.SpinnerFrame
-	es.lastSeenToolCount = snap.LastSeenToolCount
-	// Anchor the restore-point so MarshalSnapshot advances the boundary
-	// correctly on each save (see toolCountAtRestore comment in the struct).
-	es.toolCountAtRestore = len(es.displayTools)
+	es.dividerOffset = snap.DividerOffset
 	return nil
-}
-
-// lastSeenToolCountForSave returns the LastSeenToolCount value to persist in
-// the snapshot. The rule: only advance the boundary when new tools actually
-// arrived this invocation. If no new tools were added, preserve the previous
-// boundary so the colored separator stays visible across renders.
-//
-// Without this, every save resets the boundary to toolCountAtRestore, which
-// means a separator visible in invocation N disappears in invocation N+1
-// (after a no-new-tool render) because lastSeenToolCount catches up to
-// toolCountAtRestore and freshCount drops to zero.
-func (es *ExtractionState) lastSeenToolCountForSave() int {
-	if len(es.displayTools) > es.toolCountAtRestore {
-		// New tools arrived this invocation: advance the boundary to the
-		// restore-point. The next invocation will treat tools added since the
-		// restore as "fresh".
-		return es.toolCountAtRestore
-	}
-	// No new tools: keep the previous boundary unchanged so the separator
-	// persists until something actually changes.
-	return es.lastSeenToolCount
 }
 
 // agentDescriptionMaxLen is the maximum number of runes kept from a description

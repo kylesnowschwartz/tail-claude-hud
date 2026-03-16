@@ -752,6 +752,7 @@ func TestProcessEntry_Slug_NotOverridenByLaterSlug(t *testing.T) {
 		t.Errorf("expected first slug to be retained, got %q", data.SessionName)
 	}
 }
+
 // ---- Tool duration computation from timestamp deltas -----------------------
 
 func TestToolDuration_ComputedFromTimestampDelta(t *testing.T) {
@@ -822,6 +823,7 @@ func TestAgentDuration_ZeroWhenStillRunning(t *testing.T) {
 		t.Errorf("expected DurationMs=0 for running agent, got %d", data.Agents[0].DurationMs)
 	}
 }
+
 // ---- Agent type fallback (spec: subagent_type empty → description → tool name) ----
 
 // TestAgentType_FallsBackToDescription checks that when subagent_type is empty
@@ -2003,42 +2005,21 @@ func TestSpinnerFrame_NoWallClockDependency(t *testing.T) {
 	}
 }
 
-// TestLastSeenToolCount_SnapshotRoundTrip verifies that the fresh-boundary
-// marker is stable across rapid saves and advances correctly when new tools
-// arrive between invocations.
-//
-// The key invariant: MarshalSnapshot only advances LastSeenToolCount when new
-// tools were added this invocation. When no new tools arrive, the previous
-// boundary is preserved so the colored separator stays visible.
-//
-// Flow:
-//   Invocation 1: no snapshot, toolCountAtRestore=0. Add 2 tools.
-//                 lastSeenToolCountForSave: 2 > 0, save LastSeenToolCount=0.
-//                 FreshBoundaryCount=0 (all fresh, no separator).
-//   Invocation 2: restore (lastSeenToolCount=0, 2 tools). toolCountAtRestore=2.
-//                 Add 1 new tool (3 total). Multiple saves: 3 > 2, save LastSeenToolCount=2.
-//                 FreshBoundaryCount=0 (boundary hasn't caught up — tools 1-3 are fresh).
-//   Invocation 3: restore (lastSeenToolCount=2, 3 tools). toolCountAtRestore=3.
-//                 No new tools. 3 == 3, save LastSeenToolCount=2 (PRESERVED).
-//                 FreshBoundaryCount=2, freshCount=1. Separator after tool 2. ✓
-//   Invocation 4: restore (lastSeenToolCount=2, 3 tools). toolCountAtRestore=3.
-//                 No new tools. 3 == 3, save LastSeenToolCount=2 (STILL PRESERVED).
-//                 FreshBoundaryCount=2. Separator persists. ✓
-//   Invocation 5: restore (lastSeenToolCount=2, 3 tools). toolCountAtRestore=3.
-//                 Add 2 new tools (5 total). 5 > 3, save LastSeenToolCount=3.
-//                 FreshBoundaryCount=2. Next invocation freshCount=5-3=2. Separator shifts. ✓
-func TestLastSeenToolCount_SnapshotRoundTrip(t *testing.T) {
-	// Invocation 1: no prior snapshot, process 2 completed tools.
+// TestDividerOffset_SnapshotRoundTrip verifies that the divider offset is a
+// monotonic counter that increments once per tool_use and survives snapshot
+// round-trips. The widget uses offset % numSeparators to highlight one
+// separator in a wrapping ticker pattern.
+func TestDividerOffset_SnapshotRoundTrip(t *testing.T) {
+	// Invocation 1: 2 tool_use events → offset=2.
 	es1 := NewExtractionState()
 	es1.ProcessEntry(makeToolUseEntry("id-1", "Read", map[string]interface{}{"file_path": "a.go"}))
 	es1.ProcessEntry(makeToolResultEntry("id-1", false))
 	es1.ProcessEntry(makeToolUseEntry("id-2", "Write", map[string]interface{}{"file_path": "b.go"}))
 	es1.ProcessEntry(makeToolResultEntry("id-2", false))
 
-	// Verify invocation 1: no prior snapshot, so FreshBoundaryCount=0.
 	data1 := es1.ToTranscriptData()
-	if data1.FreshBoundaryCount != 0 {
-		t.Errorf("inv1 FreshBoundaryCount = %d, want 0 (first invocation, all fresh)", data1.FreshBoundaryCount)
+	if data1.DividerOffset != 2 {
+		t.Errorf("inv1 DividerOffset = %d, want 2 (2 tool_use events)", data1.DividerOffset)
 	}
 
 	snap1, err := es1.MarshalSnapshot()
@@ -2046,24 +2027,19 @@ func TestLastSeenToolCount_SnapshotRoundTrip(t *testing.T) {
 		t.Fatalf("inv1 MarshalSnapshot: %v", err)
 	}
 
-	// Invocation 2: restore inv1 snapshot (lastSeenToolCount=0, 2 tools), add 1 new.
+	// Invocation 2: restore, add 1 more tool → offset=3.
 	es2 := NewExtractionState()
 	if err := es2.UnmarshalSnapshot(snap1); err != nil {
 		t.Fatalf("inv2 UnmarshalSnapshot: %v", err)
 	}
 	es2.ProcessEntry(makeToolUseEntry("id-3", "Bash", map[string]interface{}{"command": "ls"}))
 
-	// FreshBoundaryCount is lastSeenToolCount restored from inv1 = 0.
-	// All 3 tools appear fresh (no separator) because the boundary hasn't advanced.
 	data2 := es2.ToTranscriptData()
-	if data2.FreshBoundaryCount != 0 {
-		t.Errorf("inv2 FreshBoundaryCount = %d, want 0 (boundary not yet advanced)", data2.FreshBoundaryCount)
-	}
-	if len(data2.Tools) != 3 {
-		t.Errorf("inv2 expected 3 tools, got %d", len(data2.Tools))
+	if data2.DividerOffset != 3 {
+		t.Errorf("inv2 DividerOffset = %d, want 3 (restored 2 + 1 new)", data2.DividerOffset)
 	}
 
-	// Simulate multiple rapid saves within inv2 — boundary must stay stable.
+	// Multiple saves must produce identical offsets.
 	snap2a, err := es2.MarshalSnapshot()
 	if err != nil {
 		t.Fatalf("inv2 MarshalSnapshot (save 1): %v", err)
@@ -2073,49 +2049,39 @@ func TestLastSeenToolCount_SnapshotRoundTrip(t *testing.T) {
 		t.Fatalf("inv2 MarshalSnapshot (save 2): %v", err)
 	}
 
-	// Invocation 3: restore from either save — both should carry the same boundary.
 	for _, snap := range [][]byte{snap2a, snap2b} {
 		es3 := NewExtractionState()
 		if err := es3.UnmarshalSnapshot(snap); err != nil {
 			t.Fatalf("inv3 UnmarshalSnapshot: %v", err)
 		}
 
-		// After restoring 3 tools, toolCountAtRestore=3, lastSeenToolCount=2.
-		// No new tools this invocation: boundary preserved at 2.
+		// No new tools: offset stays at 3.
 		data3 := es3.ToTranscriptData()
-		if data3.FreshBoundaryCount != 2 {
-			t.Errorf("inv3 FreshBoundaryCount = %d, want 2 (separator after tool 2)", data3.FreshBoundaryCount)
-		}
-		if len(data3.Tools) != 3 {
-			t.Errorf("inv3 expected 3 tools, got %d", len(data3.Tools))
+		if data3.DividerOffset != 3 {
+			t.Errorf("inv3 DividerOffset = %d, want 3 (no new tools, offset stable)", data3.DividerOffset)
 		}
 
-		// Save from inv3 — no new tools, so LastSeenToolCount must be preserved at 2.
 		snap3, err := es3.MarshalSnapshot()
 		if err != nil {
 			t.Fatalf("inv3 MarshalSnapshot: %v", err)
 		}
 
-		// Invocation 4: no new tools again — separator must persist (spec 1).
+		// Another no-tool invocation: still 3.
 		es4 := NewExtractionState()
 		if err := es4.UnmarshalSnapshot(snap3); err != nil {
 			t.Fatalf("inv4 UnmarshalSnapshot: %v", err)
 		}
 		data4 := es4.ToTranscriptData()
-		if data4.FreshBoundaryCount != 2 {
-			t.Errorf("inv4 FreshBoundaryCount = %d, want 2 (separator stable, no new tools)", data4.FreshBoundaryCount)
-		}
-		if len(data4.Tools) != 3 {
-			t.Errorf("inv4 expected 3 tools, got %d", len(data4.Tools))
+		if data4.DividerOffset != 3 {
+			t.Errorf("inv4 DividerOffset = %d, want 3 (still stable)", data4.DividerOffset)
 		}
 
-		// Save from inv4 — still no new tools, LastSeenToolCount stays at 2.
 		snap4, err := es4.MarshalSnapshot()
 		if err != nil {
 			t.Fatalf("inv4 MarshalSnapshot: %v", err)
 		}
 
-		// Invocation 5: 2 new tools arrive — separator shifts right (spec 2).
+		// Invocation 5: 2 new tools → offset=5.
 		es5 := NewExtractionState()
 		if err := es5.UnmarshalSnapshot(snap4); err != nil {
 			t.Fatalf("inv5 UnmarshalSnapshot: %v", err)
@@ -2123,50 +2089,28 @@ func TestLastSeenToolCount_SnapshotRoundTrip(t *testing.T) {
 		es5.ProcessEntry(makeToolUseEntry("id-4", "Grep", map[string]interface{}{"pattern": "foo"}))
 		es5.ProcessEntry(makeToolUseEntry("id-5", "Glob", map[string]interface{}{"pattern": "*.go"}))
 
-		// The boundary from the snapshot is still 2. New tools are at indices 3-4.
-		// FreshBoundaryCount (= lastSeenToolCount from snapshot) stays 2.
 		data5 := es5.ToTranscriptData()
-		if data5.FreshBoundaryCount != 2 {
-			t.Errorf("inv5 FreshBoundaryCount = %d, want 2 (boundary from snap4)", data5.FreshBoundaryCount)
-		}
-		if len(data5.Tools) != 5 {
-			t.Errorf("inv5 expected 5 tools, got %d", len(data5.Tools))
-		}
-
-		// Save from inv5: 5 > toolCountAtRestore(3), so advance boundary to 3.
-		snap5, err := es5.MarshalSnapshot()
-		if err != nil {
-			t.Fatalf("inv5 MarshalSnapshot: %v", err)
-		}
-
-		// Invocation 6: separator shifts to show 2 new tools (spec 2).
-		es6 := NewExtractionState()
-		if err := es6.UnmarshalSnapshot(snap5); err != nil {
-			t.Fatalf("inv6 UnmarshalSnapshot: %v", err)
-		}
-		data6 := es6.ToTranscriptData()
-		// lastSeenToolCount=3, toolCountAtRestore=5, freshCount=2. Separator at 3.
-		if data6.FreshBoundaryCount != 3 {
-			t.Errorf("inv6 FreshBoundaryCount = %d, want 3 (separator shifted by 2 new tools)", data6.FreshBoundaryCount)
-		}
-		if len(data6.Tools) != 5 {
-			t.Errorf("inv6 expected 5 tools, got %d", len(data6.Tools))
+		if data5.DividerOffset != 5 {
+			t.Errorf("inv5 DividerOffset = %d, want 5 (restored 3 + 2 new)", data5.DividerOffset)
 		}
 	}
 }
 
-// TestLastSeenToolCount_NoSnapshot verifies that FreshBoundaryCount is 0
-// when no prior snapshot exists. The widget interprets this as "all fresh,
-// no colored separator".
-func TestLastSeenToolCount_NoSnapshot(t *testing.T) {
+// TestDividerOffset_StartsAtZero verifies that DividerOffset begins at 0
+// when no prior snapshot exists and increments with each tool_use.
+func TestDividerOffset_StartsAtZero(t *testing.T) {
 	es := NewExtractionState()
+	data0 := es.ToTranscriptData()
+	if data0.DividerOffset != 0 {
+		t.Errorf("DividerOffset = %d, want 0 (no tools yet)", data0.DividerOffset)
+	}
+
 	es.ProcessEntry(makeToolUseEntry("id-1", "Read", map[string]interface{}{"file_path": "a.go"}))
 	es.ProcessEntry(makeToolResultEntry("id-1", false))
 
-	data := es.ToTranscriptData()
-
-	if data.FreshBoundaryCount != 0 {
-		t.Errorf("FreshBoundaryCount = %d, want 0 (no prior snapshot)", data.FreshBoundaryCount)
+	data1 := es.ToTranscriptData()
+	if data1.DividerOffset != 1 {
+		t.Errorf("DividerOffset = %d, want 1 (1 tool_use)", data1.DividerOffset)
 	}
 }
 

@@ -11,23 +11,20 @@ import (
 // toolsCtx is a helper that builds a RenderContext with a given tools slice.
 // The slice is expected to be in oldest-first order, matching how
 // ExtractionState.ToTranscriptData produces the Tools field.
-// FreshBoundaryCount defaults to 0 (no prior snapshot — all tools are fresh,
-// no colored separator shown).
+// DividerOffset defaults to 0.
 func toolsCtx(tools []model.ToolEntry) *model.RenderContext {
 	return &model.RenderContext{
 		Transcript: &model.TranscriptData{Tools: tools},
 	}
 }
 
-// toolsCtxWithBoundary builds a RenderContext with both a tools slice and a
-// FreshBoundaryCount simulating a prior-invocation snapshot. freshBoundary is
-// the number of tools that existed at the last snapshot save; tools added since
-// then are considered "fresh" and the colored separator is placed after them.
-func toolsCtxWithBoundary(tools []model.ToolEntry, freshBoundary int) *model.RenderContext {
+// toolsCtxWithOffset builds a RenderContext with both a tools slice and a
+// DividerOffset. The widget highlights separator at position offset % (numVisible - 1).
+func toolsCtxWithOffset(tools []model.ToolEntry, offset int) *model.RenderContext {
 	return &model.RenderContext{
 		Transcript: &model.TranscriptData{
-			Tools:              tools,
-			FreshBoundaryCount: freshBoundary,
+			Tools:         tools,
+			DividerOffset: offset,
 		},
 	}
 }
@@ -199,8 +196,8 @@ func TestTools_OutOfOrderCompletion_DisplayOrderCorrect(t *testing.T) {
 	// B was started second (index 1) and has already completed.
 	// C was started third (index 2) and has already completed.
 	tools := []model.ToolEntry{
-		{Name: "ToolA", Count: 0, Category: "shell"},                   // still running
-		{Name: "ToolB", Count: 1, DurationMs: 500, Category: "file"},   // completed first
+		{Name: "ToolA", Count: 0, Category: "shell"},                    // still running
+		{Name: "ToolB", Count: 1, DurationMs: 500, Category: "file"},    // completed first
 		{Name: "ToolC", Count: 1, DurationMs: 1000, Category: "search"}, // completed second
 	}
 	ctx := toolsCtx(tools)
@@ -283,90 +280,12 @@ func TestTools_MaxToolsBufferFillsAndPrunes(t *testing.T) {
 	}
 }
 
-// TestTools_FreshBoundarySeparator verifies the colored separator behavior.
+// TestTools_DividerHighlight verifies the scrolling ticker separator behavior.
 //
-// The yellow separator marks the boundary between "fresh" tools (added since
-// the last snapshot) and "old" tools (present in the prior snapshot). This
-// boundary is tracked via FreshBoundaryCount in TranscriptData.
-//
-// Spec 1: the separator position persists via FreshBoundaryCount.
-// Spec 2: when new tools are prepended, the colored separator shifts rightward.
-// Spec 3: when all tools are newer than the last snapshot (FreshBoundaryCount==0),
-//         the colored separator does not appear.
-func TestTools_FreshBoundarySeparator(t *testing.T) {
-	t.Run("no prior snapshot means no colored separator", func(t *testing.T) {
-		// FreshBoundaryCount=0 (zero value, no prior snapshot) — all tools are fresh,
-		// so no colored separator is emitted.
-		tools := []model.ToolEntry{
-			{Name: "OldTool", Count: 1, DurationMs: 100, Category: "internal"},
-			{Name: "NewTool", Count: 1, DurationMs: 200, Category: "internal"},
-		}
-		ctx := toolsCtx(tools) // FreshBoundaryCount defaults to 0
-		cfg := defaultCfg()
-
-		got := Tools(ctx, cfg)
-
-		if strings.Contains(got, freshSep) {
-			t.Errorf("expected no fresh separator when FreshBoundaryCount=0 (all fresh), got %q", got)
-		}
-	})
-
-	t.Run("one old tool: colored separator after first (fresh) tool", func(t *testing.T) {
-		// 2 tools total, 1 was in the prior snapshot. The newest tool is fresh,
-		// the older one is old. Separator goes between them.
-		// Visible (newest-first): NewTool [freshSep] OldTool
-		tools := []model.ToolEntry{
-			{Name: "OldTool", Count: 1, DurationMs: 100, Category: "internal"},
-			{Name: "NewTool", Count: 1, DurationMs: 200, Category: "internal"},
-		}
-		ctx := toolsCtxWithBoundary(tools, 1) // 1 tool at last snapshot
-		cfg := defaultCfg()
-
-		got := Tools(ctx, cfg)
-
-		if !strings.Contains(got, freshSep) {
-			t.Errorf("expected fresh (yellow) separator, got %q", got)
-		}
-
-		// freshSep must appear before OldTool (the old tool is to the right).
-		freshIdx := strings.Index(got, freshSep)
-		oldToolIdx := strings.Index(got, "OldTool")
-		if freshIdx < 0 || oldToolIdx < 0 {
-			t.Fatalf("missing fresh separator or OldTool in %q", got)
-		}
-		if freshIdx > oldToolIdx {
-			t.Errorf("fresh separator (pos %d) should precede OldTool (pos %d)", freshIdx, oldToolIdx)
-		}
-	})
-
-	t.Run("three tools, one fresh: separator after first, then dim separators", func(t *testing.T) {
-		// 3 tools total, 2 in prior snapshot. Only C is fresh.
-		// Visible (newest-first): C [freshSep] B [dimSep] A
-		tools := []model.ToolEntry{
-			{Name: "A", Count: 1, DurationMs: 100, Category: "internal"},
-			{Name: "B", Count: 1, DurationMs: 200, Category: "internal"},
-			{Name: "C", Count: 1, DurationMs: 300, Category: "internal"},
-		}
-		ctx := toolsCtxWithBoundary(tools, 2) // 2 tools at last snapshot
-		cfg := defaultCfg()
-
-		got := Tools(ctx, cfg)
-
-		freshIdx := strings.Index(got, freshSep)
-		dimIdx := strings.Index(got, dimSep)
-
-		if freshIdx < 0 {
-			t.Fatalf("expected fresh separator in output, got %q", got)
-		}
-		if dimIdx < 0 {
-			t.Fatalf("expected dim separator in output, got %q", got)
-		}
-		// The fresh separator must appear before the dim one.
-		if freshIdx > dimIdx {
-			t.Errorf("fresh separator (pos %d) should precede dim separator (pos %d) in %q", freshIdx, dimIdx, got)
-		}
-	})
-
+// The highlighted separator cycles through positions based on DividerOffset.
+// With N visible tools there are N-1 separators. The highlighted position is
+// offset % (N-1), wrapping around when it exceeds the last position.
+func TestTools_DividerHighlight(t *testing.T) {
 	t.Run("single tool has no separator", func(t *testing.T) {
 		tools := []model.ToolEntry{
 			{Name: "Solo", Count: 1, DurationMs: 100, Category: "internal"},
@@ -376,61 +295,85 @@ func TestTools_FreshBoundarySeparator(t *testing.T) {
 
 		got := Tools(ctx, cfg)
 
-		if strings.Contains(got, freshSep) {
-			t.Errorf("single-entry output should have no separator, got %q", got)
-		}
-		if strings.Contains(got, dimSep) {
+		if strings.Contains(got, highlightSep) || strings.Contains(got, dimSep) {
 			t.Errorf("single-entry output should have no separator, got %q", got)
 		}
 	})
 
-	t.Run("separator shifts rightward when new tool arrives", func(t *testing.T) {
-		// Invocation 1: 2 tools, snapshot saves FreshBoundaryCount=2.
-		// Invocation 2: 3 tools (Tool3 is new). FreshBoundaryCount=2.
-		// freshCount = 3 - 2 = 1. Separator after position 1 (between Tool3 and Tool2).
-		// Visible (newest-first): Tool3 [freshSep] Tool2 [dimSep] Tool1
-
-		toolsAfter := []model.ToolEntry{
-			{Name: "Tool1", Count: 1, DurationMs: 100, Category: "internal"},
-			{Name: "Tool2", Count: 1, DurationMs: 200, Category: "internal"},
-			{Name: "Tool3", Count: 1, DurationMs: 300, Category: "internal"},
-		}
-		cfg := defaultCfg()
-
-		// Simulate the state after the second invocation:
-		// FreshBoundaryCount=2 (Tool1 and Tool2 were present at last snapshot).
-		gotAfter := Tools(toolsCtxWithBoundary(toolsAfter, 2), cfg)
-
-		if !strings.Contains(gotAfter, freshSep) {
-			t.Errorf("expected fresh separator after new tool arrived, got %q", gotAfter)
-		}
-
-		// freshSep must appear before Tool2 (Tool3 is fresh, Tool2 is old).
-		freshIdxAfter := strings.Index(gotAfter, freshSep)
-		tool2IdxAfter := strings.Index(gotAfter, "Tool2")
-		if freshIdxAfter < 0 || tool2IdxAfter < 0 {
-			t.Fatalf("missing fresh separator or Tool2 in %q", gotAfter)
-		}
-		if freshIdxAfter > tool2IdxAfter {
-			t.Errorf("fresh separator (pos %d) should precede Tool2 (pos %d)", freshIdxAfter, tool2IdxAfter)
-		}
-	})
-
-	t.Run("all visible tools are old: colored separator does not appear at end", func(t *testing.T) {
-		// 2 tools total, FreshBoundaryCount=5 (boundary from a longer past invocation).
-		// freshCount = 2 - 5 = -1 → clamped to 0 → all visible are fresh, no separator.
+	t.Run("two tools: highlight cycles between sole separator position", func(t *testing.T) {
 		tools := []model.ToolEntry{
-			{Name: "Tool1", Count: 1, DurationMs: 100, Category: "internal"},
-			{Name: "Tool2", Count: 1, DurationMs: 200, Category: "internal"},
+			{Name: "A", Count: 1, DurationMs: 100, Category: "internal"},
+			{Name: "B", Count: 1, DurationMs: 200, Category: "internal"},
 		}
-		ctx := toolsCtxWithBoundary(tools, 5)
 		cfg := defaultCfg()
 
-		got := Tools(ctx, cfg)
+		// 2 tools = 1 separator. Any offset mod 1 = 0, so it's always highlighted.
+		for _, offset := range []int{0, 1, 5, 100} {
+			got := Tools(toolsCtxWithOffset(tools, offset), cfg)
+			if !strings.Contains(got, highlightSep) {
+				t.Errorf("offset=%d: expected highlighted separator with 2 tools, got %q", offset, got)
+			}
+		}
+	})
 
-		// freshCount clamps to 0 — all tools treated as fresh, no separator.
-		if strings.Contains(got, freshSep) {
-			t.Errorf("no fresh separator expected when freshCount<=0, got %q", got)
+	t.Run("three tools: highlight position wraps", func(t *testing.T) {
+		tools := []model.ToolEntry{
+			{Name: "A", Count: 1, DurationMs: 100, Category: "internal"},
+			{Name: "B", Count: 1, DurationMs: 200, Category: "internal"},
+			{Name: "C", Count: 1, DurationMs: 300, Category: "internal"},
+		}
+		cfg := defaultCfg()
+
+		// 3 tools = 2 separators (positions 0 and 1).
+		// Visible newest-first: C sep0 B sep1 A
+
+		// offset=0 → highlight position 0 (between C and B)
+		got0 := Tools(toolsCtxWithOffset(tools, 0), cfg)
+		hlIdx0 := strings.Index(got0, highlightSep)
+		bIdx0 := strings.Index(got0, "B")
+		if hlIdx0 < 0 || hlIdx0 > bIdx0 {
+			t.Errorf("offset=0: highlight should be before B, got %q", got0)
+		}
+
+		// offset=1 → highlight position 1 (between B and A)
+		got1 := Tools(toolsCtxWithOffset(tools, 1), cfg)
+		hlIdx1 := strings.Index(got1, highlightSep)
+		aIdx1 := strings.Index(got1, "A")
+		if hlIdx1 < 0 || hlIdx1 > aIdx1 {
+			t.Errorf("offset=1: highlight should be before A, got %q", got1)
+		}
+
+		// offset=2 → wraps to position 0 again
+		got2 := Tools(toolsCtxWithOffset(tools, 2), cfg)
+		hlIdx2 := strings.Index(got2, highlightSep)
+		bIdx2 := strings.Index(got2, "B")
+		if hlIdx2 < 0 || hlIdx2 > bIdx2 {
+			t.Errorf("offset=2: highlight should wrap to before B, got %q", got2)
+		}
+	})
+
+	t.Run("highlight advances with each new tool", func(t *testing.T) {
+		// Simulates successive tool_use events incrementing DividerOffset.
+		// 4 tools = 3 separator positions. Offset 3→6 should cycle through
+		// positions 0, 1, 2, 0, 1, 2...
+		tools := []model.ToolEntry{
+			{Name: "T1", Count: 1, DurationMs: 100, Category: "internal"},
+			{Name: "T2", Count: 1, DurationMs: 200, Category: "internal"},
+			{Name: "T3", Count: 1, DurationMs: 300, Category: "internal"},
+			{Name: "T4", Count: 1, DurationMs: 400, Category: "internal"},
+		}
+		cfg := defaultCfg()
+
+		for offset := 0; offset < 9; offset++ {
+			got := Tools(toolsCtxWithOffset(tools, offset), cfg)
+			if !strings.Contains(got, highlightSep) {
+				t.Errorf("offset=%d: expected a highlighted separator, got %q", offset, got)
+			}
+			// Count: exactly 1 highlighted, rest are dim.
+			hlCount := strings.Count(got, highlightSep)
+			if hlCount != 1 {
+				t.Errorf("offset=%d: expected exactly 1 highlighted separator, got %d in %q", offset, hlCount, got)
+			}
 		}
 	})
 }
@@ -458,8 +401,8 @@ func TestTools_MaxToolsBufferSizeRecommendation(t *testing.T) {
 	// ever sees 5 entries), but the more important property — that a burst of
 	// completions doesn't drop the newest entries before rendering — can only
 	// be verified through ExtractionState integration tests, not here.
-	const maxToolsBuf = 20   // from extractor.go
-	const maxVisible = 5     // from tools.go
+	const maxToolsBuf = 20 // from extractor.go
+	const maxVisible = 5   // from tools.go
 
 	if maxToolsBuf < maxVisible {
 		t.Errorf("maxTools buffer (%d) must be >= maxVisibleTools (%d)", maxToolsBuf, maxVisible)
