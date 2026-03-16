@@ -93,4 +93,3 @@ func modelFamilySuffix(model string) string {
 	}
 	return " (" + family + ")"
 }
-
