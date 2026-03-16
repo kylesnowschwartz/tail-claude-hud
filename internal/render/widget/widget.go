@@ -22,18 +22,17 @@ var Registry = map[string]RenderFunc{
 	"project":   Project,
 	"env":       Env,
 	"duration":  Duration,
-	"tools":     Tools,
-	"agents":    Agents,
-	"todos":     Todos,
-	"session":   Session,
-	"thinking":  Thinking,
-	"spinner":   Spinner,
+	"tools":    Tools,
+	"agents":   Agents,
+	"todos":    Todos,
+	"session":  Session,
+	"thinking": Thinking,
 }
 
 // Icons holds the icon strings for a given display mode (nerdfont, unicode, ascii).
 type Icons struct {
 	Check   string
-	Spinner string
+	Running string // static indicator for a running/in-progress state
 	Clock   string
 	Folder  string
 	Branch  string
@@ -56,9 +55,9 @@ func IconsFor(mode string) Icons {
 	switch mode {
 	case "nerdfont":
 		return Icons{
-			Check:   "\uf00c",     // nf-fa-check
-			Spinner: "\uf110",     // nf-fa-spinner
-			Clock:   "\uf017",     // nf-fa-clock_o
+			Check:   "\uf00c", // nf-fa-check
+			Running: "◐",      // half-filled circle: static running indicator
+			Clock:   "\uf017", // nf-fa-clock_o
 			Folder:  "\uf07b",     // nf-fa-folder
 			Branch:  "\ue0a0",     // nf-pl-branch
 			Read:    "\ue28b",     // book
@@ -73,8 +72,8 @@ func IconsFor(mode string) Icons {
 		}
 	case "unicode":
 		return Icons{
-			Check:    "✓",
-			Spinner:  "◐",
+			Check:   "✓",
+			Running: "◐",
 			Clock:    "⏱",
 			Folder:   "📁",
 			Branch:   "⎇",
@@ -90,8 +89,8 @@ func IconsFor(mode string) Icons {
 		}
 	default: // ascii
 		return Icons{
-			Check:    "v",
-			Spinner:  "*",
+			Check:   "v",
+			Running: "~",
 			Clock:    "@",
 			Folder:   ">",
 			Branch:   "#",

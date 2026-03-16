@@ -9,25 +9,8 @@ import (
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/model"
 )
 
-// brailleFrames is the spinner sequence used by tools and agents widgets.
-var brailleFrames = [10]string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
-
-// spinnerFrameFromCounter returns the braille frame for a given monotonic counter.
-// Using an invocation counter instead of wall-clock time guarantees the frame
-// advances on every render, regardless of when within a tick the binary runs.
-func spinnerFrameFromCounter(n int) string {
-	return brailleFrames[n%10]
-}
-
-// spinnerFrame returns the current braille spinner frame using wall-clock time.
-// Kept for any caller that doesn't have access to an invocation counter.
-// Advances every 200ms (~5 ticks/second).
-func spinnerFrame() string {
-	return brailleFrames[time.Now().UnixMilli()/200%10]
-}
-
 // Agents renders running and recently-completed sub-agent entries.
-// Running agents show a colored robot icon, braille spinner, and elapsed time.
+// Running agents show a colored robot icon, half-circle indicator, and elapsed time.
 // Completed agents show a dim colored robot icon, check mark, and duration.
 // Returns "" when ctx.Transcript is nil or there are no agents to show.
 func Agents(ctx *model.RenderContext, cfg *config.Config) string {
@@ -65,19 +48,17 @@ func Agents(ctx *model.RenderContext, cfg *config.Config) string {
 		return ""
 	}
 
-	spinner := spinnerFrameFromCounter(ctx.Transcript.SpinnerFrame)
-
 	var parts []string
 	for _, a := range toShow {
-		parts = append(parts, formatAgentEntry(a, icons, spinner))
+		parts = append(parts, formatAgentEntry(a, icons))
 	}
 
 	return strings.Join(parts, " | ")
 }
 
-// formatAgentEntry renders a single agent entry with colored icon, spinner or
-// check mark, and elapsed/duration time.
-func formatAgentEntry(a model.AgentEntry, icons Icons, spinner string) string {
+// formatAgentEntry renders a single agent entry with colored icon, running
+// indicator or check mark, and elapsed/duration time.
+func formatAgentEntry(a model.AgentEntry, icons Icons) string {
 	style := AgentColorStyle(a.ColorIndex)
 	icon := icons.Agent
 	modelSuffix := modelFamilySuffix(a.Model)
@@ -85,7 +66,7 @@ func formatAgentEntry(a model.AgentEntry, icons Icons, spinner string) string {
 	if a.Status == "running" {
 		elapsed := formatElapsed(time.Since(a.StartTime))
 		label := icon + " " + a.Name + modelSuffix
-		return style.Render(label) + " " + style.Render(spinner) + " " + dimStyle.Render(elapsed)
+		return style.Render(label) + " " + style.Render(icons.Running) + " " + dimStyle.Render(elapsed)
 	}
 
 	// Completed: dim the colored icon, show check + duration.

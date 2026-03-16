@@ -38,9 +38,9 @@ func Todos(ctx *model.RenderContext, cfg *config.Config) string {
 		return fmt.Sprintf("%s %s", greenStyle.Render(icons.Check), greenStyle.Render(count))
 	case done > 0:
 		// Partial — yellow spinner.
-		return fmt.Sprintf("%s %s", yellowStyle.Render(icons.Spinner), yellowStyle.Render(count))
+		return fmt.Sprintf("%s %s", yellowStyle.Render(icons.Running), yellowStyle.Render(count))
 	default:
 		// Nothing done yet — dim.
-		return fmt.Sprintf("%s %s", dimStyle.Render(icons.Spinner), dimStyle.Render(count))
+		return fmt.Sprintf("%s %s", dimStyle.Render(icons.Running), dimStyle.Render(count))
 	}
 }

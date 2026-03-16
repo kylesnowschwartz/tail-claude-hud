@@ -33,7 +33,7 @@ func TestDefaultsWhenNoFile(t *testing.T) {
 	if len(cfg.Lines) != 3 {
 		t.Fatalf("expected 3 lines, got %d", len(cfg.Lines))
 	}
-	assertWidgets(t, cfg.Lines[0].Widgets, []string{"spinner", "thinking", "model", "context", "project", "todos", "duration"})
+	assertWidgets(t, cfg.Lines[0].Widgets, []string{"thinking", "model", "context", "project", "todos", "duration"})
 	assertWidgets(t, cfg.Lines[1].Widgets, []string{"agents"})
 	assertWidgets(t, cfg.Lines[2].Widgets, []string{"tools"})
 
@@ -287,7 +287,7 @@ func TestDefaultLayoutIsThreeLinesHybrid(t *testing.T) {
 		t.Fatalf("default layout: want 3 lines, got %d", len(cfg.Lines))
 	}
 
-	assertWidgets(t, cfg.Lines[0].Widgets, []string{"spinner", "thinking", "model", "context", "project", "todos", "duration"})
+	assertWidgets(t, cfg.Lines[0].Widgets, []string{"thinking", "model", "context", "project", "todos", "duration"})
 	assertWidgets(t, cfg.Lines[1].Widgets, []string{"agents"})
 	assertWidgets(t, cfg.Lines[2].Widgets, []string{"tools"})
 }

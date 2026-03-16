@@ -270,7 +270,7 @@ func TestDirectoryWidget_EmptyCwd(t *testing.T) {
 }
 
 func TestRegistryHasAllWidgets(t *testing.T) {
-	expected := []string{"model", "context", "directory", "git", "project", "env", "duration", "tools", "agents", "todos", "session", "thinking", "spinner"}
+	expected := []string{"model", "context", "directory", "git", "project", "env", "duration", "tools", "agents", "todos", "session", "thinking"}
 	for _, name := range expected {
 		if _, ok := Registry[name]; !ok {
 			t.Errorf("Registry missing widget %q", name)
@@ -336,8 +336,9 @@ func TestToolsWidget_RunningToolShowsYellowIconNoSpinner(t *testing.T) {
 	if !strings.Contains(got, "Bash") {
 		t.Errorf("Running tool should contain name 'Bash', got %q", got)
 	}
-	// Should NOT contain braille spinner frames.
-	for _, frame := range brailleFrames {
+	// Tool output should not contain any braille characters.
+	brailleChars := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+	for _, frame := range brailleChars {
 		if strings.Contains(got, frame) {
 			t.Errorf("Running tool should not have braille spinner, got %q", got)
 			break
@@ -490,7 +491,7 @@ func TestAgentsWidget_EmptyAgentsReturnsEmpty(t *testing.T) {
 	}
 }
 
-func TestAgentsWidget_RunningAgentShowsColoredIconAndSpinner(t *testing.T) {
+func TestAgentsWidget_RunningAgentShowsColoredIconAndRunningIndicator(t *testing.T) {
 	startTime := time.Now().Add(-2*time.Minute - 15*time.Second)
 	ctx := &model.RenderContext{Transcript: &model.TranscriptData{
 		Agents: []model.AgentEntry{
@@ -506,16 +507,10 @@ func TestAgentsWidget_RunningAgentShowsColoredIconAndSpinner(t *testing.T) {
 	if !strings.Contains(got, "explore") {
 		t.Errorf("Agents running: expected name 'explore', got %q", got)
 	}
-	// A braille spinner frame must appear.
-	foundSpinner := false
-	for _, frame := range brailleFrames {
-		if strings.Contains(got, frame) {
-			foundSpinner = true
-			break
-		}
-	}
-	if !foundSpinner {
-		t.Errorf("Agents running: expected braille spinner frame in output, got %q", got)
+	// The static running indicator must appear (ascii mode uses "~").
+	icons := IconsFor("ascii")
+	if !strings.Contains(got, icons.Running) {
+		t.Errorf("Agents running: expected running indicator %q in output, got %q", icons.Running, got)
 	}
 	// Elapsed time should appear (at least minutes marker).
 	if !strings.Contains(got, "m") {
@@ -1323,58 +1318,14 @@ func TestCategoryIcon_AllModesReturnNonEmpty(t *testing.T) {
 	}
 }
 
-// -- Spinner widget -----------------------------------------------------------
+// -- Running icon field -------------------------------------------------------
 
-// Spec: successive invocations with a transcript produce different frames
-// because SpinnerFrame is a monotonic counter, not wall-clock time.
-func TestSpinnerWidget_DifferentFramePerInvocation(t *testing.T) {
-	cfg := defaultCfg()
-
-	ctx1 := &model.RenderContext{Transcript: &model.TranscriptData{SpinnerFrame: 1}}
-	ctx2 := &model.RenderContext{Transcript: &model.TranscriptData{SpinnerFrame: 2}}
-
-	got1 := Spinner(ctx1, cfg)
-	got2 := Spinner(ctx2, cfg)
-
-	if got1 == got2 {
-		t.Errorf("Spinner: consecutive frames (1 and 2) produced identical output %q — frame not advancing", got1)
-	}
-}
-
-// Spec: with no transcript, the Spinner falls back to time-based rendering
-// and still returns a non-empty string.
-func TestSpinnerWidget_FallsBackWithoutTranscript(t *testing.T) {
-	cfg := defaultCfg()
-	ctx := &model.RenderContext{Transcript: nil}
-
-	got := Spinner(ctx, cfg)
-	if got == "" {
-		t.Error("Spinner with nil transcript: expected non-empty fallback, got empty string")
-	}
-}
-
-// Spec: spinnerFrameFromCounter wraps at 10 (matching brailleFrames length).
-func TestSpinnerFrameFromCounter_WrapsAt10(t *testing.T) {
-	frame0 := spinnerFrameFromCounter(0)
-	frame10 := spinnerFrameFromCounter(10)
-	if frame0 != frame10 {
-		t.Errorf("spinnerFrameFromCounter(0)=%q and spinnerFrameFromCounter(10)=%q should be equal (modulo 10)", frame0, frame10)
-	}
-
-	frame1 := spinnerFrameFromCounter(1)
-	frame11 := spinnerFrameFromCounter(11)
-	if frame1 != frame11 {
-		t.Errorf("spinnerFrameFromCounter(1)=%q and spinnerFrameFromCounter(11)=%q should be equal (modulo 10)", frame1, frame11)
-	}
-}
-
-// Spec: each of the 10 braille frames is reachable via spinnerFrameFromCounter.
-func TestSpinnerFrameFromCounter_AllFramesReachable(t *testing.T) {
-	seen := make(map[string]bool)
-	for i := 0; i < 10; i++ {
-		seen[spinnerFrameFromCounter(i)] = true
-	}
-	if len(seen) != 10 {
-		t.Errorf("expected 10 distinct frames, got %d: %v", len(seen), seen)
+// Verify that IconsFor exposes a non-empty Running field across all icon modes.
+func TestIconsFor_RunningFieldNonEmpty(t *testing.T) {
+	for _, mode := range []string{"nerdfont", "unicode", "ascii"} {
+		icons := IconsFor(mode)
+		if icons.Running == "" {
+			t.Errorf("IconsFor(%q).Running is empty", mode)
+		}
 	}
 }

@@ -52,7 +52,7 @@ func defaults() *Config {
 	cfg := &Config{}
 
 	cfg.Lines = []Line{
-		{Widgets: []string{"spinner", "thinking", "model", "context", "project", "todos", "duration"}},
+		{Widgets: []string{"thinking", "model", "context", "project", "todos", "duration"}},
 		{Widgets: []string{"agents"}},
 		{Widgets: []string{"tools"}},
 	}
