@@ -70,38 +70,6 @@ func TestRender_SkipsEmptyLines(t *testing.T) {
 	}
 }
 
-func TestReadTerminalWidth_COLUMNSSet(t *testing.T) {
-	t.Setenv("COLUMNS", "80")
-	got := readTerminalWidth()
-	if got != 80 {
-		t.Errorf("expected 80, got %d", got)
-	}
-}
-
-func TestReadTerminalWidth_COLUMNSUnset(t *testing.T) {
-	t.Setenv("COLUMNS", "")
-	got := readTerminalWidth()
-	if got != 0 {
-		t.Errorf("expected 0 when COLUMNS is empty, got %d", got)
-	}
-}
-
-func TestReadTerminalWidth_COLUMNSInvalid(t *testing.T) {
-	t.Setenv("COLUMNS", "notanumber")
-	got := readTerminalWidth()
-	if got != 0 {
-		t.Errorf("expected 0 for non-numeric COLUMNS, got %d", got)
-	}
-}
-
-func TestReadTerminalWidth_COLUMNSZero(t *testing.T) {
-	t.Setenv("COLUMNS", "0")
-	got := readTerminalWidth()
-	if got != 0 {
-		t.Errorf("expected 0 for COLUMNS=0, got %d", got)
-	}
-}
-
 func TestRender_TruncatesLongLines(t *testing.T) {
 	// Build a model name long enough that the rendered line will exceed a narrow width.
 	longName := strings.Repeat("X", 100)
@@ -141,9 +109,6 @@ func TestRender_NoTruncationWhenWidthZero(t *testing.T) {
 		{Widgets: []string{"model"}},
 	}
 
-	// Ensure COLUMNS is unset so readTerminalWidth returns 0 too.
-	t.Setenv("COLUMNS", "")
-
 	var buf bytes.Buffer
 	Render(&buf, ctx, cfg)
 
@@ -172,33 +137,6 @@ func TestRender_NoTruncationWhenLineShortEnough(t *testing.T) {
 	}
 	if !strings.Contains(line, "Sonnet") {
 		t.Errorf("expected 'Sonnet' in untruncated output, got %q", line)
-	}
-}
-
-func TestRender_PopulatesTerminalWidthFromCOLUMNS(t *testing.T) {
-	// When ctx.TerminalWidth is 0 and COLUMNS is set to a value >= minTruncateWidth,
-	// Render should populate TerminalWidth and apply truncation.
-	t.Setenv("COLUMNS", "30")
-	longName := strings.Repeat("Z", 100)
-	ctx := &model.RenderContext{
-		ModelDisplayName: longName,
-		TerminalWidth:    0, // deliberately zero — Render should fill from env
-	}
-	cfg := config.LoadHud()
-	cfg.Lines = []config.Line{
-		{Widgets: []string{"model"}},
-	}
-
-	var buf bytes.Buffer
-	Render(&buf, ctx, cfg)
-
-	line := strings.TrimRight(buf.String(), "\n")
-	w := ansi.StringWidth(line)
-	if w > 30 {
-		t.Errorf("expected visual width <= 30 after env-driven truncation, got %d for %q", w, line)
-	}
-	if ctx.TerminalWidth != 30 {
-		t.Errorf("expected ctx.TerminalWidth to be updated to 30, got %d", ctx.TerminalWidth)
 	}
 }
 

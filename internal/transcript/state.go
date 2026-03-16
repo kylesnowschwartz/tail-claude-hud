@@ -142,12 +142,10 @@ func splitLines(data []byte) (lines []string, consumed int64) {
 
 	// Split on newlines.
 	var segments [][]byte
-	var segmentOffsets []int // byte offset of start of each segment
 	start := 0
 	for i, b := range data {
 		if b == '\n' {
 			segments = append(segments, data[start:i])
-			segmentOffsets = append(segmentOffsets, start)
 			start = i + 1
 		}
 	}
@@ -161,16 +159,12 @@ func splitLines(data []byte) (lines []string, consumed int64) {
 
 	// Collect valid JSON lines from newline-terminated segments.
 	var result []string
-	var resultEnd int64 = confirmedEnd // bytes consumed through last valid line
-	for i, seg := range segments {
+	for _, seg := range segments {
 		if len(seg) == 0 {
 			continue
 		}
 		if json.Valid(seg) {
 			result = append(result, string(seg))
-			// Advance resultEnd to include this segment + its newline.
-			// segmentOffsets[i] is the start; segment ends at segmentOffsets[i]+len(seg); newline at +1.
-			resultEnd = int64(segmentOffsets[i]) + int64(len(seg)) + 1 // +1 for newline
 		}
 		// Invalid JSON lines within the file are skipped but we still advance past them
 		// (they are complete lines that happen to be non-JSON or malformed entries).
@@ -189,8 +183,6 @@ func splitLines(data []byte) (lines []string, consumed int64) {
 		// Either way, do not advance past confirmedEnd for trailing bytes.
 	}
 
-	// Use the furthest valid position within confirmed (newline-terminated) bytes.
-	_ = resultEnd // resultEnd is the furthest line we accepted
 	consumed = confirmedEnd
 
 	return result, consumed

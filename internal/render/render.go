@@ -5,8 +5,6 @@ package render
 import (
 	"fmt"
 	"io"
-	"os"
-	"strconv"
 	"strings"
 
 	"github.com/charmbracelet/x/ansi"
@@ -24,39 +22,21 @@ const truncateSuffix = "..."
 // available space and produce output that is less useful than the raw text.
 const minTruncateWidth = 20
 
-// readTerminalWidth returns the value of the COLUMNS environment variable, or
-// 0 if COLUMNS is unset or not a positive integer. A width of 0 means no
-// truncation is applied.
-func readTerminalWidth() int {
-	s := os.Getenv("COLUMNS")
-	if s == "" {
-		return 0
-	}
-	n, err := strconv.Atoi(s)
-	if err != nil || n <= 0 {
-		return 0
-	}
-	return n
-}
-
 // Render walks config lines, looks up widgets in the registry, joins non-empty
 // results with the configured separator, and writes each line to w.
 //
 // Unknown widget names are skipped silently (logged at Debug level).
 // Lines where all widgets return empty strings are skipped entirely.
 //
-// If ctx.TerminalWidth is zero, Render reads the COLUMNS environment variable
-// to populate it. When TerminalWidth is at least minTruncateWidth (20), each
-// output line is truncated to that width using ANSI-aware grapheme counting so
-// that escape sequences and wide characters are measured correctly. Truncated
-// lines gain a "..." suffix. Below the minimum, truncation is skipped so that
-// very narrow terminals still receive content rather than collapsing to "...".
+// When ctx.TerminalWidth is at least minTruncateWidth (20), each output line
+// is truncated to that width using ANSI-aware grapheme counting so that escape
+// sequences and wide characters are measured correctly. Truncated lines gain a
+// "..." suffix. Below the minimum, truncation is skipped so that very narrow
+// terminals still receive content rather than collapsing to "...".
+//
+// The caller is expected to populate ctx.TerminalWidth before calling Render
+// (the gather stage does this via terminalWidth() in gather.go).
 func Render(w io.Writer, ctx *model.RenderContext, cfg *config.Config) {
-	// Populate terminal width from environment when the caller hasn't set it.
-	if ctx.TerminalWidth == 0 {
-		ctx.TerminalWidth = readTerminalWidth()
-	}
-
 	sep := cfg.Style.Separator
 
 	for _, line := range cfg.Lines {
