@@ -152,17 +152,3 @@ func formatDuration(ms int) string {
 	secs := (ms % 60000) / 1000
 	return fmt.Sprintf("%dm %ds", mins, secs)
 }
-
-// formatTokenCost formats a token count as a compact cost string:
-//   - < 1000:    printed as-is (e.g. "500")
-//   - 1000–99999: "X.Yk" (one decimal place)
-//   - >= 100000:  "Xk" (no decimal)
-func formatTokenCost(n int) string {
-	if n < 1000 {
-		return fmt.Sprintf("%d", n)
-	}
-	if n < 100000 {
-		return fmt.Sprintf("%.1fk", float64(n)/1000)
-	}
-	return fmt.Sprintf("%dk", n/1000)
-}

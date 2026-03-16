@@ -1,7 +1,6 @@
 package widget
 
 import (
-	"fmt"
 	"strings"
 	"time"
 
@@ -72,7 +71,7 @@ func formatAgentEntry(a model.AgentEntry, icons Icons) string {
 	// Completed: dim the colored icon, show check + duration.
 	dimColorStyle := style.Faint(true)
 	label := icon + " " + a.Name + modelSuffix
-	duration := formatDurationMs(a.DurationMs)
+	duration := formatDuration(a.DurationMs)
 	return dimColorStyle.Render(label) + " " + greenStyle.Render(icons.Check) + " " + dimStyle.Render(duration)
 }
 
@@ -93,24 +92,5 @@ func modelFamilySuffix(model string) string {
 		return ""
 	}
 	return " (" + family + ")"
-}
-
-
-// formatDurationMs formats a millisecond duration as a compact human-readable string:
-//   - <1000ms  → "0.Xs"
-//   - 1–60s    → "Xs"
-//   - >60s     → "Xm Ys"
-func formatDurationMs(ms int) string {
-	if ms < 1000 {
-		tenths := ms / 100
-		return fmt.Sprintf("0.%ds", tenths)
-	}
-	seconds := ms / 1000
-	if seconds < 60 {
-		return fmt.Sprintf("%ds", seconds)
-	}
-	minutes := seconds / 60
-	secs := seconds % 60
-	return fmt.Sprintf("%dm%ds", minutes, secs)
 }
 

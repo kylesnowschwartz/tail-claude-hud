@@ -456,30 +456,6 @@ func TestFormatDuration(t *testing.T) {
 	}
 }
 
-// -- formatTokenCost ----------------------------------------------------------
-
-func TestFormatTokenCost(t *testing.T) {
-	tests := []struct {
-		n    int
-		want string
-	}{
-		{0, "0"},
-		{500, "500"},
-		{999, "999"},
-		{1000, "1.0k"},
-		{1200, "1.2k"},
-		{99999, "100.0k"},
-		{100000, "100k"},
-		{123456, "123k"},
-	}
-	for _, tt := range tests {
-		got := formatTokenCost(tt.n)
-		if got != tt.want {
-			t.Errorf("formatTokenCost(%d) = %q, want %q", tt.n, got, tt.want)
-		}
-	}
-}
-
 // -- Agents widget ------------------------------------------------------------
 
 func TestAgentsWidget_EmptyAgentsReturnsEmpty(t *testing.T) {
