@@ -36,7 +36,7 @@ func Project(ctx *model.RenderContext, cfg *config.Config) string {
 
 	// Build the dim suffix: dirty indicator, ahead, behind.
 	var dimParts strings.Builder
-	if g.Dirty || g.Modified > 0 || g.Staged > 0 || g.Untracked > 0 {
+	if g.IsDirty() {
 		dimParts.WriteString("*")
 	}
 	if g.AheadBy > 0 {

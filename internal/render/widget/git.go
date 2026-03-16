@@ -34,7 +34,7 @@ func Git(ctx *model.RenderContext, cfg *config.Config) string {
 	parts = append(parts, branch)
 
 	// Dirty indicator (modified, staged, or untracked files).
-	if cfg.Git.Dirty && (g.Dirty || g.Modified > 0 || g.Staged > 0 || g.Untracked > 0) {
+	if cfg.Git.Dirty && g.IsDirty() {
 		parts = append(parts, gitDimStyle.Render("*"))
 	}
 

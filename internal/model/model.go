@@ -109,6 +109,12 @@ type GitStatus struct {
 	Staged    int
 }
 
+// IsDirty reports whether the working tree has any uncommitted changes
+// (dirty flag, modified files, staged files, or untracked files).
+func (g *GitStatus) IsDirty() bool {
+	return g.Dirty || g.Modified > 0 || g.Staged > 0 || g.Untracked > 0
+}
+
 // StdinData is the raw decoded form of the JSON blob Claude Code pipes to stdin.
 // It is produced by the stdin package and then transformed into RenderContext fields.
 type StdinData struct {
