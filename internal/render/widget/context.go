@@ -27,13 +27,14 @@ func colorStyle(colorName string, fallback lipgloss.Style) lipgloss.Style {
 	return lipgloss.NewStyle().Foreground(lipgloss.Color(colorName))
 }
 
-// contextThresholds returns the color style for the given usage percentage.
-// Warning fires at >=60% used (<=40% remaining); critical at >=80% (<=20% remaining).
-func contextThresholds(pct int, contextColor, warningColor, criticalColor lipgloss.Style) lipgloss.Style {
+// contextThresholds returns the color style for the given usage percentage,
+// selecting from the three provided styles based on the configured thresholds.
+// warnAt and critAt are the percentage values at which colors shift.
+func contextThresholds(pct, warnAt, critAt int, contextColor, warningColor, criticalColor lipgloss.Style) lipgloss.Style {
 	switch {
-	case pct >= 80:
+	case pct >= critAt:
 		return criticalColor
-	case pct >= 60:
+	case pct >= warnAt:
 		return warningColor
 	default:
 		return contextColor
@@ -65,16 +66,16 @@ func renderBar(pct, width int) string {
 //   - "bar": show the progress bar only
 //   - "both": show the bar followed by the value label
 //
-// The color shifts at usage thresholds: normal below 60%, warning at 60–79%,
-// critical at 80%+. These map to <=40% remaining and <=20% remaining.
+// The color shifts at configurable thresholds: normal below cfg.Thresholds.ContextWarning,
+// warning between the two thresholds, critical at cfg.Thresholds.ContextCritical and above.
 //
 // The label format is controlled by cfg.Context.Value:
 //   - "percent" (default): "42%"
 //   - "tokens": "84k/200k"
 //   - "remaining": "116k left"
 //
-// When context exceeds 85% and cfg.Context.ShowBreakdown is true, a token
-// breakdown is appended: " in:84k cr:12k rd:8k".
+// When context exceeds the critical threshold and cfg.Context.ShowBreakdown is
+// true, a token breakdown is appended: " in:84k cr:12k rd:8k".
 //
 // Returns "" when both ContextPercent and ContextWindowSize are zero.
 func Context(ctx *model.RenderContext, cfg *config.Config) string {
@@ -94,7 +95,17 @@ func Context(ctx *model.RenderContext, cfg *config.Config) string {
 	warningColor := colorStyle(cfg.Style.Colors.Warning, yellowStyle)
 	criticalColor := colorStyle(cfg.Style.Colors.Critical, redStyle)
 
-	activeStyle := contextThresholds(pct, contextColor, warningColor, criticalColor)
+	// Resolve thresholds with safe fallbacks.
+	warnAt := cfg.Thresholds.ContextWarning
+	critAt := cfg.Thresholds.ContextCritical
+	if warnAt <= 0 {
+		warnAt = 70
+	}
+	if critAt <= 0 {
+		critAt = 85
+	}
+
+	activeStyle := contextThresholds(pct, warnAt, critAt, contextColor, warningColor, criticalColor)
 
 	// Compute token totals used by "tokens" and "remaining" modes.
 	used := ctx.InputTokens + ctx.CacheCreation + ctx.CacheRead
@@ -124,8 +135,8 @@ func Context(ctx *model.RenderContext, cfg *config.Config) string {
 		result = activeStyle.Render(label)
 	}
 
-	// Append token breakdown when context is high and breakdown is enabled.
-	if pct > 85 && cfg.Context.ShowBreakdown {
+	// Append token breakdown when context exceeds the critical threshold and breakdown is enabled.
+	if pct > critAt && cfg.Context.ShowBreakdown {
 		breakdown := fmt.Sprintf(" in:%s cr:%s rd:%s",
 			formatTokenCount(ctx.InputTokens),
 			formatTokenCount(ctx.CacheCreation),

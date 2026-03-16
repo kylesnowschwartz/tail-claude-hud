@@ -50,6 +50,20 @@ type Config struct {
 			Critical string `toml:"critical"`
 		} `toml:"colors"`
 	} `toml:"style"`
+	Thresholds struct {
+		// ContextWarning is the context usage percentage at which the widget
+		// shifts to warning color. Default: 70.
+		ContextWarning int `toml:"context_warning"`
+		// ContextCritical is the context usage percentage at which the widget
+		// shifts to critical color. Default: 85.
+		ContextCritical int `toml:"context_critical"`
+		// CostWarning is the session cost in USD at which the cost widget
+		// shifts to warning color. Default: 5.00.
+		CostWarning float64 `toml:"cost_warning"`
+		// CostCritical is the session cost in USD at which the cost widget
+		// shifts to critical color. Default: 10.00.
+		CostCritical float64 `toml:"cost_critical"`
+	} `toml:"thresholds"`
 }
 
 // defaults returns a Config pre-populated with all default values.
@@ -84,6 +98,11 @@ func defaults() *Config {
 	cfg.Style.Colors.Context = "green"
 	cfg.Style.Colors.Warning = "yellow"
 	cfg.Style.Colors.Critical = "red"
+
+	cfg.Thresholds.ContextWarning = 70
+	cfg.Thresholds.ContextCritical = 85
+	cfg.Thresholds.CostWarning = 5.00
+	cfg.Thresholds.CostCritical = 10.00
 
 	return cfg
 }

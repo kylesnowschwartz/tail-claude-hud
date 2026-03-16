@@ -40,6 +40,7 @@ type RenderContext struct {
 	// Empty string when not provided by Claude Code.
 	OutputStyle string
 
+
 	// Pointer fields — all may be nil when the corresponding data is unavailable.
 	Transcript *TranscriptData
 	EnvCounts  *EnvCounts
@@ -187,6 +188,7 @@ type StdinData struct {
 
 	// OutputStyle is nil when Claude Code does not include output_style in the stdin payload.
 	OutputStyle *OutputStyle `json:"output_style"`
+
 
 	// ContextPercent is computed by the stdin package — not decoded from JSON.
 	ContextPercent int `json:"-"`

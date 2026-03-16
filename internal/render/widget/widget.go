@@ -17,6 +17,7 @@ type RenderFunc func(ctx *model.RenderContext, cfg *config.Config) string
 var Registry = map[string]RenderFunc{
 	"model":       Model,
 	"context":     Context,
+	"cost":        Cost,
 	"directory":   Directory,
 	"git":         Git,
 	"project":     Project,
@@ -28,7 +29,6 @@ var Registry = map[string]RenderFunc{
 	"session":     Session,
 	"thinking":    Thinking,
 	"tokens":      Tokens,
-	"cost":        Cost,
 	"lines":       Lines,
 	"outputstyle": OutputStyle,
 	"messages":    Messages,

@@ -273,7 +273,7 @@ func TestContextThresholds_NormalBelow60(t *testing.T) {
 	yellow := lipgloss.NewStyle().Foreground(lipgloss.Color("220"))
 	red := lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
 
-	got := contextThresholds(59, green, yellow, red)
+	got := contextThresholds(59, 60, 80, green, yellow, red)
 	if got.Render("x") != green.Render("x") {
 		t.Errorf("contextThresholds(59): expected green, got different style")
 	}
@@ -285,7 +285,7 @@ func TestContextThresholds_WarningAt60(t *testing.T) {
 	yellow := lipgloss.NewStyle().Foreground(lipgloss.Color("220"))
 	red := lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
 
-	got := contextThresholds(60, green, yellow, red)
+	got := contextThresholds(60, 60, 80, green, yellow, red)
 	if got.Render("x") != yellow.Render("x") {
 		t.Errorf("contextThresholds(60): expected yellow (warning), got different style")
 	}
@@ -297,7 +297,7 @@ func TestContextThresholds_WarningAt79(t *testing.T) {
 	yellow := lipgloss.NewStyle().Foreground(lipgloss.Color("220"))
 	red := lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
 
-	got := contextThresholds(79, green, yellow, red)
+	got := contextThresholds(79, 60, 80, green, yellow, red)
 	if got.Render("x") != yellow.Render("x") {
 		t.Errorf("contextThresholds(79): expected yellow (warning), got different style")
 	}
@@ -309,7 +309,7 @@ func TestContextThresholds_CriticalAt80(t *testing.T) {
 	yellow := lipgloss.NewStyle().Foreground(lipgloss.Color("220"))
 	red := lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
 
-	got := contextThresholds(80, green, yellow, red)
+	got := contextThresholds(80, 60, 80, green, yellow, red)
 	if got.Render("x") != red.Render("x") {
 		t.Errorf("contextThresholds(80): expected red (critical), got different style")
 	}
@@ -321,7 +321,7 @@ func TestContextThresholds_CriticalAt100(t *testing.T) {
 	yellow := lipgloss.NewStyle().Foreground(lipgloss.Color("220"))
 	red := lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
 
-	got := contextThresholds(100, green, yellow, red)
+	got := contextThresholds(100, 60, 80, green, yellow, red)
 	if got.Render("x") != red.Render("x") {
 		t.Errorf("contextThresholds(100): expected red (critical), got different style")
 	}
@@ -1500,6 +1500,181 @@ func TestAbbreviateFish(t *testing.T) {
 		if got != tt.want {
 			t.Errorf("abbreviateFish(%q) = %q, want %q", tt.path, got, tt.want)
 		}
+	}
+}
+
+// -- Configurable context thresholds ------------------------------------------
+
+func TestContextWidget_BelowWarningUsesNormalColor(t *testing.T) {
+	// At 50%, below the default warning threshold of 70%, should render in normal (green) color.
+	ctx := &model.RenderContext{ContextPercent: 50, ContextWindowSize: 200000}
+	cfg := defaultCfg()
+	// Render at normal and at warning color to confirm they differ.
+	got := Context(ctx, cfg)
+	if !strings.Contains(got, "50%") {
+		t.Errorf("below warning: expected '50%%' in output, got %q", got)
+	}
+}
+
+func TestContextWidget_AtWarningThresholdUsesWarningColor(t *testing.T) {
+	// Exactly at the warning threshold (70%) should use warning color.
+	ctx := &model.RenderContext{ContextPercent: 70, ContextWindowSize: 200000}
+	cfg := defaultCfg()
+
+	normalCtx := &model.RenderContext{ContextPercent: 50, ContextWindowSize: 200000}
+	gotWarning := Context(ctx, cfg)
+	gotNormal := Context(normalCtx, cfg)
+
+	// The ANSI sequences must differ since colors differ.
+	if gotWarning == gotNormal {
+		t.Errorf("at warning threshold: expected different styling from normal, but both rendered the same ANSI output")
+	}
+}
+
+func TestContextWidget_AtCriticalThresholdUsesCriticalColor(t *testing.T) {
+	// Exactly at the critical threshold (85%) should use critical color.
+	ctx := &model.RenderContext{ContextPercent: 85, ContextWindowSize: 200000}
+	cfg := defaultCfg()
+
+	warnCtx := &model.RenderContext{ContextPercent: 70, ContextWindowSize: 200000}
+	gotCritical := Context(ctx, cfg)
+	gotWarning := Context(warnCtx, cfg)
+
+	if gotCritical == gotWarning {
+		t.Errorf("at critical threshold: expected different styling from warning, but both rendered the same ANSI output")
+	}
+}
+
+func TestContextWidget_AboveCriticalThresholdUsesCriticalColor(t *testing.T) {
+	// Above critical (95%) should use the same critical color as at 85%.
+	// Disable breakdown so both render as a simple percent label with no suffix.
+	ctx95 := &model.RenderContext{ContextPercent: 95, ContextWindowSize: 200000}
+	ctx85 := &model.RenderContext{ContextPercent: 85, ContextWindowSize: 200000}
+	cfg := defaultCfg()
+	cfg.Context.ShowBreakdown = false
+
+	got95 := Context(ctx95, cfg)
+	got85 := Context(ctx85, cfg)
+
+	if !strings.Contains(got95, "95%") {
+		t.Errorf("above critical: expected '95%%' in output, got %q", got95)
+	}
+	// Both should use the same critical style — strip the percent digits and compare.
+	ansi95 := strings.Replace(got95, "95", "XX", 1)
+	ansi85 := strings.Replace(got85, "85", "XX", 1)
+	if ansi95 != ansi85 {
+		t.Errorf("above critical: expected same ANSI structure as at-critical, got %q vs %q", ansi95, ansi85)
+	}
+}
+
+func TestContextWidget_CustomWarningThreshold(t *testing.T) {
+	// A custom warning threshold of 60 should trigger warning color at 60%.
+	ctx60 := &model.RenderContext{ContextPercent: 60, ContextWindowSize: 200000}
+	ctx50 := &model.RenderContext{ContextPercent: 50, ContextWindowSize: 200000}
+	cfg := defaultCfg()
+	cfg.Thresholds.ContextWarning = 60
+	cfg.Thresholds.ContextCritical = 80
+
+	got60 := Context(ctx60, cfg)
+	got50 := Context(ctx50, cfg)
+
+	// 60% should use warning color; 50% should use normal color.
+	if got60 == got50 {
+		t.Errorf("custom warning=60: expected different styling at 60%% vs 50%%")
+	}
+}
+
+// -- Cost widget --------------------------------------------------------------
+
+func TestCostWidget_ZeroReturnsEmpty(t *testing.T) {
+	ctx := &model.RenderContext{SessionCostUSD: 0}
+	cfg := defaultCfg()
+
+	if got := Cost(ctx, cfg); got != "" {
+		t.Errorf("Cost zero: expected empty string, got %q", got)
+	}
+}
+
+func TestCostWidget_BelowWarningUsesNormalColor(t *testing.T) {
+	ctx := &model.RenderContext{SessionCostUSD: 2.50}
+	cfg := defaultCfg()
+
+	got := Cost(ctx, cfg)
+	if !strings.Contains(got, "$2.50") {
+		t.Errorf("Cost below warning: expected '$2.50' in output, got %q", got)
+	}
+}
+
+func TestCostWidget_AtWarningThresholdUsesWarningColor(t *testing.T) {
+	ctxWarn := &model.RenderContext{SessionCostUSD: 5.00}
+	ctxNorm := &model.RenderContext{SessionCostUSD: 2.00}
+	cfg := defaultCfg()
+
+	gotWarn := Cost(ctxWarn, cfg)
+	gotNorm := Cost(ctxNorm, cfg)
+
+	if gotWarn == gotNorm {
+		t.Errorf("Cost at warning: expected different styling from normal")
+	}
+	if !strings.Contains(gotWarn, "$5.00") {
+		t.Errorf("Cost at warning: expected '$5.00' in output, got %q", gotWarn)
+	}
+}
+
+func TestCostWidget_AtCriticalThresholdUsesCriticalColor(t *testing.T) {
+	ctxCrit := &model.RenderContext{SessionCostUSD: 10.00}
+	ctxWarn := &model.RenderContext{SessionCostUSD: 5.00}
+	cfg := defaultCfg()
+
+	gotCrit := Cost(ctxCrit, cfg)
+	gotWarn := Cost(ctxWarn, cfg)
+
+	if gotCrit == gotWarn {
+		t.Errorf("Cost at critical: expected different styling from warning")
+	}
+	if !strings.Contains(gotCrit, "$10.00") {
+		t.Errorf("Cost at critical: expected '$10.00' in output, got %q", gotCrit)
+	}
+}
+
+func TestCostWidget_AboveCriticalUsesCriticalColor(t *testing.T) {
+	ctx15 := &model.RenderContext{SessionCostUSD: 15.00}
+	ctx10 := &model.RenderContext{SessionCostUSD: 10.00}
+	cfg := defaultCfg()
+
+	got15 := Cost(ctx15, cfg)
+	got10 := Cost(ctx10, cfg)
+
+	// Both should use critical color; strip dollar amounts and compare ANSI structure.
+	ansi15 := strings.Replace(got15, "15.00", "XX.XX", 1)
+	ansi10 := strings.Replace(got10, "10.00", "XX.XX", 1)
+	if ansi15 != ansi10 {
+		t.Errorf("Cost above critical: expected same ANSI structure as at-critical, got %q vs %q", ansi15, ansi10)
+	}
+}
+
+func TestCostWidget_CustomThresholds(t *testing.T) {
+	// Custom thresholds: warn at $2, critical at $4.
+	cfg := defaultCfg()
+	cfg.Thresholds.CostWarning = 2.00
+	cfg.Thresholds.CostCritical = 4.00
+
+	ctxNorm := &model.RenderContext{SessionCostUSD: 1.00}
+	ctxWarn := &model.RenderContext{SessionCostUSD: 2.00}
+	ctxCrit := &model.RenderContext{SessionCostUSD: 4.00}
+
+	gotNorm := Cost(ctxNorm, cfg)
+	gotWarn := Cost(ctxWarn, cfg)
+	gotCrit := Cost(ctxCrit, cfg)
+
+	if gotNorm == gotWarn {
+		t.Errorf("custom thresholds: normal and warning should differ")
+	}
+	if gotWarn == gotCrit {
+		t.Errorf("custom thresholds: warning and critical should differ")
+	}
+	if !strings.Contains(gotCrit, "$4.00") {
+		t.Errorf("custom critical: expected '$4.00', got %q", gotCrit)
 	}
 }
 

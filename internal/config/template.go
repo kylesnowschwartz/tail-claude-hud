@@ -97,6 +97,17 @@ critical = "red"
 # Set to 0 to use the session average.
 window_secs = 30
 
+# Thresholds — controls when widget colors shift from normal to warning to critical.
+[thresholds]
+# Context usage percentage at which the context widget shifts to warning color.
+context_warning = 70
+# Context usage percentage at which the context widget shifts to critical color.
+context_critical = 85
+# Session cost in USD at which the cost widget shifts to warning color.
+cost_warning = 5.00
+# Session cost in USD at which the cost widget shifts to critical color.
+cost_critical = 10.00
+
 [extra]
 # Uncomment to run a shell command and append its output to the statusline.
 # command = "my-custom-command"
