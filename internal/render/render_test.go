@@ -167,6 +167,34 @@ func TestRender_NoTruncationBelowMinWidth(t *testing.T) {
 	}
 }
 
+func TestRender_AnsiResetPrefixPerLine(t *testing.T) {
+	// Each rendered line must start with the ANSI reset escape so that Claude
+	// Code's dim styling does not bleed into our statusline colors.
+	ctx := &model.RenderContext{
+		ModelDisplayName:  "Sonnet",
+		ContextWindowSize: 200000,
+		ContextPercent:    50,
+	}
+	cfg := config.LoadHud()
+	cfg.Lines = []config.Line{
+		{Widgets: []string{"model"}},
+		{Widgets: []string{"context"}},
+	}
+
+	var buf bytes.Buffer
+	Render(&buf, ctx, cfg)
+
+	lines := strings.Split(strings.TrimRight(buf.String(), "\n"), "\n")
+	if len(lines) == 0 {
+		t.Fatal("Render produced no lines")
+	}
+	for i, line := range lines {
+		if !strings.HasPrefix(line, "\x1b[0m") {
+			t.Errorf("line %d does not start with ANSI reset, got %q", i, line)
+		}
+	}
+}
+
 func TestRender_UsesSeparator(t *testing.T) {
 	ctx := &model.RenderContext{
 		ModelDisplayName:  "Opus",

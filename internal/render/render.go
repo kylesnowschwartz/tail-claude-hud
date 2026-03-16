@@ -17,6 +17,11 @@ import (
 // truncateSuffix is appended when a line is truncated to fit terminal width.
 const truncateSuffix = "..."
 
+// ansiReset is prepended to every output line so that our ANSI color codes
+// render correctly even when Claude Code applies dim styling to plugin output.
+// Without this, Claude Code's dim setting bleeds into the statusline colors.
+const ansiReset = "\x1b[0m"
+
 // minTruncateWidth is the smallest terminal width at which truncation is
 // applied. Below this threshold the suffix itself would consume most of the
 // available space and produce output that is less useful than the raw text.
@@ -61,6 +66,8 @@ func Render(w io.Writer, ctx *model.RenderContext, cfg *config.Config) {
 			output = ansi.Truncate(output, ctx.TerminalWidth, truncateSuffix)
 		}
 
-		fmt.Fprintln(w, output)
+		// Prepend reset before any space-protection so our colors override
+		// Claude Code's dim styling that bleeds into plugin output.
+		fmt.Fprintln(w, ansiReset+output)
 	}
 }
