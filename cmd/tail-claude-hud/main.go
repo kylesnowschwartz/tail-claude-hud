@@ -38,6 +38,9 @@ func main() {
 		}
 	} else {
 		input, err = stdin.Read(os.Stdin)
+		if err == nil && input != nil {
+			stdin.SaveSnapshot(input)
+		}
 	}
 
 	if err != nil || input == nil {
@@ -55,24 +58,49 @@ func main() {
 	render.Render(os.Stdout, ctx, cfg)
 }
 
-// readFromFile resolves the transcript path from CLI args or the environment
-// and delegates to readFileInput. Priority order:
+// readFromFile loads the last-stdin snapshot (model, context window) and
+// resolves the transcript path so the gather stage can parse tools/agents/todos.
+// The snapshot is written on every live statusline invocation, so it reflects
+// the most recent state from the active Claude Code session.
+//
+// Transcript path priority:
 //  1. positional argument (first non-flag arg)
 //  2. CLAUDE_TRANSCRIPT_PATH env var
-//  3. auto-discover: most recently modified .jsonl in ~/.claude/projects/<cwd-slug>/
+//  3. snapshot's own TranscriptPath
+//  4. auto-discover: most recently modified .jsonl in ~/.claude/projects/<cwd-slug>/
 func readFromFile() (*model.StdinData, error) {
+	// Start from the persisted snapshot when available. If missing, fall back
+	// to an empty StdinData — dump still works, just without model/context.
+	data, err := stdin.LoadSnapshot()
+	if err != nil {
+		data = &model.StdinData{}
+	}
+
+	// Resolve transcript path, allowing explicit overrides.
 	path := flag.Arg(0)
 	if path == "" {
 		path = os.Getenv("CLAUDE_TRANSCRIPT_PATH")
 	}
 	if path == "" {
-		var err error
+		path = data.TranscriptPath
+	}
+	if path == "" {
 		path, err = findCurrentTranscript()
 		if err != nil {
 			return nil, err
 		}
 	}
-	return readFileInput(path)
+
+	if _, err := os.Stat(path); err != nil {
+		return nil, fmt.Errorf("--dump-current: %w", err)
+	}
+
+	data.TranscriptPath = path
+	if data.Cwd == "" {
+		data.Cwd = mustCwd()
+	}
+
+	return data, nil
 }
 
 // findCurrentTranscript auto-discovers the most recently modified .jsonl file
@@ -146,14 +174,15 @@ func encodePath(absPath string) string {
 	return r.Replace(absPath)
 }
 
-// readFileInput opens path and parses it through the stdin pipeline.
-// Extracted so tests can exercise file reading without flag state.
-func readFileInput(path string) (*model.StdinData, error) {
-	f, err := os.Open(path)
+// mustCwd returns the current working directory, resolving symlinks to match
+// Claude Code's on-disk encoding (e.g. macOS /tmp -> /private/tmp).
+func mustCwd() string {
+	cwd, err := os.Getwd()
 	if err != nil {
-		return nil, fmt.Errorf("--dump-current: open %q: %w", path, err)
+		return ""
 	}
-	defer f.Close()
-
-	return stdin.Read(f)
+	if resolved, err := filepath.EvalSymlinks(cwd); err == nil {
+		cwd = resolved
+	}
+	return cwd
 }

@@ -7,9 +7,16 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/model"
 )
+
+// snapshotDir is the directory where the last-stdin snapshot is persisted.
+// Same location as transcript state files: ~/.claude/plugins/tail-claude-hud/
+var snapshotDir = defaultSnapshotDir()
+
+const snapshotFile = "last-stdin.json"
 
 // Read decodes one JSON object from f and returns the parsed StdinData.
 //
@@ -48,6 +55,49 @@ func decode(r io.Reader) (*model.StdinData, error) {
 
 	data.ContextPercent = computeContextPercent(&data)
 	return &data, nil
+}
+
+// SaveSnapshot persists data as JSON to snapshotDir/last-stdin.json.
+// Called on every successful Read so --dump-current can replay the most
+// recent stdin state. Errors are silently ignored — a missing snapshot
+// degrades dump output but never blocks the live statusline.
+func SaveSnapshot(data *model.StdinData) {
+	if snapshotDir == "" {
+		return
+	}
+	_ = os.MkdirAll(snapshotDir, 0o755)
+
+	b, err := json.Marshal(data)
+	if err != nil {
+		return
+	}
+	_ = os.WriteFile(filepath.Join(snapshotDir, snapshotFile), b, 0o644)
+}
+
+// LoadSnapshot reads the last-stdin snapshot from disk and returns the
+// decoded StdinData. Returns nil and an error if the file is missing or
+// corrupt — callers should fall back gracefully.
+func LoadSnapshot() (*model.StdinData, error) {
+	if snapshotDir == "" {
+		return nil, fmt.Errorf("stdin: snapshot dir unknown")
+	}
+
+	path := filepath.Join(snapshotDir, snapshotFile)
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("stdin: open snapshot: %w", err)
+	}
+	defer f.Close()
+
+	return decode(f)
+}
+
+func defaultSnapshotDir() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, ".claude", "plugins", "tail-claude-hud")
 }
 
 // computeContextPercent returns the context usage as a 0–100 integer.
