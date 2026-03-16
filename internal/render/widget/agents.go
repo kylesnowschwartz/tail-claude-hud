@@ -62,15 +62,23 @@ func formatAgentEntry(a model.AgentEntry, icons Icons) string {
 	icon := icons.Agent
 	modelSuffix := modelFamilySuffix(a.Model)
 
+	// Prefer the description ("Structural completeness review") over the
+	// subagent_type ("general-purpose") when available. The description is
+	// the human-readable task label from the Agent tool_use input.
+	displayName := a.Name
+	if a.Description != "" {
+		displayName = a.Description
+	}
+
 	if a.Status == "running" {
 		elapsed := formatElapsed(time.Since(a.StartTime))
-		label := icon + " " + a.Name + modelSuffix
+		label := icon + " " + displayName + modelSuffix
 		return style.Render(label) + " " + style.Render(icons.Running) + " " + dimStyle.Render(elapsed)
 	}
 
 	// Completed: dim the colored icon, show check + duration.
 	dimColorStyle := style.Faint(true)
-	label := icon + " " + a.Name + modelSuffix
+	label := icon + " " + displayName + modelSuffix
 	duration := formatDuration(a.DurationMs)
 	return dimColorStyle.Render(label) + " " + greenStyle.Render(icons.Check) + " " + dimStyle.Render(duration)
 }
