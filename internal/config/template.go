@@ -123,13 +123,29 @@ cost_warning = 5.00
 cost_critical = 10.00
 
 # Theme overrides — per-widget color customisation on top of style.theme.
-# Each key is a widget name. fg and bg accept CSS hex (#rrggbb) or ANSI
-# 256-color numbers ("75"). Omit either field to keep the theme's default.
+# Each key is a widget name. fg and bg are string values that accept:
+#   - Hex:        "#rrggbb"  e.g. fg = "#ff8800"
+#   - 256-color:  "N"        e.g. fg = "114"  (ANSI 256-color index)
+#   - Named ANSI: name       e.g. fg = "green", fg = "cyan", fg = "red"
 #
-# Example: make the git widget use a deep navy background with white text:
+# Omitting a field sets it to empty (terminal default). Omitting both fg and bg
+# for a widget keeps the entry in the table but applies no colors.
+# To keep a theme's bg while changing only fg, copy the theme's bg value.
+#
+# Examples:
 #   [theme.overrides.git]
-#   fg = "#ffffff"
-#   bg = "#0a1628"
+#   fg = "#ffffff"        # hex fg; bg uses terminal default
+#   bg = "#0a1628"        # hex bg
+#
+#   [theme.overrides.model]
+#   fg = "#ff8800"        # fg-only hex override (bg becomes empty)
+#
+#   [theme.overrides.duration]
+#   bg = "235"            # bg-only 256-color override (fg becomes empty)
+#
+#   [theme.overrides.context]
+#   fg = "cyan"           # named ANSI fg
+#   bg = "#1a1a2e"        # hex bg
 #
 # [theme.overrides]
 

@@ -422,6 +422,171 @@ theme = "nonexistent-theme-xyz"
 	}
 }
 
+// TestThemeOverride_noOverrideUsesThemeDefaults verifies that a widget with no
+// entry in [theme.overrides] keeps the built-in theme's colors in ResolvedTheme.
+func TestThemeOverride_noOverrideUsesThemeDefaults(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("HOME", tmp)
+
+	dir := filepath.Join(tmp, ".config", "tail-claude-hud")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Override only the model widget; duration should keep the default theme's value.
+	writeConfig(t, dir, `
+[style]
+theme = "default"
+
+[theme.overrides.model]
+fg = "#ff0000"
+bg = "#001122"
+`)
+
+	cfg := LoadHud()
+
+	// duration is not overridden; it must equal the default theme's entry.
+	defaultDurationFg := "244" // from theme.defaultTheme
+	if cfg.ResolvedTheme["duration"].Fg != defaultDurationFg {
+		t.Errorf("duration (no override) Fg: got %q, want %q", cfg.ResolvedTheme["duration"].Fg, defaultDurationFg)
+	}
+}
+
+// TestThemeOverride_fgOnly verifies that a [theme.overrides] entry with only fg
+// set updates ResolvedTheme for that widget. Bg will be empty because
+// MergeOverrides replaces the entire widget entry.
+func TestThemeOverride_fgOnly(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("HOME", tmp)
+
+	dir := filepath.Join(tmp, ".config", "tail-claude-hud")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	writeConfig(t, dir, `
+[theme.overrides.model]
+fg = "#ff8800"
+`)
+
+	cfg := LoadHud()
+
+	if cfg.ResolvedTheme["model"].Fg != "#ff8800" {
+		t.Errorf("fg-only override model Fg: got %q, want %q", cfg.ResolvedTheme["model"].Fg, "#ff8800")
+	}
+	// Bg is zeroed out by the replace-entire-entry semantics.
+	if cfg.ResolvedTheme["model"].Bg != "" {
+		t.Errorf("fg-only override model Bg: got %q, want empty", cfg.ResolvedTheme["model"].Bg)
+	}
+}
+
+// TestThemeOverride_bgOnly verifies that a [theme.overrides] entry with only bg
+// set updates ResolvedTheme for that widget. Fg will be empty.
+func TestThemeOverride_bgOnly(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("HOME", tmp)
+
+	dir := filepath.Join(tmp, ".config", "tail-claude-hud")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	writeConfig(t, dir, `
+[theme.overrides.duration]
+bg = "235"
+`)
+
+	cfg := LoadHud()
+
+	if cfg.ResolvedTheme["duration"].Fg != "" {
+		t.Errorf("bg-only override duration Fg: got %q, want empty", cfg.ResolvedTheme["duration"].Fg)
+	}
+	if cfg.ResolvedTheme["duration"].Bg != "235" {
+		t.Errorf("bg-only override duration Bg: got %q, want %q", cfg.ResolvedTheme["duration"].Bg, "235")
+	}
+}
+
+// TestThemeOverride_bothFgAndBg verifies that setting both fg and bg in
+// [theme.overrides] correctly replaces both fields in ResolvedTheme.
+func TestThemeOverride_bothFgAndBg(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("HOME", tmp)
+
+	dir := filepath.Join(tmp, ".config", "tail-claude-hud")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	writeConfig(t, dir, `
+[theme.overrides.context]
+fg = "cyan"
+bg = "#1a1a2e"
+
+[theme.overrides.git]
+fg = "42"
+bg = "235"
+`)
+
+	cfg := LoadHud()
+
+	// context: named ANSI fg + hex bg
+	if cfg.ResolvedTheme["context"].Fg != "cyan" {
+		t.Errorf("context Fg: got %q, want %q", cfg.ResolvedTheme["context"].Fg, "cyan")
+	}
+	if cfg.ResolvedTheme["context"].Bg != "#1a1a2e" {
+		t.Errorf("context Bg: got %q, want %q", cfg.ResolvedTheme["context"].Bg, "#1a1a2e")
+	}
+
+	// git: 256-color fg + 256-color bg
+	if cfg.ResolvedTheme["git"].Fg != "42" {
+		t.Errorf("git Fg: got %q, want %q", cfg.ResolvedTheme["git"].Fg, "42")
+	}
+	if cfg.ResolvedTheme["git"].Bg != "235" {
+		t.Errorf("git Bg: got %q, want %q", cfg.ResolvedTheme["git"].Bg, "235")
+	}
+}
+
+// TestThemeOverride_colorFormats verifies that all three supported color formats
+// (hex #RRGGBB, 256-color index, named ANSI) round-trip through TOML and
+// appear correctly in ResolvedTheme.
+func TestThemeOverride_colorFormats(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("HOME", tmp)
+
+	dir := filepath.Join(tmp, ".config", "tail-claude-hud")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	writeConfig(t, dir, `
+[theme.overrides.model]
+fg = "#ff8800"
+
+[theme.overrides.project]
+fg = "114"
+
+[theme.overrides.git]
+fg = "green"
+`)
+
+	cfg := LoadHud()
+
+	cases := []struct {
+		widget  string
+		wantFg  string
+	}{
+		{"model", "#ff8800"},   // hex
+		{"project", "114"},     // 256-color index
+		{"git", "green"},       // named ANSI
+	}
+	for _, tc := range cases {
+		got := cfg.ResolvedTheme[tc.widget].Fg
+		if got != tc.wantFg {
+			t.Errorf("widget %q Fg: got %q, want %q", tc.widget, got, tc.wantFg)
+		}
+	}
+}
+
 // assertWidgets fails the test if got and want differ in length or content.
 func assertWidgets(t *testing.T, got, want []string) {
 	t.Helper()
