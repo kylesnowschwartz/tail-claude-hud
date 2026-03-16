@@ -198,7 +198,7 @@ func BenchmarkRender_FullContext(b *testing.B) {
 		InputTokens:       45000,
 		CacheCreation:     12000,
 		CacheRead:         8000,
-		SessionDuration:   "2026-03-15T09:00:00Z",
+		SessionStart:      "2026-03-15T09:00:00Z",
 		TerminalWidth:     200,
 		Transcript: &model.TranscriptData{
 			Path:        "/tmp/bench-session.jsonl",

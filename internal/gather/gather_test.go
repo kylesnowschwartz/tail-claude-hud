@@ -162,7 +162,7 @@ func TestGather_TranscriptPopulatedFromFile(t *testing.T) {
 	}
 }
 
-func TestGather_SessionDurationFromTranscriptTimestamp(t *testing.T) {
+func TestGather_SessionStartFromTranscriptTimestamp(t *testing.T) {
 	dir := t.TempDir()
 	transcriptPath := filepath.Join(dir, "session.jsonl")
 
@@ -186,9 +186,9 @@ func TestGather_SessionDurationFromTranscriptTimestamp(t *testing.T) {
 
 	ctx := Gather(input, cfg)
 
-	// SessionDuration should be the RFC3339 timestamp of the first entry.
-	if ctx.SessionDuration == "" {
-		t.Error("expected SessionDuration to be set from transcript timestamp, got empty string")
+	// SessionStart should be the RFC3339 timestamp of the first entry.
+	if ctx.SessionStart == "" {
+		t.Error("expected SessionStart to be set from transcript timestamp, got empty string")
 	}
 }
 

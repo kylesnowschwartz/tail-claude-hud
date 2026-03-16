@@ -785,19 +785,19 @@ func TestEnvWidget_HooksOnly(t *testing.T) {
 
 // -- Duration widget ----------------------------------------------------------
 
-func TestDurationWidget_EmptySessionDurationReturnsEmpty(t *testing.T) {
-	ctx := &model.RenderContext{SessionDuration: ""}
+func TestDurationWidget_EmptySessionStartReturnsEmpty(t *testing.T) {
+	ctx := &model.RenderContext{SessionStart: ""}
 	cfg := defaultCfg()
 
 	if got := Duration(ctx, cfg); got != "" {
-		t.Errorf("Duration with empty SessionDuration: expected empty, got %q", got)
+		t.Errorf("Duration with empty SessionStart: expected empty, got %q", got)
 	}
 }
 
 func TestDurationWidget_RendersTimestamp(t *testing.T) {
 	// Use a timestamp 2 hours and 30 minutes ago.
 	start := time.Now().Add(-2*time.Hour - 30*time.Minute).UTC().Format(time.RFC3339)
-	ctx := &model.RenderContext{SessionDuration: start}
+	ctx := &model.RenderContext{SessionStart: start}
 	cfg := defaultCfg()
 
 	got := Duration(ctx, cfg)
@@ -811,7 +811,7 @@ func TestDurationWidget_RendersTimestamp(t *testing.T) {
 
 func TestDurationWidget_ShortSession(t *testing.T) {
 	start := time.Now().Add(-5*time.Minute - 10*time.Second).UTC().Format(time.RFC3339)
-	ctx := &model.RenderContext{SessionDuration: start}
+	ctx := &model.RenderContext{SessionStart: start}
 	cfg := defaultCfg()
 
 	got := Duration(ctx, cfg)
@@ -825,7 +825,7 @@ func TestDurationWidget_ShortSession(t *testing.T) {
 
 func TestDurationWidget_UsesIconLookup(t *testing.T) {
 	start := time.Now().Add(-1 * time.Minute).UTC().Format(time.RFC3339)
-	ctx := &model.RenderContext{SessionDuration: start}
+	ctx := &model.RenderContext{SessionStart: start}
 	cfg := defaultCfg()
 	cfg.Style.Icons = "ascii"
 

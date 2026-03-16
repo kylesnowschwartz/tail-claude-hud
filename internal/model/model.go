@@ -6,12 +6,8 @@ import "time"
 // RenderContext is the central struct passed from the gather stage to each render widget.
 // Every pointer field may be nil — widgets must guard against nil before dereferencing.
 type RenderContext struct {
-	// Config will be *config.Config once that package exists.
-	Config interface{}
-
-	TerminalWidth   int
-	SessionDuration string
-	ExtraLabel      string
+	TerminalWidth int
+	SessionStart  string
 
 	// Top-level fields populated from StdinData during the gather stage.
 	// Widgets read these directly rather than dereferencing pointer fields.
