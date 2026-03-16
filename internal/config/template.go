@@ -31,6 +31,7 @@ const DefaultTemplate = `# tail-claude-hud configuration
 #   git       — full repository state (dirty, ahead/behind, file stats)
 #   directory — current working directory path
 #   env       — environment variable counts (opt-in)
+#   speed     — rolling tokens/sec average (requires transcript)
 [[line]]
 widgets = ["model", "context", "project", "todos", "duration"]
 
@@ -89,6 +90,12 @@ context = "green"
 warning = "yellow"
 # Colour when context usage passes the critical threshold.
 critical = "red"
+
+# Speed widget — shows rolling tokens/sec average.
+[speed]
+# Rolling window in seconds. Only tokens from the last N seconds are counted.
+# Set to 0 to use the session average.
+window_secs = 30
 
 [extra]
 # Uncomment to run a shell command and append its output to the statusline.

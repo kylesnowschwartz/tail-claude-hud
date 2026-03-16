@@ -29,6 +29,9 @@ type Config struct {
 		Value         string `toml:"value"`
 		ShowBreakdown bool   `toml:"show_breakdown"`
 	} `toml:"context"`
+	Speed struct {
+		WindowSecs int `toml:"window_secs"`
+	} `toml:"speed"`
 	Directory struct {
 		Levels int    `toml:"levels"`
 		Style  string `toml:"style"`
@@ -65,6 +68,8 @@ func defaults() *Config {
 	cfg.Context.Display = "text"
 	cfg.Context.Value = "percent"
 	cfg.Context.ShowBreakdown = true
+
+	cfg.Speed.WindowSecs = 30
 
 	cfg.Directory.Levels = 1
 	cfg.Directory.Style = "full"

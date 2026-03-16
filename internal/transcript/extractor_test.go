@@ -2404,3 +2404,137 @@ func TestSkills_SnapshotRoundTrip_PreservesSkillNames(t *testing.T) {
 		t.Errorf("unexpected skill names after round-trip: %v", data.SkillNames)
 	}
 }
+
+// ---- Token sample extraction -----------------------------------------------
+
+// makeAssistantEntryWithUsage builds an assistant Entry with a usage field.
+func makeAssistantEntryWithUsage(inputTokens, outputTokens int, ts time.Time) Entry {
+	var e Entry
+	e.Message.Role = "assistant"
+	e.Timestamp = ts.Format(time.RFC3339Nano)
+	e.Message.Usage = &struct {
+		InputTokens  int `json:"input_tokens"`
+		OutputTokens int `json:"output_tokens"`
+	}{
+		InputTokens:  inputTokens,
+		OutputTokens: outputTokens,
+	}
+	return e
+}
+
+// TestProcessEntry_TokenSample_RecordedFromAssistantMessage verifies that an
+// assistant message with usage data produces a TokenSample in the extracted data.
+func TestProcessEntry_TokenSample_RecordedFromAssistantMessage(t *testing.T) {
+	es := NewExtractionState()
+	ts := time.Now()
+	e := makeAssistantEntryWithUsage(800, 200, ts)
+	es.ProcessEntry(e)
+
+	data := es.ToTranscriptData()
+	if len(data.TokenSamples) != 1 {
+		t.Fatalf("expected 1 token sample, got %d", len(data.TokenSamples))
+	}
+	got := data.TokenSamples[0]
+	if got.Tokens != 1000 {
+		t.Errorf("expected Tokens=1000 (800+200), got %d", got.Tokens)
+	}
+	if got.Timestamp.IsZero() {
+		t.Errorf("expected non-zero timestamp in token sample")
+	}
+}
+
+// TestProcessEntry_TokenSample_ZeroUsageNotRecorded verifies that an assistant
+// message with zero tokens is not recorded (avoid noise from empty messages).
+func TestProcessEntry_TokenSample_ZeroUsageNotRecorded(t *testing.T) {
+	es := NewExtractionState()
+	e := makeAssistantEntryWithUsage(0, 0, time.Now())
+	es.ProcessEntry(e)
+
+	data := es.ToTranscriptData()
+	if len(data.TokenSamples) != 0 {
+		t.Errorf("expected no token samples for zero usage, got %d", len(data.TokenSamples))
+	}
+}
+
+// TestProcessEntry_TokenSample_NoUsageFieldNotRecorded verifies that an
+// assistant message without a usage field produces no TokenSample.
+func TestProcessEntry_TokenSample_NoUsageFieldNotRecorded(t *testing.T) {
+	es := NewExtractionState()
+	// Regular tool_use entry (no usage field).
+	e := makeToolUseEntry("id-1", "Read", map[string]interface{}{"file_path": "main.go"})
+	es.ProcessEntry(e)
+
+	data := es.ToTranscriptData()
+	if len(data.TokenSamples) != 0 {
+		t.Errorf("expected no token samples for entry without usage, got %d", len(data.TokenSamples))
+	}
+}
+
+// TestProcessEntry_TokenSample_MultipleEntriesAccumulate verifies that multiple
+// assistant messages each produce their own TokenSample.
+func TestProcessEntry_TokenSample_MultipleEntriesAccumulate(t *testing.T) {
+	es := NewExtractionState()
+	base := time.Now()
+	es.ProcessEntry(makeAssistantEntryWithUsage(500, 100, base))
+	es.ProcessEntry(makeAssistantEntryWithUsage(600, 150, base.Add(5*time.Second)))
+	es.ProcessEntry(makeAssistantEntryWithUsage(700, 200, base.Add(10*time.Second)))
+
+	data := es.ToTranscriptData()
+	if len(data.TokenSamples) != 3 {
+		t.Fatalf("expected 3 token samples, got %d", len(data.TokenSamples))
+	}
+	// Verify token totals.
+	if data.TokenSamples[0].Tokens != 600 {
+		t.Errorf("sample[0].Tokens = %d, want 600", data.TokenSamples[0].Tokens)
+	}
+	if data.TokenSamples[1].Tokens != 750 {
+		t.Errorf("sample[1].Tokens = %d, want 750", data.TokenSamples[1].Tokens)
+	}
+	if data.TokenSamples[2].Tokens != 900 {
+		t.Errorf("sample[2].Tokens = %d, want 900", data.TokenSamples[2].Tokens)
+	}
+}
+
+// TestProcessEntry_TokenSample_SidechainExcluded verifies that sidechain
+// entries do not contribute token samples (same as all other sidechain filtering).
+func TestProcessEntry_TokenSample_SidechainExcluded(t *testing.T) {
+	es := NewExtractionState()
+	e := makeAssistantEntryWithUsage(1000, 500, time.Now())
+	e.IsSidechain = true
+	es.ProcessEntry(e)
+
+	data := es.ToTranscriptData()
+	if len(data.TokenSamples) != 0 {
+		t.Errorf("expected no token samples from sidechain entry, got %d", len(data.TokenSamples))
+	}
+}
+
+// TestTokenSamples_PersistedThroughSnapshot verifies that TokenSamples survive
+// a marshal/unmarshal round-trip so they persist across invocations.
+func TestTokenSamples_PersistedThroughSnapshot(t *testing.T) {
+	es := NewExtractionState()
+	base := time.Now().Truncate(time.Millisecond) // truncate for clean round-trip comparison
+	es.ProcessEntry(makeAssistantEntryWithUsage(400, 100, base))
+	es.ProcessEntry(makeAssistantEntryWithUsage(600, 200, base.Add(8*time.Second)))
+
+	snap, err := es.MarshalSnapshot()
+	if err != nil {
+		t.Fatalf("MarshalSnapshot: %v", err)
+	}
+
+	es2 := NewExtractionState()
+	if err := es2.UnmarshalSnapshot(snap); err != nil {
+		t.Fatalf("UnmarshalSnapshot: %v", err)
+	}
+
+	data := es2.ToTranscriptData()
+	if len(data.TokenSamples) != 2 {
+		t.Fatalf("expected 2 token samples after restore, got %d", len(data.TokenSamples))
+	}
+	if data.TokenSamples[0].Tokens != 500 {
+		t.Errorf("sample[0].Tokens = %d, want 500", data.TokenSamples[0].Tokens)
+	}
+	if data.TokenSamples[1].Tokens != 800 {
+		t.Errorf("sample[1].Tokens = %d, want 800", data.TokenSamples[1].Tokens)
+	}
+}

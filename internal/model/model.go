@@ -46,6 +46,13 @@ type RenderContext struct {
 	Git        *GitStatus
 }
 
+// TokenSample records a token count observation at a point in time.
+// It is used by the speed widget to compute a rolling tokens/sec average.
+type TokenSample struct {
+	Timestamp time.Time
+	Tokens    int // total tokens (input + output) from a single assistant message
+}
+
 // TranscriptData holds parsed information from the Claude Code transcript.
 type TranscriptData struct {
 	Path        string
@@ -57,6 +64,10 @@ type TranscriptData struct {
 	// (newest last), capped at 20. Each entry is the full skill identifier
 	// extracted from a "Skill" tool_use block's input.skill field.
 	SkillNames []string
+
+	// TokenSamples holds timestamp+token pairs extracted from assistant messages.
+	// Used by the speed widget to compute a rolling tokens/sec average.
+	TokenSamples []TokenSample
 
 	// ThinkingActive is true when the most recent assistant message contained a
 	// thinking block that was not followed by a tool_use or text block in the

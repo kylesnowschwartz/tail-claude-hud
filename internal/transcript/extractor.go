@@ -50,6 +50,11 @@ type internalAgent struct {
 	durationMs  int // 0 = still running; populated by a separate card
 }
 
+// maxTokenSamples is the maximum number of TokenSample entries retained.
+// At one sample per assistant message, 200 samples covers many sessions
+// while keeping the snapshot small.
+const maxTokenSamples = 200
+
 // ExtractionState accumulates tool, agent, todo, and thinking data across a
 // sequence of parsed transcript entries. It is designed for incremental use:
 // call ProcessEntry for each new line, then call ToTranscriptData for the
@@ -77,6 +82,10 @@ type ExtractionState struct {
 
 	// displayAgents holds the ordered list of agents for rendering (newest last).
 	displayAgents []*internalAgent
+
+	// tokenSamples accumulates timestamp+token pairs from assistant messages.
+	// Used by the speed widget to compute a rolling tokens/sec average.
+	tokenSamples []model.TokenSample
 
 	// sessionName holds the display name for the current session. Set from a
 	// custom-title entry when present, otherwise falls back to the slug field.
@@ -172,6 +181,22 @@ func (es *ExtractionState) ProcessEntry(e Entry) {
 
 	for _, b := range blocks.ToolResult {
 		es.processToolResult(b, ts)
+	}
+
+	// Record token usage from assistant messages for the speed widget.
+	// Only sample non-sidechain assistant messages that have usage data.
+	if e.Message.Role == "assistant" && e.Message.Usage != nil {
+		total := e.Message.Usage.InputTokens + e.Message.Usage.OutputTokens
+		if total > 0 {
+			es.tokenSamples = append(es.tokenSamples, model.TokenSample{
+				Timestamp: ts,
+				Tokens:    total,
+			})
+			// Prune oldest entries when the cap is exceeded.
+			if len(es.tokenSamples) > maxTokenSamples {
+				es.tokenSamples = es.tokenSamples[len(es.tokenSamples)-maxTokenSamples:]
+			}
+		}
 	}
 
 	// Update thinking state based on blocks present in this entry.
@@ -438,12 +463,16 @@ func (es *ExtractionState) ToTranscriptData() *model.TranscriptData {
 	skillNames := make([]string, len(es.skillNames))
 	copy(skillNames, es.skillNames)
 
+	tokenSamples := make([]model.TokenSample, len(es.tokenSamples))
+	copy(tokenSamples, es.tokenSamples)
+
 	return &model.TranscriptData{
 		SessionName:    es.sessionName,
 		Tools:          tools,
 		Agents:         agents,
 		Todos:          todos,
 		SkillNames:     skillNames,
+		TokenSamples:   tokenSamples,
 		ThinkingActive: es.thinkingActive,
 		ThinkingCount:  es.thinkingCount,
 		SpinnerFrame:   es.spinnerFrame,
@@ -549,20 +578,27 @@ func normalizeStatusDone(status string) bool {
 	}
 }
 
+// snapshotTokenSample is the serializable form of model.TokenSample.
+type snapshotTokenSample struct {
+	Timestamp string `json:"ts"` // RFC3339Nano
+	Tokens    int    `json:"n"`
+}
+
 // extractionSnapshot is the serializable form of ExtractionState for persistence.
 // StartTime is intentionally excluded — it is only meaningful within a single
 // invocation for elapsed-time computation. Restored entries use DurationMs directly.
 type extractionSnapshot struct {
-	Tools          []snapshotTool   `json:"tools"`
-	Agents         []snapshotAgent  `json:"agents"`
-	Todos          []model.TodoItem `json:"todos"`
-	SkillNames     []string         `json:"skill_names,omitempty"`
-	SessionName    string           `json:"session_name"`
-	ThinkingActive bool             `json:"thinking_active"`
-	ThinkingCount  int              `json:"thinking_count"`
-	SpinnerFrame   int              `json:"spinner_frame"`
-	DividerOffset  int              `json:"divider_offset"`
-	MessageCount   int              `json:"message_count"`
+	Tools          []snapshotTool        `json:"tools"`
+	Agents         []snapshotAgent       `json:"agents"`
+	Todos          []model.TodoItem      `json:"todos"`
+	SkillNames     []string              `json:"skill_names,omitempty"`
+	TokenSamples   []snapshotTokenSample `json:"token_samples,omitempty"`
+	SessionName    string                `json:"session_name"`
+	ThinkingActive bool                  `json:"thinking_active"`
+	ThinkingCount  int                   `json:"thinking_count"`
+	SpinnerFrame   int                   `json:"spinner_frame"`
+	DividerOffset  int                   `json:"divider_offset"`
+	MessageCount   int                   `json:"message_count"`
 }
 
 type snapshotTool struct {
@@ -629,11 +665,20 @@ func (es *ExtractionState) MarshalSnapshot() (json.RawMessage, error) {
 	skillNames := make([]string, len(es.skillNames))
 	copy(skillNames, es.skillNames)
 
+	tokenSamples := make([]snapshotTokenSample, 0, len(es.tokenSamples))
+	for _, s := range es.tokenSamples {
+		tokenSamples = append(tokenSamples, snapshotTokenSample{
+			Timestamp: s.Timestamp.Format(time.RFC3339Nano),
+			Tokens:    s.Tokens,
+		})
+	}
+
 	snap := extractionSnapshot{
 		Tools:          tools,
 		Agents:         agents,
 		Todos:          todos,
 		SkillNames:     skillNames,
+		TokenSamples:   tokenSamples,
 		SessionName:    es.sessionName,
 		ThinkingActive: es.thinkingActive,
 		ThinkingCount:  es.thinkingCount,
@@ -715,6 +760,21 @@ func (es *ExtractionState) UnmarshalSnapshot(data json.RawMessage) error {
 
 	if snap.SkillNames != nil {
 		es.skillNames = snap.SkillNames
+	}
+
+	es.tokenSamples = make([]model.TokenSample, 0, len(snap.TokenSamples))
+	for _, s := range snap.TokenSamples {
+		if s.Timestamp == "" {
+			continue
+		}
+		parsed, err := time.Parse(time.RFC3339Nano, s.Timestamp)
+		if err != nil {
+			continue
+		}
+		es.tokenSamples = append(es.tokenSamples, model.TokenSample{
+			Timestamp: parsed,
+			Tokens:    s.Tokens,
+		})
 	}
 
 	es.sessionName = snap.SessionName

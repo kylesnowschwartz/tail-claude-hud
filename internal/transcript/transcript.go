@@ -33,6 +33,10 @@ type Entry struct {
 		Content    json.RawMessage `json:"content"`
 		Model      string          `json:"model"`
 		StopReason *string         `json:"stop_reason"`
+		Usage      *struct {
+			InputTokens  int `json:"input_tokens"`
+			OutputTokens int `json:"output_tokens"`
+		} `json:"usage"`
 	} `json:"message"`
 }
 
