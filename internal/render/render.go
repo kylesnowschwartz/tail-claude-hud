@@ -142,24 +142,18 @@ func renderPowerline(results []widget.WidgetResult) string {
 // When results is empty the function returns "".
 func renderMinimal(results []widget.WidgetResult, line config.Line, cfg *config.Config) string {
 	var parts []string
-	for i, r := range results {
+	for _, r := range results {
 		if r.IsEmpty() {
 			continue
 		}
-		name := ""
-		if i < len(line.Widgets) {
-			name = line.Widgets[i]
-		}
 		// Apply fg color only; ignore any bg from theme or widget result.
+		// When FgColor is empty the widget pre-styled its own text with internal
+		// ANSI codes — pass it through as-is to avoid double-wrapping escape
+		// sequences. Only apply theme fg when FgColor is explicitly set (structured
+		// output where the widget deferred color responsibility to the renderer).
 		var text string
 		if r.FgColor != "" {
 			text = lipgloss.NewStyle().Foreground(lipgloss.Color(r.FgColor)).Render(r.Text)
-		} else if name != "" {
-			if colors, ok := cfg.ResolvedTheme[name]; ok && colors.Fg != "" {
-				text = lipgloss.NewStyle().Foreground(lipgloss.Color(colors.Fg)).Render(r.Text)
-			} else {
-				text = r.Text
-			}
 		} else {
 			text = r.Text
 		}

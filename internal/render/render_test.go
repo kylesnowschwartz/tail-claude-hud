@@ -10,6 +10,7 @@ import (
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/config"
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/model"
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/render/widget"
+	"github.com/kylesnowschwartz/tail-claude-hud/internal/theme"
 )
 
 func TestRender_ProducesOutput(t *testing.T) {
@@ -577,6 +578,74 @@ func TestRender_PerLineMode(t *testing.T) {
 	// The separator is from plain mode and must not appear since both lines use overrides.
 	if strings.Contains(out, " || ") {
 		t.Errorf("per-line overrides must not use plain separator, got %q", out)
+	}
+}
+
+// TestRenderMinimal_PreStyledPassthrough verifies that when FgColor is empty
+// (pre-styled widget), renderMinimal passes the text through without applying
+// theme fg, preventing double-wrapped ANSI escape codes.
+func TestRenderMinimal_PreStyledPassthrough(t *testing.T) {
+	// Simulate a pre-styled widget: Text contains embedded ANSI codes, FgColor == "".
+	preStyledText := "\x1b[38;5;87mhello\x1b[0m"
+	results := []widget.WidgetResult{
+		{Text: preStyledText, FgColor: ""},
+	}
+
+	// Provide a theme entry for a widget named "mywidget" with fg "75".
+	// renderMinimal must NOT apply this theme fg when FgColor is empty.
+	cfg := config.LoadHud()
+	cfg.ResolvedTheme = theme.Theme{
+		"mywidget": {Fg: "75"},
+	}
+	line := config.Line{Widgets: []string{"mywidget"}}
+
+	out := renderMinimal(results, line, cfg)
+
+	// The output must be exactly the pre-styled text — no lipgloss wrapping.
+	if out != preStyledText {
+		t.Errorf("expected pre-styled text passed through unchanged, got %q", out)
+	}
+	// Verify no additional fg=75 escape code was prepended.
+	if strings.Contains(out, "\x1b[38;5;75m") {
+		t.Errorf("theme fg color must not be applied to pre-styled widget (FgColor==''), got %q", out)
+	}
+}
+
+// TestRenderMinimal_StructuredFgApplied verifies that when FgColor is non-empty
+// (structured output), renderMinimal applies that fg color via lipgloss.
+func TestRenderMinimal_StructuredFgApplied(t *testing.T) {
+	results := []widget.WidgetResult{
+		{Text: "hello", FgColor: "75"},
+	}
+	cfg := config.LoadHud()
+	line := config.Line{Widgets: []string{"model"}}
+
+	out := renderMinimal(results, line, cfg)
+
+	// The output must contain the fg=75 escape sequence.
+	if !strings.Contains(out, "\x1b[38;5;75m") {
+		t.Errorf("expected fg=75 applied to structured widget output, got %q", out)
+	}
+	if !strings.Contains(out, "hello") {
+		t.Errorf("expected 'hello' in output, got %q", out)
+	}
+}
+
+// TestRenderMinimal_EmptyFgNoTheme verifies that when FgColor is empty and no
+// theme entry exists, the text is passed through as-is.
+func TestRenderMinimal_EmptyFgNoTheme(t *testing.T) {
+	plainText := "plain text"
+	results := []widget.WidgetResult{
+		{Text: plainText, FgColor: ""},
+	}
+	cfg := config.LoadHud()
+	cfg.ResolvedTheme = theme.Theme{} // empty theme
+	line := config.Line{Widgets: []string{"model"}}
+
+	out := renderMinimal(results, line, cfg)
+
+	if out != plainText {
+		t.Errorf("expected plain text passed through unchanged, got %q", out)
 	}
 }
 
