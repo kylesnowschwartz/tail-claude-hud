@@ -1,6 +1,7 @@
 package widget
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/model"
@@ -9,10 +10,15 @@ import (
 func TestOutputStyleWidget_PresentStyleName(t *testing.T) {
 	ctx := &model.RenderContext{OutputStyle: "default"}
 	cfg := defaultCfg()
+	cfg.Style.Icons = "ascii"
 
 	got := OutputStyle(ctx, cfg)
-	if got.Text != "default" {
-		t.Errorf("OutputStyle: expected %q, got %q", "default", got.Text)
+	icons := IconsFor("ascii")
+
+	// Text must be dim-styled and contain the edit icon + style name.
+	want := dimStyle.Render(icons.Edit + " " + "default")
+	if got.Text != want {
+		t.Errorf("OutputStyle: expected %q, got %q", want, got.Text)
 	}
 }
 
@@ -35,23 +41,42 @@ func TestOutputStyleWidget_NilContext(t *testing.T) {
 	}
 }
 
+func TestOutputStyleWidget_RendersEditIconAndStyleName(t *testing.T) {
+	ctx := &model.RenderContext{OutputStyle: "concise"}
+	cfg := defaultCfg()
+	cfg.Style.Icons = "ascii"
+
+	got := OutputStyle(ctx, cfg)
+	icons := IconsFor("ascii")
+
+	// The rendered text must contain the edit icon and the style name.
+	if !strings.Contains(got.Text, icons.Edit) {
+		t.Errorf("OutputStyle: expected edit icon %q in output, got %q", icons.Edit, got.Text)
+	}
+	if !strings.Contains(got.Text, "concise") {
+		t.Errorf("OutputStyle: expected style name 'concise' in output, got %q", got.Text)
+	}
+}
+
 func TestOutputStyleWidget_VariousStyleNames(t *testing.T) {
 	tests := []struct {
 		name  string
 		style string
-		want  string
 	}{
-		{"default style", "default", "default"},
-		{"concise style", "concise", "concise"},
-		{"verbose style", "verbose", "verbose"},
+		{"default style", "default"},
+		{"concise style", "concise"},
+		{"verbose style", "verbose"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := &model.RenderContext{OutputStyle: tt.style}
 			cfg := defaultCfg()
+			cfg.Style.Icons = "ascii"
 			got := OutputStyle(ctx, cfg)
-			if got.Text != tt.want {
-				t.Errorf("OutputStyle(%q): expected %q, got %q", tt.style, tt.want, got.Text)
+			icons := IconsFor("ascii")
+			want := dimStyle.Render(icons.Edit + " " + tt.style)
+			if got.Text != want {
+				t.Errorf("OutputStyle(%q): expected %q, got %q", tt.style, want, got.Text)
 			}
 		})
 	}
