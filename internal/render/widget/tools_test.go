@@ -77,22 +77,22 @@ func TestFormatDuration_RenderedInCompletedTool(t *testing.T) {
 	}
 }
 
-// Spec 1: 3 running + 4 completed → running tools shown first, then newest completed.
+// Spec 1: 3 running + 4 completed → newest 5 shown in chronological (insertion) order.
 //
-// The Tools slice is oldest-first.  Running tools (Completed==false) appear before
-// completed tools (Completed==true) in the rendered output, and completed tools are
-// shown newest-first, capped at maxVisibleTools=5 total.
+// The Tools slice is oldest-first. The widget reverses the full list to get
+// newest-first, then caps at maxVisibleTools=5. Running tools are not pinned;
+// they appear at their natural position in the list.
 //
-// With 3 running + 4 completed we have 7 entries; only 5 are shown:
-// all 3 running + the 2 newest completed (C4 and C3).
-func TestTools_RunningFirstThenNewestCompleted(t *testing.T) {
+// With slice [C1, C2, C3, C4, R1, R2, R3] (7 entries), reversed = [R3, R2, R1, C4, C3, ...].
+// Only 5 are shown: R3, R2, R1, C4, C3.
+func TestTools_NewestFirstChronological(t *testing.T) {
 	tools := []model.ToolEntry{
 		// completed (oldest first)
 		{Name: "C1", Completed: true, DurationMs: 100, Category: "internal"},
 		{Name: "C2", Completed: true, DurationMs: 100, Category: "internal"},
 		{Name: "C3", Completed: true, DurationMs: 100, Category: "internal"},
 		{Name: "C4", Completed: true, DurationMs: 100, Category: "internal"},
-		// running
+		// running (most recently started)
 		{Name: "R1", Category: "internal"},
 		{Name: "R2", Category: "internal"},
 		{Name: "R3", Category: "internal"},
@@ -108,31 +108,33 @@ func TestTools_RunningFirstThenNewestCompleted(t *testing.T) {
 		t.Errorf("expected 4 separators (5 entries), got %d in %q", separators, got)
 	}
 
-	// All 3 running tools must be present.
+	// The 3 most-recently-inserted running tools must be present.
 	for _, name := range []string{"R1", "R2", "R3"} {
 		if !strings.Contains(got, name) {
 			t.Errorf("expected running tool %q in output, got %q", name, got)
 		}
 	}
 
-	// The 2 newest completed (C4 and C3) must be present.
-	for _, name := range []string{"C4", "C3"} {
-		if !strings.Contains(got, name) {
-			t.Errorf("expected completed tool %q in output, got %q", name, got)
-		}
+	// C4 (4th inserted, just before running tools) must be present.
+	if !strings.Contains(got, "C4") {
+		t.Errorf("expected completed tool C4 in output, got %q", got)
 	}
 
-	// The 2 oldest completed (C1, C2) must be dropped.
+	// C3 (3rd inserted) must be present.
+	if !strings.Contains(got, "C3") {
+		t.Errorf("expected completed tool C3 in output, got %q", got)
+	}
+
+	// The 2 oldest (C1, C2) must be dropped.
 	for _, name := range []string{"C1", "C2"} {
 		if strings.Contains(got, name) {
-			t.Errorf("oldest completed tool %q should be excluded, got %q", name, got)
+			t.Errorf("oldest tool %q should be excluded, got %q", name, got)
 		}
 	}
 
-	// Running tools must precede any completed tool in display order.
-	// R1 appears before C4 and before C3.
-	if !containsInOrder(got, []string{"R1", "C4"}) {
-		t.Errorf("running tool R1 should appear before newest completed C4, got %q", got)
+	// Newest-first (reversed insertion) order: R3 before R2 before R1 before C4.
+	if !containsInOrder(got, []string{"R3", "R2", "R1", "C4"}) {
+		t.Errorf("expected newest-first order R3, R2, R1, C4, got %q", got)
 	}
 }
 
@@ -176,29 +178,19 @@ func TestTools_SixCompleted_OldestDropped(t *testing.T) {
 	}
 }
 
-// Spec 3: tools completing out of order (tool B completes before tool A).
+// Spec 3: tools with mixed running/completed state display in chronological order.
 //
-// The transcript slice order determines "position" in the display.  When tool
-// A is added before B but B completes first, the display order reflects the
-// *position* in the slice (which is insertion order), not completion order.
-// After reversal, B appears before A because B has a higher index (was added
-// later and completed first, but was inserted after A in this test).
-//
-// More precisely: the slice is [A-running, B-completed].  After separation and
-// reversal of completed, visible = [A-running, B-completed].  If A completes
-// later it becomes [A-completed, B-completed], reversed → [B-completed, A-completed],
-// i.e. B is shown first because it occupied a higher index.
-//
-// This test verifies the "out of order" scenario where B (inserted second)
-// completes before A (inserted first, still running): running A comes first.
+// The slice is [A-running, B-completed, C-completed] (oldest-first). After full
+// reversal the display order is [C-completed, B-completed, A-running] (newest-first).
+// A running tool is NOT pinned to the front; it appears at its insertion position.
 func TestTools_OutOfOrderCompletion_DisplayOrderCorrect(t *testing.T) {
 	// A was started first (index 0) and is still running.
 	// B was started second (index 1) and has already completed.
 	// C was started third (index 2) and has already completed.
 	tools := []model.ToolEntry{
-		{Name: "ToolA", Category: "shell"},                                     // still running
-		{Name: "ToolB", Completed: true, DurationMs: 500, Category: "file"},    // completed first
-		{Name: "ToolC", Completed: true, DurationMs: 1000, Category: "search"}, // completed second
+		{Name: "ToolA", Category: "shell"},                                     // still running, oldest
+		{Name: "ToolB", Completed: true, DurationMs: 500, Category: "file"},    // completed, middle
+		{Name: "ToolC", Completed: true, DurationMs: 1000, Category: "search"}, // completed, newest
 	}
 	ctx := toolsCtx(tools)
 	cfg := defaultCfg()
@@ -212,17 +204,102 @@ func TestTools_OutOfOrderCompletion_DisplayOrderCorrect(t *testing.T) {
 		}
 	}
 
-	// Running ToolA must appear before completed tools.
-	if !containsInOrder(got, []string{"ToolA", "ToolC"}) {
-		t.Errorf("running ToolA should appear before completed ToolC, got %q", got)
+	// Newest-first (reversed insertion) order: ToolC then ToolB then ToolA.
+	if !containsInOrder(got, []string{"ToolC", "ToolB", "ToolA"}) {
+		t.Errorf("expected newest-first order ToolC, ToolB, ToolA, got %q", got)
 	}
-	if !containsInOrder(got, []string{"ToolA", "ToolB"}) {
-		t.Errorf("running ToolA should appear before completed ToolB, got %q", got)
+}
+
+// TestTools_ThinkingChronologicalOrder verifies that a running Thinking entry
+// between two completed tools appears at its chronological position rather than
+// being pinned to the front of the display.
+//
+// Slice (oldest-first): [Read-completed, Thinking-running, Grep-completed]
+// After reversal (newest-first): [Grep-completed, Thinking-running, Read-completed]
+// Thinking must NOT appear before Grep.
+func TestTools_ThinkingChronologicalOrder(t *testing.T) {
+	tools := []model.ToolEntry{
+		{Name: "Read", Completed: true, DurationMs: 300, Category: "file"},   // oldest
+		{Name: "Thinking", Completed: false, Category: "thinking"},           // middle, still running
+		{Name: "Grep", Completed: true, DurationMs: 150, Category: "search"}, // newest
+	}
+	ctx := toolsCtx(tools)
+	cfg := defaultCfg()
+
+	got := Tools(ctx, cfg).Text
+
+	// All three must appear.
+	for _, name := range []string{"Read", "Thinking", "Grep"} {
+		if !strings.Contains(got, name) {
+			t.Errorf("expected tool %q in output, got %q", name, got)
+		}
 	}
 
-	// Among completed tools, ToolC (higher index = newer) appears before ToolB.
-	if !containsInOrder(got, []string{"ToolC", "ToolB"}) {
-		t.Errorf("ToolC (newer position) should appear before ToolB, got %q", got)
+	// Grep (newest) must appear before Thinking (middle) in the display.
+	if !containsInOrder(got, []string{"Grep", "Thinking"}) {
+		t.Errorf("Grep (newest) should appear before Thinking (middle), got %q", got)
+	}
+
+	// Thinking (middle) must appear before Read (oldest).
+	if !containsInOrder(got, []string{"Thinking", "Read"}) {
+		t.Errorf("Thinking (middle) should appear before Read (oldest), got %q", got)
+	}
+}
+
+// TestTools_NewestToolsAppearFirst verifies that when only completed tools are
+// present, the output is strictly newest-first (highest insertion index first).
+func TestTools_NewestToolsAppearFirst(t *testing.T) {
+	tools := []model.ToolEntry{
+		{Name: "T1", Completed: true, DurationMs: 100, Category: "internal"}, // oldest
+		{Name: "T2", Completed: true, DurationMs: 200, Category: "internal"},
+		{Name: "T3", Completed: true, DurationMs: 300, Category: "internal"}, // newest
+	}
+	ctx := toolsCtx(tools)
+	cfg := defaultCfg()
+
+	got := Tools(ctx, cfg).Text
+
+	// Newest-first order: T3 before T2 before T1.
+	if !containsInOrder(got, []string{"T3", "T2", "T1"}) {
+		t.Errorf("expected newest-first order T3, T2, T1, got %q", got)
+	}
+}
+
+// TestTools_MaxVisibleToolsCap verifies that when more than maxVisibleTools
+// entries exist, only the newest maxVisibleTools are shown and the oldest are dropped.
+func TestTools_MaxVisibleToolsCap(t *testing.T) {
+	tools := []model.ToolEntry{
+		{Name: "Old1", Completed: true, DurationMs: 100, Category: "internal"}, // oldest, should be dropped
+		{Name: "Old2", Completed: true, DurationMs: 100, Category: "internal"}, // should be dropped
+		{Name: "N3", Completed: true, DurationMs: 100, Category: "internal"},
+		{Name: "N4", Completed: true, DurationMs: 100, Category: "internal"},
+		{Name: "N5", Completed: true, DurationMs: 100, Category: "internal"},
+		{Name: "N6", Completed: true, DurationMs: 100, Category: "internal"},
+		{Name: "N7", Completed: true, DurationMs: 100, Category: "internal"}, // newest
+	}
+	ctx := toolsCtx(tools)
+	cfg := defaultCfg()
+
+	got := Tools(ctx, cfg).Text
+
+	// Exactly 5 entries (4 separators).
+	separators := strings.Count(got, " | ")
+	if separators != 4 {
+		t.Errorf("expected 4 separators (5 entries), got %d in %q", separators, got)
+	}
+
+	// Oldest two must be absent.
+	for _, name := range []string{"Old1", "Old2"} {
+		if strings.Contains(got, name) {
+			t.Errorf("oldest tool %q should be excluded, got %q", name, got)
+		}
+	}
+
+	// The 5 newest must be present (N3 through N7).
+	for _, name := range []string{"N3", "N4", "N5", "N6", "N7"} {
+		if !strings.Contains(got, name) {
+			t.Errorf("expected recent tool %q in output, got %q", name, got)
+		}
 	}
 }
 

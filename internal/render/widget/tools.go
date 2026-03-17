@@ -36,26 +36,15 @@ func Tools(ctx *model.RenderContext, cfg *config.Config) WidgetResult {
 		return WidgetResult{}
 	}
 
-	// Separate running from completed/error tools.
-	var running []model.ToolEntry
-	var completed []model.ToolEntry
-	for _, t := range tools {
-		if !t.Completed {
-			running = append(running, t)
-		} else {
-			completed = append(completed, t)
-		}
+	// Reverse the full list so newest tools appear first. This preserves
+	// chronological order (Thinking blocks stay at their insertion position
+	// rather than being pinned to the front as running tools).
+	reversed := make([]model.ToolEntry, len(tools))
+	for i, t := range tools {
+		reversed[len(tools)-1-i] = t
 	}
 
-	// Build the visible list: running tools take priority, then completed newest-first.
-	reversed := make([]model.ToolEntry, len(completed))
-	for i, t := range completed {
-		reversed[len(completed)-1-i] = t
-	}
-
-	var visible []model.ToolEntry
-	visible = append(visible, running...)
-	visible = append(visible, reversed...)
+	visible := reversed
 	if len(visible) > maxVisibleTools {
 		visible = visible[:maxVisibleTools]
 	}
