@@ -148,6 +148,8 @@ func CategoryIcon(icons Icons, category string) string {
 		return icons.Agent
 	case "internal":
 		return icons.Gear
+	case "thinking":
+		return icons.Thinking
 	default:
 		return icons.Gear
 	}

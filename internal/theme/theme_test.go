@@ -231,8 +231,8 @@ func TestMergeOverrides_namedAndIndexedColors(t *testing.T) {
 	}
 
 	overrides := map[string]WidgetColors{
-		"git":   {Fg: "cyan", Bg: "black"},  // named ANSI colors
-		"tools": {Fg: "42", Bg: "235"},       // 256-color index strings
+		"git":   {Fg: "cyan", Bg: "black"},      // named ANSI colors
+		"tools": {Fg: "42", Bg: "235"},          // 256-color index strings
 		"model": {Fg: "#ff0000", Bg: "#001122"}, // hex
 	}
 

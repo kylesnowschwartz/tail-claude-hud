@@ -33,11 +33,11 @@ var builtins = map[string]Theme{
 // fg colors match what widgets currently apply via lipgloss; bg is empty
 // (transparent) so the terminal default applies.
 var defaultTheme = Theme{
-	"model":     {Fg: "87", Bg: ""},  // cyan
-	"context":   {Fg: "42", Bg: ""},  // green (normal usage)
+	"model":     {Fg: "87", Bg: ""}, // cyan
+	"context":   {Fg: "42", Bg: ""}, // green (normal usage)
 	"directory": {Fg: "110", Bg: ""},
-	"git":       {Fg: "87", Bg: ""},  // cyan
-	"project":   {Fg: "75", Bg: ""},  // blue
+	"git":       {Fg: "87", Bg: ""}, // cyan
+	"project":   {Fg: "75", Bg: ""}, // blue
 	"env":       {Fg: "135", Bg: ""},
 	"duration":  {Fg: "244", Bg: ""},
 	"tools":     {Fg: "75", Bg: ""},

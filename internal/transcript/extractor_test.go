@@ -2537,3 +2537,120 @@ func TestTokenSamples_PersistedThroughSnapshot(t *testing.T) {
 		t.Errorf("sample[1].Tokens = %d, want 800", data.TokenSamples[1].Tokens)
 	}
 }
+
+// ---- Thinking as ToolEntry (specs: thinking emitted as tool entry) ----
+
+// TestThinking_EmitsToolEntry_Running verifies that a thinking-only entry adds
+// a ToolEntry with Name="Thinking", Category="thinking", Completed=false.
+func TestThinking_EmitsToolEntry_Running(t *testing.T) {
+	es := NewExtractionState()
+	es.ProcessEntry(makeThinkingEntry())
+
+	data := es.ToTranscriptData()
+	if len(data.Tools) != 1 {
+		t.Fatalf("expected 1 tool entry for thinking, got %d", len(data.Tools))
+	}
+	tool := data.Tools[0]
+	if tool.Name != "Thinking" {
+		t.Errorf("expected Name=Thinking, got %q", tool.Name)
+	}
+	if tool.Category != "thinking" {
+		t.Errorf("expected Category=thinking, got %q", tool.Category)
+	}
+	if tool.Completed {
+		t.Error("expected Completed=false (thinking still in progress), got true")
+	}
+}
+
+// TestThinking_CompletedWhenFollowedByToolUse verifies that the Thinking ToolEntry
+// is marked Completed=true when a subsequent entry contains tool_use.
+func TestThinking_CompletedWhenFollowedByToolUse(t *testing.T) {
+	t0 := time.Date(2025, 1, 15, 10, 0, 0, 0, time.UTC)
+	t1 := t0.Add(500 * time.Millisecond)
+
+	thinkingEntry := makeThinkingEntry()
+	thinkingEntry.Timestamp = t0.Format(time.RFC3339Nano)
+
+	toolEntry := makeToolUseEntryAt("id-1", "Read", map[string]interface{}{"file_path": "x.go"}, t1)
+
+	es := NewExtractionState()
+	es.ProcessEntry(thinkingEntry)
+	es.ProcessEntry(toolEntry)
+
+	data := es.ToTranscriptData()
+	// Expect 2 entries: Thinking (completed) and Read (running).
+	if len(data.Tools) != 2 {
+		t.Fatalf("expected 2 tool entries, got %d", len(data.Tools))
+	}
+	thinkTool := data.Tools[0]
+	if thinkTool.Name != "Thinking" {
+		t.Errorf("expected first tool Name=Thinking, got %q", thinkTool.Name)
+	}
+	if !thinkTool.Completed {
+		t.Error("expected Thinking entry Completed=true after tool_use follows")
+	}
+	if thinkTool.DurationMs != 500 {
+		t.Errorf("expected DurationMs=500, got %d", thinkTool.DurationMs)
+	}
+}
+
+// TestThinking_CompletedWhenSameEntryHasToolUse verifies that thinking in the
+// same entry as tool_use is emitted as Completed=true immediately.
+// The tool_use block is processed before the thinking logic, so Read appears
+// first in the display slice, followed by the Thinking entry.
+func TestThinking_CompletedWhenSameEntryHasToolUse(t *testing.T) {
+	es := NewExtractionState()
+	es.ProcessEntry(makeThinkingThenToolUseEntry("id-1", "Read", map[string]interface{}{"file_path": "x.go"}))
+
+	data := es.ToTranscriptData()
+	// Expect 2 entries: Read (running) and Thinking (completed).
+	if len(data.Tools) != 2 {
+		t.Fatalf("expected 2 tool entries (thinking + tool_use), got %d", len(data.Tools))
+	}
+	thinkTool := data.Tools[1]
+	if thinkTool.Name != "Thinking" {
+		t.Errorf("expected second tool Name=Thinking, got %q", thinkTool.Name)
+	}
+	if !thinkTool.Completed {
+		t.Error("expected Thinking Completed=true when tool_use is in the same entry")
+	}
+}
+
+// TestThinking_MultipleThinkingEntries emits separate ToolEntries per thinking episode.
+func TestThinking_MultipleThinkingEntries(t *testing.T) {
+	t0 := time.Date(2025, 1, 15, 10, 0, 0, 0, time.UTC)
+	t1 := t0.Add(200 * time.Millisecond)
+	t2 := t1.Add(300 * time.Millisecond)
+	t3 := t2.Add(400 * time.Millisecond)
+
+	think1 := makeThinkingEntry()
+	think1.Timestamp = t0.Format(time.RFC3339Nano)
+	tool1 := makeToolUseEntryAt("id-1", "Bash", map[string]interface{}{"command": "ls"}, t1)
+	think2 := makeThinkingEntry()
+	think2.Timestamp = t2.Format(time.RFC3339Nano)
+	tool2 := makeToolUseEntryAt("id-2", "Read", map[string]interface{}{"file_path": "f.go"}, t3)
+
+	es := NewExtractionState()
+	es.ProcessEntry(think1)
+	es.ProcessEntry(tool1)
+	es.ProcessEntry(think2)
+	es.ProcessEntry(tool2)
+
+	data := es.ToTranscriptData()
+	// Expect: Thinking1 (completed), Bash (running), Thinking2 (completed), Read (running).
+	if len(data.Tools) != 4 {
+		t.Fatalf("expected 4 tool entries, got %d", len(data.Tools))
+	}
+	if data.Tools[0].Name != "Thinking" || !data.Tools[0].Completed {
+		t.Errorf("tools[0]: want Thinking completed, got Name=%q Completed=%v", data.Tools[0].Name, data.Tools[0].Completed)
+	}
+	if data.Tools[1].Name != "Bash" {
+		t.Errorf("tools[1]: want Bash, got %q", data.Tools[1].Name)
+	}
+	if data.Tools[2].Name != "Thinking" || !data.Tools[2].Completed {
+		t.Errorf("tools[2]: want Thinking completed, got Name=%q Completed=%v", data.Tools[2].Name, data.Tools[2].Completed)
+	}
+	if data.Tools[3].Name != "Read" {
+		t.Errorf("tools[3]: want Read, got %q", data.Tools[3].Name)
+	}
+}

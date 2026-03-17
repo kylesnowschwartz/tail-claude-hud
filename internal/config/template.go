@@ -16,8 +16,8 @@ const DefaultTemplate = `# tail-claude-hud configuration
 #
 # Default layout (C+D hybrid):
 #   Line 1 (identity + health): model, context, project, todos, duration
-#   Line 2 (per-agent activity): agents          — ephemeral, hides when empty
-#   Line 3 (thinking + tools):  thinking, tools  — ephemeral, hides when empty
+#   Line 2 (per-agent activity): agents  — ephemeral, hides when empty
+#   Line 3 (tools):             tools   — ephemeral, hides when empty
 #
 # All available widgets:
 #   model     — active Claude model name
@@ -26,8 +26,7 @@ const DefaultTemplate = `# tail-claude-hud configuration
 #   todos     — count of active TodoWrite todos
 #   duration  — elapsed session time
 #   agents    — per-agent activity feed (requires transcript)
-#   thinking  — current thinking block excerpt (requires transcript)
-#   tools     — recent tool use feed (requires transcript)
+#   tools     — recent tool use feed, including thinking blocks (requires transcript)
 #   git       — full repository state (dirty, ahead/behind, file stats)
 #   directory — current working directory path
 #   env       — environment variable counts (opt-in)
@@ -42,7 +41,7 @@ widgets = ["model", "context", "project", "todos", "duration"]
 widgets = ["agents"]
 
 [[line]]
-widgets = ["thinking", "tools"]
+widgets = ["tools"]
 
 # Model widget — shows the active Claude model name.
 [model]

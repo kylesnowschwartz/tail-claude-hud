@@ -33,7 +33,7 @@ func TestDefaultsWhenNoFile(t *testing.T) {
 	if len(cfg.Lines) != 3 {
 		t.Fatalf("expected 3 lines, got %d", len(cfg.Lines))
 	}
-	assertWidgets(t, cfg.Lines[0].Widgets, []string{"thinking", "model", "context", "project", "todos", "duration"})
+	assertWidgets(t, cfg.Lines[0].Widgets, []string{"model", "context", "project", "todos", "duration"})
 	assertWidgets(t, cfg.Lines[1].Widgets, []string{"agents"})
 	assertWidgets(t, cfg.Lines[2].Widgets, []string{"tools"})
 
@@ -273,7 +273,7 @@ func TestDefaultsNeverReturnsNil(t *testing.T) {
 }
 
 // TestDefaultLayoutIsThreeLinesHybrid verifies the layout:
-// Line 1 = thinking+identity+health, Line 2 = agents (ephemeral), Line 3 = tools (ephemeral).
+// Line 1 = identity+health, Line 2 = agents (ephemeral), Line 3 = tools (ephemeral).
 func TestDefaultLayoutIsThreeLinesHybrid(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("HOME", tmp)
@@ -287,7 +287,7 @@ func TestDefaultLayoutIsThreeLinesHybrid(t *testing.T) {
 		t.Fatalf("default layout: want 3 lines, got %d", len(cfg.Lines))
 	}
 
-	assertWidgets(t, cfg.Lines[0].Widgets, []string{"thinking", "model", "context", "project", "todos", "duration"})
+	assertWidgets(t, cfg.Lines[0].Widgets, []string{"model", "context", "project", "todos", "duration"})
 	assertWidgets(t, cfg.Lines[1].Widgets, []string{"agents"})
 	assertWidgets(t, cfg.Lines[2].Widgets, []string{"tools"})
 }
@@ -572,12 +572,12 @@ fg = "green"
 	cfg := LoadHud()
 
 	cases := []struct {
-		widget  string
-		wantFg  string
+		widget string
+		wantFg string
 	}{
-		{"model", "#ff8800"},   // hex
-		{"project", "114"},     // 256-color index
-		{"git", "green"},       // named ANSI
+		{"model", "#ff8800"}, // hex
+		{"project", "114"},   // 256-color index
+		{"git", "green"},     // named ANSI
 	}
 	for _, tc := range cases {
 		got := cfg.ResolvedTheme[tc.widget].Fg

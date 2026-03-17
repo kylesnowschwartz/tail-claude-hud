@@ -7,6 +7,7 @@ package transcript
 
 import (
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/model"
@@ -99,6 +100,15 @@ type ExtractionState struct {
 	// thinkingCount is the total number of thinking blocks observed across all
 	// assistant messages in the session.
 	thinkingCount int
+
+	// thinkingTool points to the most recent thinking ToolEntry while it is
+	// still running (Completed=false). It is set by handleThinkingStart and
+	// cleared (to nil) by handleThinkingEnd.
+	thinkingTool *internalTool
+
+	// thinkingSeq is a monotonically increasing counter used to generate
+	// unique synthetic IDs for thinking ToolEntries.
+	thinkingSeq int
 
 	// spinnerFrame is a monotonic counter incremented on each statusline invocation.
 	// It is persisted in the snapshot so successive invocations always advance the frame.
@@ -204,9 +214,22 @@ func (es *ExtractionState) ProcessEntry(e Entry) {
 	// tool_use or text block appeared in the same message.
 	if len(blocks.Thinking) > 0 {
 		es.thinkingCount += len(blocks.Thinking)
-		es.thinkingActive = len(blocks.ToolUse) == 0 && !blocks.HasText
+		newActive := len(blocks.ToolUse) == 0 && !blocks.HasText
+		if !es.thinkingActive {
+			// Thinking just started: emit a running ToolEntry.
+			es.handleThinkingStart(ts)
+		}
+		es.thinkingActive = newActive
+		if !newActive {
+			// Thinking ended in the same entry (tool_use or text also present):
+			// mark the entry completed immediately.
+			es.handleThinkingEnd(ts)
+		}
 	} else if len(blocks.ToolUse) > 0 || blocks.HasText {
 		// A message with tool_use or text but no thinking clears the active flag.
+		if es.thinkingActive {
+			es.handleThinkingEnd(ts)
+		}
 		es.thinkingActive = false
 	}
 }
@@ -271,6 +294,47 @@ func (es *ExtractionState) handleRegularToolUse(b ToolUseBlock, ts time.Time) {
 		es.displayTools = es.displayTools[1:]
 		delete(es.toolMap, oldest.id)
 	}
+}
+
+// handleThinkingStart emits a running ToolEntry for an in-progress thinking block.
+// Called when the first thinking block is encountered in an entry where thinking
+// was not already active.
+func (es *ExtractionState) handleThinkingStart(ts time.Time) {
+	es.thinkingSeq++
+	id := fmt.Sprintf("thinking-%d", es.thinkingSeq)
+	t := &internalTool{
+		id:        id,
+		name:      "Thinking",
+		category:  "thinking",
+		startTime: ts,
+	}
+	es.toolMap[id] = t
+	es.displayTools = append(es.displayTools, t)
+	es.dividerOffset++
+
+	if len(es.displayTools) > maxTools {
+		oldest := es.displayTools[0]
+		es.displayTools = es.displayTools[1:]
+		delete(es.toolMap, oldest.id)
+	}
+
+	es.thinkingTool = t
+}
+
+// handleThinkingEnd marks the current thinking ToolEntry as completed.
+// Called when a subsequent entry contains tool_use or text, signalling that
+// the model finished thinking and began acting.
+func (es *ExtractionState) handleThinkingEnd(ts time.Time) {
+	if es.thinkingTool == nil {
+		return
+	}
+	t := es.thinkingTool
+	t.completed = true
+	if !t.startTime.IsZero() {
+		t.durationMs = int(ts.Sub(t.startTime).Milliseconds())
+	}
+	delete(es.toolMap, t.id)
+	es.thinkingTool = nil
 }
 
 // handleAgentToolUse records a running agent entry.

@@ -16,10 +16,10 @@ import (
 // presetFile mirrors the TOML schema for a preset file. Only preset-relevant
 // fields are decoded; data-source settings stay in the user's config.
 type presetFile struct {
-	Name      string       `toml:"name"`
+	Name      string        `toml:"name"`
 	Lines     []config.Line `toml:"line"`
-	Style     presetStyle  `toml:"style"`
-	Directory presetDir    `toml:"directory"`
+	Style     presetStyle   `toml:"style"`
+	Directory presetDir     `toml:"directory"`
 }
 
 type presetStyle struct {
