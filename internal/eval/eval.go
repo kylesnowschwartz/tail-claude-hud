@@ -6,6 +6,8 @@ package eval
 
 import (
 	"fmt"
+	"math"
+	"sort"
 	"strings"
 )
 
@@ -136,12 +138,19 @@ func evalContrast(segments []StyledSegment) DimensionResult {
 	var findings []string
 	overallMin := 21.0 // max possible contrast ratio
 
+	// Track per-segment worst ratio across palettes, but also count how many
+	// palettes produce acceptable contrast. A single pathological palette
+	// (e.g., Solarized remapping ANSI 8 to its own bg color) shouldn't tank
+	// the overall grade when most palettes are fine.
+	var segCount int
 	for _, seg := range segments {
 		if strings.TrimSpace(seg.Text) == "" {
 			continue
 		}
+		segCount++
 		segMin := 21.0
 		var worstPalette string
+		var passCount, warnCount, failCount int
 		for _, pal := range palettes {
 			fg := resolveColor(seg.Fg, pal, true)
 			bg := resolveColor(seg.Bg, pal, false)
@@ -150,6 +159,14 @@ func evalContrast(segments []StyledSegment) DimensionResult {
 				segMin = ratio
 				worstPalette = pal.Name
 			}
+			switch {
+			case ratio >= 4.5:
+				passCount++
+			case ratio >= 3.0:
+				warnCount++
+			default:
+				failCount++
+			}
 		}
 
 		if segMin < overallMin {
@@ -157,19 +174,22 @@ func evalContrast(segments []StyledSegment) DimensionResult {
 		}
 
 		label := segLabel(seg.Text)
+		palCount := len(palettes)
 		var status string
 		switch {
-		case segMin >= 4.5:
-			status = fmt.Sprintf("PASS  %s  ratio=%.2f  worst-palette=%s", label, segMin, worstPalette)
-		case segMin >= 3.0:
-			status = fmt.Sprintf("WARN  %s  ratio=%.2f  worst-palette=%s", label, segMin, worstPalette)
+		case failCount == 0 && warnCount == 0:
+			status = fmt.Sprintf("PASS  %s  ratio=%.2f  (%d/%d palettes pass)", label, segMin, passCount, palCount)
+		case failCount == 0:
+			status = fmt.Sprintf("WARN  %s  ratio=%.2f  worst-palette=%s  (%d/%d pass, %d warn)",
+				label, segMin, worstPalette, passCount, palCount, warnCount)
 		default:
-			status = fmt.Sprintf("FAIL  %s  ratio=%.2f  worst-palette=%s", label, segMin, worstPalette)
+			status = fmt.Sprintf("FAIL  %s  ratio=%.2f  worst-palette=%s  (%d/%d fail)",
+				label, segMin, worstPalette, failCount, palCount)
 		}
 		findings = append(findings, status)
 	}
 
-	if len(findings) == 0 {
+	if segCount == 0 {
 		return DimensionResult{
 			Name:     "Contrast",
 			Grade:    GradeF,
@@ -177,19 +197,36 @@ func evalContrast(segments []StyledSegment) DimensionResult {
 		}
 	}
 
+	// Grade uses the p25 approach: if >=75% of segment-palette combos are
+	// readable, grade on the 25th percentile ratio rather than the absolute minimum.
+	// This prevents a single pathological palette from dominating the grade.
+	var allRatios []float64
+	for _, seg := range segments {
+		if strings.TrimSpace(seg.Text) == "" {
+			continue
+		}
+		for _, pal := range palettes {
+			fg := resolveColor(seg.Fg, pal, true)
+			bg := resolveColor(seg.Bg, pal, false)
+			allRatios = append(allRatios, ContrastRatio(fg, bg))
+		}
+	}
+	p25Ratio := percentile(allRatios, 25)
+
 	var grade Grade
 	switch {
-	case overallMin >= 4.5:
+	case p25Ratio >= 4.5:
 		grade = GradeA
-	case overallMin >= 3.0:
+	case p25Ratio >= 3.0:
 		grade = GradeB
-	case overallMin >= 2.0:
+	case p25Ratio >= 2.0:
 		grade = GradeC
-	case overallMin >= 1.5:
+	case p25Ratio >= 1.5:
 		grade = GradeD
 	default:
 		grade = GradeF
 	}
+	findings = append(findings, fmt.Sprintf("p25 ratio=%.2f  (grade based on 25th percentile across all segment-palette combos)", p25Ratio))
 
 	return DimensionResult{
 		Name:     "Contrast",
@@ -220,6 +257,19 @@ func evalCoherence(segments []StyledSegment) DimensionResult {
 		if strings.TrimSpace(seg.Text) == "" {
 			continue
 		}
+
+		// Faint segments use the terminal's default fg at reduced brightness.
+		// Model this as ~50% of the default fg lightness so faint segments
+		// register as a distinct tier in the lightness distribution.
+		if seg.Faint {
+			defRGB := XtermDefault.DefaultFg
+			_, _, defL := RGBToHSL(defRGB)
+			faintL := defL * 0.5
+			fgColors = append(fgColors, hslColor{0, 0, faintL})
+			buckets[lightnessBucket(faintL)] = true
+			continue
+		}
+
 		if seg.Fg.Type == ColorDefault {
 			continue
 		}
@@ -229,42 +279,38 @@ func evalCoherence(segments []StyledSegment) DimensionResult {
 		fgColors = append(fgColors, hslColor{h, s, l})
 
 		// Bucket lightness into 4 ranges.
-		bucket := lightnessTooBucket(l)
-		buckets[bucket] = true
+		buckets[lightnessBucket(l)] = true
 	}
 
 	distinctLevels := len(buckets)
 	findings = append(findings, fmt.Sprintf("distinct lightness buckets: %d/4", distinctLevels))
 
 	// Check adjacent segments for hue collisions (delta < 20 degrees).
+	// Faint and default-fg segments break the adjacency chain (they're achromatic).
 	collisions := 0
 	var prevHSL *hslColor
-	for i, seg := range segments {
+	for _, seg := range segments {
 		if strings.TrimSpace(seg.Text) == "" {
 			continue
 		}
-		if seg.Fg.Type == ColorDefault {
+		if seg.Faint || seg.Fg.Type == ColorDefault {
 			prevHSL = nil
 			continue
 		}
-		if i < len(fgColors) {
-			cur := &fgColors[len(fgColors)-1] // placeholder; recompute inline
-			rgb := resolveColor(seg.Fg, XtermDefault, true)
-			h, _, _ := RGBToHSL(rgb)
-			curHSL := &hslColor{h: h}
-			cur = curHSL
+		rgb := resolveColor(seg.Fg, XtermDefault, true)
+		h, _, _ := RGBToHSL(rgb)
+		curHSL := &hslColor{h: h}
 
-			if prevHSL != nil {
-				delta := HueDelta(prevHSL.h, cur.h)
-				if delta < 20 {
-					collisions++
-					findings = append(findings, fmt.Sprintf(
-						"adjacent hue collision: delta=%.1f°  near %q", delta, segLabel(seg.Text),
-					))
-				}
+		if prevHSL != nil {
+			delta := HueDelta(prevHSL.h, curHSL.h)
+			if delta < 20 {
+				collisions++
+				findings = append(findings, fmt.Sprintf(
+					"adjacent hue collision: delta=%.1f°  near %q", delta, segLabel(seg.Text),
+				))
 			}
-			prevHSL = cur
 		}
+		prevHSL = curHSL
 	}
 	if collisions == 0 {
 		findings = append(findings, "no adjacent hue collisions")
@@ -308,9 +354,9 @@ func evalCoherence(segments []StyledSegment) DimensionResult {
 	}
 }
 
-// lightnessTooBucket assigns a lightness value to one of four buckets:
+// lightnessBucket assigns a lightness value to one of four buckets:
 // 0: <0.25, 1: 0.25-0.5, 2: 0.5-0.75, 3: >0.75
-func lightnessTooBucket(l float64) int {
+func lightnessBucket(l float64) int {
 	switch {
 	case l < 0.25:
 		return 0
@@ -491,6 +537,25 @@ func FormatReport(report Report) string {
 
 	sb.WriteString(fmt.Sprintf("Overall: %s\n", report.Overall))
 	return sb.String()
+}
+
+// percentile returns the p-th percentile of a sorted copy of values.
+// p is in [0, 100]. Returns 0 for empty slices.
+func percentile(values []float64, p int) float64 {
+	if len(values) == 0 {
+		return 0
+	}
+	sorted := make([]float64, len(values))
+	copy(sorted, values)
+	sort.Float64s(sorted)
+	idx := float64(p) / 100.0 * float64(len(sorted)-1)
+	lower := int(math.Floor(idx))
+	upper := int(math.Ceil(idx))
+	if lower == upper || upper >= len(sorted) {
+		return sorted[lower]
+	}
+	frac := idx - float64(lower)
+	return sorted[lower]*(1-frac) + sorted[upper]*frac
 }
 
 // segLabel returns a short printable label for a segment (trimmed, max 30 chars).
