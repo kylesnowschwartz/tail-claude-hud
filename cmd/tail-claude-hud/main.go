@@ -307,11 +307,40 @@ func mustCwd() string {
 	return cwd
 }
 
-// detectLightBackground tries to detect the terminal background color.
-// It opens /dev/tty directly to bypass piped stdin/stdout (Claude Code pipes
-// all three fds when invoking statusline plugins). Falls back to os.Stderr
-// if /dev/tty isn't available. Returns true for light backgrounds.
+// bgCacheFile is where the detected background mode is cached between invocations.
+// The statusline runs every ~300ms; querying the terminal each time causes race
+// conditions (overlapping OSC 11 responses). Detect once, cache for 5 minutes.
+var bgCacheFile = filepath.Join(model.PluginDir(), "bg-mode")
+
+const bgCacheTTL = 5 * time.Minute
+
+// detectLightBackground returns true if the terminal has a light background.
+// Results are cached to disk so the expensive /dev/tty query only runs once
+// per TTL period, avoiding OSC 11 race conditions when invoked every ~300ms.
 func detectLightBackground() bool {
+	// Read cache first.
+	if data, err := os.ReadFile(bgCacheFile); err == nil {
+		if info, err := os.Stat(bgCacheFile); err == nil {
+			if time.Since(info.ModTime()) < bgCacheTTL {
+				return strings.TrimSpace(string(data)) == "light"
+			}
+		}
+	}
+
+	// Cache miss or stale — detect and cache.
+	light := queryLightBackground()
+	mode := "dark"
+	if light {
+		mode = "light"
+	}
+	// Best-effort write; if it fails, we'll just re-detect next time.
+	_ = os.MkdirAll(filepath.Dir(bgCacheFile), 0o755)
+	_ = os.WriteFile(bgCacheFile, []byte(mode+"\n"), 0o644)
+	return light
+}
+
+// queryLightBackground does the actual terminal query via /dev/tty or stderr.
+func queryLightBackground() bool {
 	// Try /dev/tty first — works even when all stdio fds are pipes.
 	if tty, err := os.OpenFile("/dev/tty", os.O_RDWR, 0); err == nil {
 		defer tty.Close()
