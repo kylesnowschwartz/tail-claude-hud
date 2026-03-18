@@ -2,41 +2,46 @@ package widget
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/config"
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/model"
 )
 
-// Tokens renders a compact breakdown of token usage from stdin CurrentUsage.
-// Format: "45.1k in · 12.3k cache" (cache = cacheCreation + cacheRead combined).
+// Tokens renders token count and cache hit ratio from the most recent API call.
+// Format: "126k tok 98% cached"
 //
-// Output tokens are not included: the stdin JSON current_usage field only provides
-// input_tokens, cache_creation_input_tokens, and cache_read_input_tokens. There is
-// no output_tokens field available at the time this widget runs.
+// The current_usage fields from stdin are per-call snapshots (not session totals):
+//   - input_tokens: uncacheable tail after the last cache breakpoint
+//   - cache_creation_input_tokens: tokens written to a new cache entry
+//   - cache_read_input_tokens: tokens served from an existing cache
+//
+// The cache ratio is cache_read / (cache_read + cache_creation). A high ratio
+// means the prompt cache is healthy. A drop signals a cache bust (prompt
+// structure changed enough to invalidate the cache). The uncacheable
+// input_tokens are excluded from the ratio since they can't be cached
+// regardless.
 //
 // Returns an empty WidgetResult when all token counts are zero.
-// FgColor is left empty because the widget uses faint styling (dimStyle);
-// the renderer passes the pre-styled Text through as-is.
 func Tokens(ctx *model.RenderContext, cfg *config.Config) WidgetResult {
-	in := ctx.InputTokens
+	uncached := ctx.InputTokens
 	cacheCreate := ctx.CacheCreation
 	cacheRead := ctx.CacheRead
 
-	if in == 0 && cacheCreate == 0 && cacheRead == 0 {
+	if uncached == 0 && cacheCreate == 0 && cacheRead == 0 {
 		return WidgetResult{}
 	}
 
-	// Combine cache creation and cache read into a single "cache" figure for brevity.
-	cache := cacheCreate + cacheRead
+	total := uncached + cacheCreate + cacheRead
+	plain := fmt.Sprintf("%s tok", formatTokenCount(total))
 
-	var parts []string
-	parts = append(parts, fmt.Sprintf("%s in", formatTokenCount(in)))
-	if cache > 0 {
-		parts = append(parts, fmt.Sprintf("%s cache", formatTokenCount(cache)))
+	// Cache ratio: what fraction of cacheable tokens were served from cache.
+	// Only meaningful when there are cacheable tokens (creation + read > 0).
+	cacheable := cacheCreate + cacheRead
+	if cacheable > 0 {
+		cachePercent := (cacheRead * 100) / cacheable
+		plain = fmt.Sprintf("%s %d%% cached", plain, cachePercent)
 	}
 
-	plain := strings.Join(parts, " · ")
 	return WidgetResult{
 		Text:      MutedStyle.Render(plain),
 		PlainText: plain,

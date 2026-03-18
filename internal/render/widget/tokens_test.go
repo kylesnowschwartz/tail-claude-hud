@@ -7,30 +7,49 @@ import (
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/model"
 )
 
-func TestTokensWidget_AllThreePresent(t *testing.T) {
+func TestTokensWidget_HighCacheHit(t *testing.T) {
 	ctx := &model.RenderContext{
-		InputTokens:   45100,
-		CacheCreation: 8000,
-		CacheRead:     4300,
+		InputTokens:   1,
+		CacheCreation: 557,
+		CacheRead:     116190,
 	}
 	cfg := defaultCfg()
 
 	got := Tokens(ctx, cfg)
 	if got.IsEmpty() {
-		t.Fatal("expected non-empty output when all token fields are set")
+		t.Fatal("expected non-empty output")
 	}
 
-	// 45100 → "45.1k in", cache = 8000+4300 = 12300 → "12.3k cache"
-	for _, want := range []string{"45.1k in", "12.3k cache", "·"} {
-		if !strings.Contains(got.Text, want) {
-			t.Errorf("Tokens all present: output %q does not contain %q", got.Text, want)
-		}
+	// total = 116748 → "116k tok", cache ratio = 116190/(116190+557) = 99%
+	if !strings.Contains(got.PlainText, "116k tok") {
+		t.Errorf("expected '116k tok', got %q", got.PlainText)
+	}
+	if !strings.Contains(got.PlainText, "99% cached") {
+		t.Errorf("expected '99%% cached', got %q", got.PlainText)
 	}
 }
 
-func TestTokensWidget_CacheZero(t *testing.T) {
+func TestTokensWidget_CacheBust(t *testing.T) {
+	// Cache bust: high creation, low read — cache was rebuilt.
 	ctx := &model.RenderContext{
-		InputTokens:   20000,
+		InputTokens:   500,
+		CacheCreation: 80000,
+		CacheRead:     20000,
+	}
+	cfg := defaultCfg()
+
+	got := Tokens(ctx, cfg)
+
+	// cache ratio = 20000/(80000+20000) = 20%
+	if !strings.Contains(got.PlainText, "20% cached") {
+		t.Errorf("expected '20%% cached' during cache bust, got %q", got.PlainText)
+	}
+}
+
+func TestTokensWidget_NoCacheableTokens(t *testing.T) {
+	// Only uncacheable tokens, no cache activity — no ratio shown.
+	ctx := &model.RenderContext{
+		InputTokens:   5000,
 		CacheCreation: 0,
 		CacheRead:     0,
 	}
@@ -38,38 +57,53 @@ func TestTokensWidget_CacheZero(t *testing.T) {
 
 	got := Tokens(ctx, cfg)
 	if got.IsEmpty() {
-		t.Fatal("expected non-empty output when only InputTokens is set")
+		t.Fatal("expected non-empty output")
 	}
 
-	if !strings.Contains(got.Text, "20.0k in") {
-		t.Errorf("Tokens cache-zero: expected '20.0k in', got %q", got.Text)
+	if got.PlainText != "5.0k tok" {
+		t.Errorf("expected '5.0k tok' with no cache info, got %q", got.PlainText)
 	}
-	// No cache section should appear when both cache fields are zero.
-	if strings.Contains(got.Text, "cache") {
-		t.Errorf("Tokens cache-zero: output %q should not contain 'cache' when cache counts are zero", got.Text)
+	if strings.Contains(got.PlainText, "cached") {
+		t.Errorf("should not show cache ratio when no cacheable tokens, got %q", got.PlainText)
 	}
 }
 
 func TestTokensWidget_AllZero(t *testing.T) {
-	ctx := &model.RenderContext{
-		InputTokens:   0,
-		CacheCreation: 0,
-		CacheRead:     0,
-	}
-	cfg := defaultCfg()
-
-	if got := Tokens(ctx, cfg); !got.IsEmpty() {
-		t.Errorf("Tokens all-zero: expected empty, got %q", got.Text)
-	}
-}
-
-func TestTokensWidget_ZeroValueContext(t *testing.T) {
-	// A zero-value RenderContext has all token fields as zero; must return empty.
 	ctx := &model.RenderContext{}
 	cfg := defaultCfg()
 
 	if got := Tokens(ctx, cfg); !got.IsEmpty() {
-		t.Errorf("Tokens zero-value context: expected empty, got %q", got.Text)
+		t.Errorf("expected empty for zero tokens, got %q", got.Text)
+	}
+}
+
+func TestTokensWidget_FullCacheHit(t *testing.T) {
+	// 100% cache read, no creation.
+	ctx := &model.RenderContext{
+		InputTokens:   0,
+		CacheCreation: 0,
+		CacheRead:     100000,
+	}
+	cfg := defaultCfg()
+
+	got := Tokens(ctx, cfg)
+	if !strings.Contains(got.PlainText, "100% cached") {
+		t.Errorf("expected '100%% cached', got %q", got.PlainText)
+	}
+}
+
+func TestTokensWidget_AllCreationNoRead(t *testing.T) {
+	// First call in session: everything is cache creation, nothing read yet.
+	ctx := &model.RenderContext{
+		InputTokens:   200,
+		CacheCreation: 50000,
+		CacheRead:     0,
+	}
+	cfg := defaultCfg()
+
+	got := Tokens(ctx, cfg)
+	if !strings.Contains(got.PlainText, "0% cached") {
+		t.Errorf("expected '0%% cached' on first call, got %q", got.PlainText)
 	}
 }
 
@@ -83,20 +117,23 @@ func TestTokensWidget_RegisteredInRegistry(t *testing.T) {
 	}
 }
 
-func TestTokensWidget_SmallCounts(t *testing.T) {
-	// Counts below 1000 should render without a 'k' suffix.
+func TestTokensWidget_DualOutput(t *testing.T) {
 	ctx := &model.RenderContext{
-		InputTokens:   500,
-		CacheCreation: 200,
-		CacheRead:     0,
+		InputTokens:   3,
+		CacheCreation: 370,
+		CacheRead:     125464,
 	}
 	cfg := defaultCfg()
 
 	got := Tokens(ctx, cfg)
-	if !strings.Contains(got.Text, "500 in") {
-		t.Errorf("Tokens small counts: expected '500 in', got %q", got.Text)
+	if got.FgColor != "8" {
+		t.Errorf("FgColor: expected '8', got %q", got.FgColor)
 	}
-	if !strings.Contains(got.Text, "200 cache") {
-		t.Errorf("Tokens small counts: expected '200 cache', got %q", got.Text)
+	if got.PlainText == "" {
+		t.Error("PlainText should be set")
+	}
+	// Text should be the MutedStyle-rendered version of PlainText.
+	if !strings.Contains(got.Text, "125k tok") {
+		t.Errorf("Text should contain total, got %q", got.Text)
 	}
 }

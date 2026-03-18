@@ -8,8 +8,8 @@ var builtins = map[string]Preset{
 		Name: "default",
 		Lines: []config.Line{
 			{Widgets: []string{"model", "context", "project", "todos", "duration"}},
-			{Widgets: []string{"agents"}},
 			{Widgets: []string{"tools"}},
+			{Widgets: []string{"agents"}},
 		},
 		Separator:      " | ",
 		Icons:          "nerdfont",
@@ -31,10 +31,10 @@ var builtins = map[string]Preset{
 	"detailed": {
 		Name: "detailed",
 		Lines: []config.Line{
-			{Widgets: []string{"model", "context", "cost", "duration", "speed"}},
-			{Widgets: []string{"directory", "git", "lines", "outputstyle"}},
-			{Widgets: []string{"agents", "messages", "skills"}},
+			{Widgets: []string{"model", "context", "project", "cost", "duration"}},
+			{Widgets: []string{"lines", "tokens", "speed", "messages"}},
 			{Widgets: []string{"tools"}},
+			{Widgets: []string{"agents"}},
 		},
 		Separator:      " | ",
 		Icons:          "nerdfont",

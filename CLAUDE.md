@@ -68,6 +68,41 @@ TOML at `~/.config/tail-claude-hud/config.toml` (or legacy `~/.claude/plugins/ta
 
 Layout is configured as `[[line]]` arrays with widget name lists. Default is three lines: summary, agents, tools.
 
+## Stdin JSON Contract
+
+Claude Code pipes this JSON to stdin on every tick. Canonical reference: https://code.claude.com/docs/en/statusline#available-data
+
+| Field | Description |
+|---|---|
+| `model.id`, `model.display_name` | Model identifier and human-readable name |
+| `cwd`, `workspace.current_dir` | Current working directory (identical; prefer `workspace.current_dir`) |
+| `workspace.project_dir` | Directory where Claude Code was launched |
+| `session_id` | Unique session identifier |
+| `transcript_path` | Path to conversation transcript JSONL file |
+| `version` | Claude Code version |
+| `cost.total_cost_usd` | Accumulated session cost in USD |
+| `cost.total_duration_ms` | Wall-clock time since session start (ms) |
+| `cost.total_api_duration_ms` | Time spent waiting for API responses (ms) |
+| `cost.total_lines_added` | Lines of code added this session |
+| `cost.total_lines_removed` | Lines of code removed this session |
+| `context_window.context_window_size` | Max context in tokens (200k or 1M) |
+| `context_window.used_percentage` | Pre-calculated context usage % (from input tokens only) |
+| `context_window.remaining_percentage` | Pre-calculated context remaining % |
+| `context_window.total_input_tokens` | **Cumulative** input tokens across the session |
+| `context_window.total_output_tokens` | **Cumulative** output tokens across the session |
+| `context_window.current_usage` | Token counts from the **most recent** API call (null until first call) |
+| `current_usage.input_tokens` | Non-cached input tokens (after last cache breakpoint) |
+| `current_usage.output_tokens` | Output tokens generated |
+| `current_usage.cache_creation_input_tokens` | Tokens written to prompt cache |
+| `current_usage.cache_read_input_tokens` | Tokens served from prompt cache |
+| `exceeds_200k_tokens` | Whether combined tokens from last API response exceed 200k |
+| `output_style.name` | Current output style name |
+| `vim.mode` | Vim mode ("NORMAL"/"INSERT") when enabled |
+| `agent.name` | Agent name (when `--agent` flag is used) |
+| `worktree.*` | Worktree metadata: name, path, branch, original_cwd, original_branch |
+
+**Token semantics**: `current_usage` fields are per-call snapshots, not session totals. With prompt caching, `input_tokens` is only the uncacheable tail after the last cache breakpoint. `used_percentage` = `(input_tokens + cache_creation + cache_read) / context_window_size`. Session-level cumulative totals are in `total_input_tokens` and `total_output_tokens`.
+
 ## Reference Projects
 
 `.cloned-sources/claude-hud/` — Original TypeScript plugin. Reference for UI patterns, color choices, widget behavior.
