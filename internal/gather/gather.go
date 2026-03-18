@@ -246,13 +246,19 @@ func sessionStart(td *model.TranscriptData, path string) string {
 // update COLUMNS on receipt of a SIGWINCH signal — Claude Code may not
 // propagate that signal to the subprocess before invoking the HUD.
 func terminalWidth() int {
-	// Try stdin fd first — works when the process has a real TTY attached.
-	if w, _, err := term.GetSize(os.Stdin.Fd()); err == nil && w > 0 {
-		return w
+	// Try each fd in turn. In Claude Code's statusline mode stdin is a pipe
+	// (JSON input), so GetSize on stdin always fails. Stderr is typically still
+	// connected to the terminal even when stdin/stdout are pipes, making it the
+	// most reliable fallback for reading the actual terminal dimensions.
+	for _, fd := range []uintptr{os.Stdin.Fd(), os.Stderr.Fd(), os.Stdout.Fd()} {
+		if w, _, err := term.GetSize(fd); err == nil && w > 0 {
+			return w
+		}
 	}
 
-	// Fall back to COLUMNS for contexts where stdin is not a TTY (e.g. pipes,
-	// tests, or non-interactive environments).
+	// Last resort: COLUMNS env var. Shells update this on SIGWINCH, but Claude
+	// Code may not propagate that signal before invoking the HUD, so this can
+	// lag behind the actual terminal width after a resize.
 	s := os.Getenv("COLUMNS")
 	if s == "" {
 		return 0

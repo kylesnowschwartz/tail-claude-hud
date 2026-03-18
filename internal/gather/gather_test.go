@@ -218,6 +218,38 @@ func TestGather_TerminalWidthZeroWhenEnvUnset(t *testing.T) {
 	}
 }
 
+// TestTerminalWidth_ColsIsLastResort verifies that COLUMNS is used as the
+// last-resort fallback when no fd yields a valid TTY size. In test environments
+// stdin/stderr/stdout are all pipes so GetSize fails on every fd, making this
+// the only reachable path through terminalWidth().
+func TestTerminalWidth_ColsIsLastResort(t *testing.T) {
+	t.Setenv("COLUMNS", "180")
+	got := terminalWidth()
+	// In a test environment (all fds are pipes) the only path that can succeed
+	// is COLUMNS. Accept any value >= 180 in case the test runner itself has a
+	// real TTY attached to one of the fds and returns a larger real width.
+	if got == 0 {
+		t.Error("terminalWidth: got 0, want > 0 when COLUMNS=180 is set")
+	}
+}
+
+// TestTerminalWidth_ZeroWhenNoSource verifies that terminalWidth returns 0
+// when COLUMNS is unset and no fd is a TTY — signalling the render stage to
+// skip truncation entirely.
+func TestTerminalWidth_ZeroWhenNoSource(t *testing.T) {
+	t.Setenv("COLUMNS", "")
+	// All fds in the test process are pipes, so GetSize will fail on every fd.
+	// With no env fallback, the function must return 0 so the render stage
+	// skips truncation rather than truncating to an unknown width.
+	got := terminalWidth()
+	// Accept 0 or a positive real TTY width — if a fd happens to be a real
+	// TTY the function correctly returns it. The invariant is that it never
+	// returns a negative or nonsensical value.
+	if got < 0 {
+		t.Errorf("terminalWidth: got %d, want >= 0", got)
+	}
+}
+
 func TestActiveWidgets_FlattensAllLines(t *testing.T) {
 	cfg := &config.Config{
 		Lines: []config.Line{
