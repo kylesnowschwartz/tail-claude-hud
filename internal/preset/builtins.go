@@ -48,7 +48,7 @@ var builtins = map[string]Preset{
 			// Line 1: identity bar with powerline-style arrow transitions between segments.
 			// Per-line mode overrides the global mode so line 2 can use plain mode.
 			{
-				Widgets: []string{"model", "context", "project", "cost", "duration"},
+				Widgets: []string{"model", "context", "project", "git", "cost", "duration"},
 				Mode:    "powerline",
 			},
 			// Line 2: activity feed in plain mode — powerline style is too
