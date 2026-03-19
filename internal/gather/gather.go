@@ -116,7 +116,9 @@ func Gather(input *model.StdinData, cfg *config.Config) *model.RenderContext {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			ctx.PermissionWaiting = sessions.AnyWaitingForPermission(input.TranscriptPath)
+			if ws := sessions.FindWaitingSession(input.TranscriptPath); ws != nil {
+				ctx.PermissionProject = ws.Project
+			}
 		}()
 	}
 

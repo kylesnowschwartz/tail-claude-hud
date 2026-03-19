@@ -4,7 +4,14 @@
 // The sysctl-based process detection is macOS-specific.
 package sessions
 
-// AnyWaitingForPermission always returns false on non-macOS platforms.
-func AnyWaitingForPermission(ownTranscript string) bool {
-	return false
+// FindWaitingSession always returns nil on non-macOS platforms.
+func FindWaitingSession(ownTranscript string) *WaitingSession {
+	return nil
+}
+
+// WaitingSession holds information about another Claude Code session that is
+// blocked waiting for user permission approval.
+type WaitingSession struct {
+	CWD     string
+	Project string
 }

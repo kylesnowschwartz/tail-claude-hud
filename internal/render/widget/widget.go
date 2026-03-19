@@ -67,18 +67,19 @@ type Icons struct {
 	Branch  string
 
 	// Per-tool category icons (one per tool category).
-	Read     string
-	Edit     string
-	Write    string
-	Bash     string
-	Grep     string
-	Glob     string
-	Web      string
-	Task     string
-	Skill    string
-	Thinking string
-	Other    string // fallback for unrecognized tools
-	Error    string
+	Read       string
+	Edit       string
+	Write      string
+	Bash       string
+	Grep       string
+	Glob       string
+	Web        string
+	Task       string
+	Skill      string
+	Thinking   string
+	Other      string // fallback for unrecognized tools
+	Error      string
+	Permission string // bell icon for permission-waiting alert
 }
 
 // IconsFor returns the icon set for the given mode string.
@@ -87,63 +88,66 @@ func IconsFor(mode string) Icons {
 	switch mode {
 	case "nerdfont":
 		return Icons{
-			Check:    "\uf00c",     // nf-fa-check
-			Running:  "󰪠",          // half-filled circle: static running indicator
-			Clock:    "\uf017",     // nf-fa-clock_o
-			Folder:   "\uf07b",     // nf-fa-folder
-			Branch:   "",          // nf-pl-branch
-			Read:     "",          // nf-fae-book_open_o
-			Edit:     "\uee75",     // nf-fa-pen_nib
-			Write:    "\uee75",     // nf-fa-pen_nib (same glyph as Edit)
-			Bash:     "\U000F0BE0", // nf-md-wrench_outline
-			Grep:     "\U000F0968", // nf-md-folder_search
-			Glob:     "\U000F0968", // nf-md-folder_search (same glyph as Grep)
-			Web:      "\U000F059F", // nf-md-web
-			Task:     "\U000F167A", // nf-md-robot_outline
-			Skill:    "\U000F0BE0", // nf-md-wrench_outline
-			Thinking: "\uf0eb",     // nf-fa-lightbulb
-			Other:    "\uf013",     // nf-fa-gear
-			Error:    "\uf00d",     // nf-fa-cross
+			Check:      "\uf00c",     // nf-fa-check
+			Running:    "󰪠",          // half-filled circle: static running indicator
+			Clock:      "\uf017",     // nf-fa-clock_o
+			Folder:     "\uf07b",     // nf-fa-folder
+			Branch:     "",          // nf-pl-branch
+			Read:       "",          // nf-fae-book_open_o
+			Edit:       "\uee75",     // nf-fa-pen_nib
+			Write:      "\uee75",     // nf-fa-pen_nib (same glyph as Edit)
+			Bash:       "\U000F0BE0", // nf-md-wrench_outline
+			Grep:       "\U000F0968", // nf-md-folder_search
+			Glob:       "\U000F0968", // nf-md-folder_search (same glyph as Grep)
+			Web:        "\U000F059F", // nf-md-web
+			Task:       "\U000F167A", // nf-md-robot_outline
+			Skill:      "\U000F0BE0", // nf-md-wrench_outline
+			Thinking:   "\uf0eb",     // nf-fa-lightbulb
+			Other:      "\uf013",     // nf-fa-gear
+			Error:      "\uf00d",     // nf-fa-cross
+			Permission: "󰅸",          // nf-md-bell-alert
 		}
 	case "unicode":
 		return Icons{
-			Check:    "✓",
-			Running:  "◐",
-			Clock:    "⏱",
-			Folder:   "📁",
-			Branch:   "⎇",
-			Read:     "📖",
-			Edit:     "✎",
-			Write:    "✎",
-			Bash:     "⚒",
-			Grep:     "🔍",
-			Glob:     "🔍",
-			Web:      "🌐",
-			Task:     "🤖",
-			Skill:    "⚙",
-			Thinking: "🧠",
-			Other:    "⚙",
-			Error:    "✗",
+			Check:      "✓",
+			Running:    "◐",
+			Clock:      "⏱",
+			Folder:     "📁",
+			Branch:     "⎇",
+			Read:       "📖",
+			Edit:       "✎",
+			Write:      "✎",
+			Bash:       "⚒",
+			Grep:       "🔍",
+			Glob:       "🔍",
+			Web:        "🌐",
+			Task:       "🤖",
+			Skill:      "⚙",
+			Thinking:   "🧠",
+			Other:      "⚙",
+			Error:      "✗",
+			Permission: "🔔",
 		}
 	default: // ascii
 		return Icons{
-			Check:    "v",
-			Running:  "~",
-			Clock:    "@",
-			Folder:   ">",
-			Branch:   "#",
-			Read:     "R",
-			Edit:     "E",
-			Write:    "W",
-			Bash:     "$",
-			Grep:     "?",
-			Glob:     "?",
-			Web:      "W",
-			Task:     "@",
-			Skill:    "*",
-			Thinking: "~",
-			Other:    "*",
-			Error:    "!",
+			Check:      "v",
+			Running:    "~",
+			Clock:      "@",
+			Folder:     ">",
+			Branch:     "#",
+			Read:       "R",
+			Edit:       "E",
+			Write:      "W",
+			Bash:       "$",
+			Grep:       "?",
+			Glob:       "?",
+			Web:        "W",
+			Task:       "@",
+			Skill:      "*",
+			Thinking:   "~",
+			Other:      "*",
+			Error:      "!",
+			Permission: "!",
 		}
 	}
 }

@@ -39,6 +39,7 @@ const DefaultTemplate = `# tail-claude-hud configuration
 #   directory   — current working directory path
 #   env         — environment variable counts (opt-in)
 #   speed       — rolling tokens/sec average (requires transcript)
+#   permission  — red alert when another Claude session is waiting for permission
 #
 # Each [[line]] can optionally override the global style.mode:
 #   mode = "powerline"  — use powerline arrows for this line only
@@ -156,6 +157,12 @@ cost_critical = 10.00
 #   bg = "#1a1a2e"        # hex bg
 #
 # [theme.overrides]
+
+# Permission widget — shows when another Claude session is waiting for approval.
+[permission]
+# Show the project name of the waiting session next to the icon.
+# When false, only the icon is shown.
+show_project = true
 
 [extra]
 # Uncomment to run a shell command and append its output to the statusline.

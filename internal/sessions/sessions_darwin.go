@@ -39,19 +39,26 @@ const (
 	commOffset = 243
 )
 
-// AnyWaitingForPermission reports whether any other Claude Code session
-// appears to be blocked waiting for user permission approval.
+// WaitingSession holds information about another Claude Code session that is
+// blocked waiting for user permission approval.
+type WaitingSession struct {
+	CWD     string // full working directory path
+	Project string // last path component (e.g. "tail-claude-hud")
+}
+
+// FindWaitingSession scans other Claude Code sessions and returns the first one
+// that appears to be blocked waiting for user permission approval.
 //
 // ownTranscript is excluded from checking (it's this session's transcript).
-// Returns false if there are no other sessions or if detection fails.
-func AnyWaitingForPermission(ownTranscript string) bool {
+// Returns nil if no session is waiting or if detection fails.
+func FindWaitingSession(ownTranscript string) *WaitingSession {
 	myPID := int32(os.Getpid())
 	myPPID := int32(os.Getppid())
 
 	// Step 1: Find claude PIDs via sysctl.
 	pids := findClaudePIDs()
 	if len(pids) <= 1 {
-		return false
+		return nil
 	}
 
 	// Step 2: For each other PID, get CWD → project slug → transcript.
@@ -78,11 +85,14 @@ func AnyWaitingForPermission(ownTranscript string) bool {
 		}
 
 		if isWaitingForPermission(transcript) {
-			return true
+			return &WaitingSession{
+				CWD:     cwd,
+				Project: filepath.Base(cwd),
+			}
 		}
 	}
 
-	return false
+	return nil
 }
 
 // findClaudePIDs scans the kernel process table for processes whose p_comm

@@ -81,6 +81,13 @@ type Config struct {
 		Overrides map[string]theme.WidgetColors `toml:"overrides"`
 	} `toml:"theme"`
 
+	// Permission controls the permission-waiting widget.
+	Permission struct {
+		// ShowProject displays the project name of the waiting session next to the icon.
+		// When false, only the icon is shown. Default: true.
+		ShowProject bool `toml:"show_project"`
+	} `toml:"permission"`
+
 	// Extra holds user-configured extra command settings. When Command is set,
 	// the gather stage runs it and stores the result in RenderContext.ExtraOutput.
 	Extra struct {
@@ -126,6 +133,8 @@ func defaults() *Config {
 	cfg.Git.Dirty = true
 	cfg.Git.AheadBehind = true
 	cfg.Git.FileStats = false
+
+	cfg.Permission.ShowProject = true
 
 	cfg.Style.Separator = " | "
 	cfg.Style.Icons = "nerdfont"

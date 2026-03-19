@@ -9,31 +9,29 @@ import (
 
 var permissionStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
 
-// Permission renders a red alert icon when another Claude Code session is
-// waiting for permission approval. Returns an empty WidgetResult when no
-// session needs attention, so the widget occupies zero space in normal operation.
+// Permission renders a red alert when another Claude Code session is waiting
+// for permission approval. Returns an empty WidgetResult when no session needs
+// attention, so the widget occupies zero space in normal operation.
+//
+// When config.Permission.ShowProject is true (default), the project name of the
+// waiting session is displayed next to the icon (e.g. " my-project").
+// When false, only the icon is shown.
 func Permission(ctx *model.RenderContext, cfg *config.Config) WidgetResult {
-	if !ctx.PermissionWaiting {
+	if ctx.PermissionProject == "" {
 		return WidgetResult{}
 	}
 
 	icons := IconsFor(cfg.Style.Icons)
-	icon := permissionIcon(icons)
+	icon := icons.Permission
+
+	label := icon
+	if cfg.Permission.ShowProject {
+		label = icon + " " + ctx.PermissionProject
+	}
 
 	return WidgetResult{
-		Text:      permissionStyle.Render(icon),
-		PlainText: icon,
+		Text:      permissionStyle.Render(label),
+		PlainText: label,
 		FgColor:   "1", // red
-	}
-}
-
-// permissionIcon returns the icon for the permission-waiting state.
-func permissionIcon(icons Icons) string {
-	switch {
-	case icons.Error != "":
-		// Nerdfont/unicode: use the error icon (✗ or nf cross)
-		return icons.Error
-	default:
-		return "!"
 	}
 }
