@@ -16,7 +16,7 @@ func TestOutputStyleWidget_PresentStyleName(t *testing.T) {
 	icons := IconsFor("ascii")
 
 	// Text must be dim-styled and contain the edit icon + style name.
-	want := dimStyle.Render(icons.Edit + " " + "default")
+	want := DimStyle.Render(icons.Edit + " " + "default")
 	if got.Text != want {
 		t.Errorf("OutputStyle: expected %q, got %q", want, got.Text)
 	}
@@ -74,7 +74,7 @@ func TestOutputStyleWidget_VariousStyleNames(t *testing.T) {
 			cfg.Style.Icons = "ascii"
 			got := OutputStyle(ctx, cfg)
 			icons := IconsFor("ascii")
-			want := dimStyle.Render(icons.Edit + " " + tt.style)
+			want := DimStyle.Render(icons.Edit + " " + tt.style)
 			if got.Text != want {
 				t.Errorf("OutputStyle(%q): expected %q, got %q", tt.style, want, got.Text)
 			}

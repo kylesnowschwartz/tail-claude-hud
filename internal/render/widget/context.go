@@ -12,7 +12,6 @@ import (
 )
 
 var (
-	dimStyle    = lipgloss.NewStyle().Faint(true)
 	greenStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
 	yellowStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
 	redStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
@@ -28,6 +27,24 @@ func colorStyle(colorName string, fallback lipgloss.Style) lipgloss.Style {
 		return fallback
 	}
 	return lipgloss.NewStyle().Foreground(lipgloss.Color(color.ResolveColorName(colorName)))
+}
+
+// thresholdColors holds the three resolved lipgloss styles for threshold-based
+// coloring. Used by widgets that color-shift based on a metric level.
+type thresholdColors struct {
+	context  lipgloss.Style
+	warning  lipgloss.Style
+	critical lipgloss.Style
+}
+
+// resolveThresholdColors resolves the three threshold colors from config,
+// falling back to the default green/yellow/red ANSI palette.
+func resolveThresholdColors(cfg *config.Config) thresholdColors {
+	return thresholdColors{
+		context:  colorStyle(cfg.Style.Colors.Context, greenStyle),
+		warning:  colorStyle(cfg.Style.Colors.Warning, yellowStyle),
+		critical: colorStyle(cfg.Style.Colors.Critical, redStyle),
+	}
 }
 
 // contextThresholds returns the color style for the given usage percentage,
@@ -125,10 +142,7 @@ func Context(ctx *model.RenderContext, cfg *config.Config) WidgetResult {
 
 	pct := ctx.ContextPercent
 
-	// Resolve colors: prefer config overrides, fall back to package-level defaults.
-	contextColor := colorStyle(cfg.Style.Colors.Context, greenStyle)
-	warningColor := colorStyle(cfg.Style.Colors.Warning, yellowStyle)
-	criticalColor := colorStyle(cfg.Style.Colors.Critical, redStyle)
+	colors := resolveThresholdColors(cfg)
 
 	// Resolve thresholds with safe fallbacks.
 	warnAt := cfg.Thresholds.ContextWarning
@@ -140,7 +154,7 @@ func Context(ctx *model.RenderContext, cfg *config.Config) WidgetResult {
 		critAt = 85
 	}
 
-	activeStyle := contextThresholds(pct, warnAt, critAt, contextColor, warningColor, criticalColor)
+	activeStyle := contextThresholds(pct, warnAt, critAt, colors.context, colors.warning, colors.critical)
 	if pct >= warnAt {
 		activeStyle = activeStyle.Bold(true)
 	}
@@ -199,7 +213,7 @@ func Context(ctx *model.RenderContext, cfg *config.Config) WidgetResult {
 			formatTokenCount(ctx.CacheCreation),
 			formatTokenCount(ctx.CacheRead),
 		)
-		text += dimStyle.Render(breakdown)
+		text += DimStyle.Render(breakdown)
 		plainText += breakdown
 	}
 

@@ -106,7 +106,7 @@ func truncateAgentEntries(styled, plain []string, maxWidth int) ([]string, []str
 			suffix := fmt.Sprintf("+%d more", total-keep)
 			outStyled := make([]string, keep+1)
 			copy(outStyled, styled[:keep])
-			outStyled[keep] = dimStyle.Render(suffix)
+			outStyled[keep] = DimStyle.Render(suffix)
 			outPlain := make([]string, keep+1)
 			copy(outPlain, plain[:keep])
 			outPlain[keep] = suffix
@@ -185,14 +185,14 @@ func formatAgentEntry(a model.AgentEntry, icons Icons) string {
 	if a.Status == "running" {
 		elapsed := formatElapsed(time.Since(a.StartTime))
 		label := icon + " " + displayName + modelSuffix
-		return style.Render(label) + " " + style.Render(icons.Running) + " " + dimStyle.Render(elapsed)
+		return style.Render(label) + " " + style.Render(icons.Running) + " " + DimStyle.Render(elapsed)
 	}
 
 	// Completed: dim the colored icon, show check + duration.
 	dimColorStyle := style.Faint(true)
 	label := icon + " " + displayName + modelSuffix
 	duration := formatDuration(a.DurationMs)
-	return dimColorStyle.Render(label) + " " + greenStyle.Render(icons.Check) + dimStyle.Render(duration)
+	return dimColorStyle.Render(label) + " " + greenStyle.Render(icons.Check) + DimStyle.Render(duration)
 }
 
 // modelFamilySuffix returns a parenthetical suffix for the model family if

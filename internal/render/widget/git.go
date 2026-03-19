@@ -10,10 +10,7 @@ import (
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/model"
 )
 
-var (
-	gitBranchStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("14"))
-	gitDimStyle    = lipgloss.NewStyle().Faint(true)
-)
+var gitBranchStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("14"))
 
 // Git renders branch name, dirty indicator, and optionally ahead/behind counts.
 // Branch name is rendered in cyan. Dirty state uses the nerdfont dirty icon when
@@ -39,7 +36,7 @@ func Git(ctx *model.RenderContext, cfg *config.Config) WidgetResult {
 
 	// Dirty indicator (modified, staged, or untracked files).
 	if cfg.Git.Dirty && g.IsDirty() {
-		parts = append(parts, gitDimStyle.Render("*"))
+		parts = append(parts, DimStyle.Render("*"))
 		plainParts = append(plainParts, "*")
 	}
 
@@ -47,12 +44,12 @@ func Git(ctx *model.RenderContext, cfg *config.Config) WidgetResult {
 	if cfg.Git.AheadBehind {
 		if g.AheadBy > 0 {
 			ab := fmt.Sprintf("↑%d", g.AheadBy)
-			parts = append(parts, gitDimStyle.Render(ab))
+			parts = append(parts, DimStyle.Render(ab))
 			plainParts = append(plainParts, ab)
 		}
 		if g.BehindBy > 0 {
 			ab := fmt.Sprintf("↓%d", g.BehindBy)
-			parts = append(parts, gitDimStyle.Render(ab))
+			parts = append(parts, DimStyle.Render(ab))
 			plainParts = append(plainParts, ab)
 		}
 	}
@@ -73,7 +70,7 @@ func Git(ctx *model.RenderContext, cfg *config.Config) WidgetResult {
 		}
 		if g.Untracked > 0 {
 			s := fmt.Sprintf("?%d", g.Untracked)
-			statParts = append(statParts, gitDimStyle.Render(s))
+			statParts = append(statParts, DimStyle.Render(s))
 			statPlainParts = append(statPlainParts, s)
 		}
 		if len(statParts) > 0 {

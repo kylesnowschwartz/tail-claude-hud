@@ -48,7 +48,7 @@ func Todos(ctx *model.RenderContext, cfg *config.Config) WidgetResult {
 		fgColor = "3"
 	default:
 		// Nothing done yet — dim.
-		text = fmt.Sprintf("%s %s", dimStyle.Render(icons.Running), dimStyle.Render(count))
+		text = fmt.Sprintf("%s %s", DimStyle.Render(icons.Running), DimStyle.Render(count))
 		plainIcon = icons.Running
 		fgColor = "8"
 	}

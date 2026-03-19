@@ -15,7 +15,7 @@ import (
 var highlightSep = yellowStyle.Render(" | ")
 
 // dimSep is the normal separator used between all non-highlighted tool entries.
-var dimSep = dimStyle.Render(" | ")
+var dimSep = DimStyle.Render(" | ")
 
 const maxVisibleTools = 5
 
@@ -163,7 +163,7 @@ func renderToolEntry(icons Icons, t model.ToolEntry) string {
 
 	if !t.Completed {
 		if t.Category == "Thinking" {
-			return fmt.Sprintf("%s %s", yellowStyle.Render(catIcon), dimStyle.Render(t.Name))
+			return fmt.Sprintf("%s %s", yellowStyle.Render(catIcon), DimStyle.Render(t.Name))
 		}
 		return yellowStyle.Bold(true).Render(toolLabel(catIcon, t.Name))
 	}
@@ -175,7 +175,7 @@ func renderToolEntry(icons Icons, t model.ToolEntry) string {
 	}
 
 	tier := recencyTier(t)
-	dur := dimStyle.Render(formatDuration(t.DurationMs))
+	dur := DimStyle.Render(formatDuration(t.DurationMs))
 
 	switch tier {
 	case 1: // fresh (<5s): green icon + secondary (default fg) name
@@ -183,12 +183,12 @@ func renderToolEntry(icons Icons, t model.ToolEntry) string {
 		name := SecondaryStyle.Render(t.Name)
 		return fmt.Sprintf("%s %s %s", icon, name, dur)
 	case 3: // faded (>30s): dim icon + dim name
-		icon := dimStyle.Render(catIcon)
-		name := dimStyle.Render(t.Name)
+		icon := DimStyle.Render(catIcon)
+		name := DimStyle.Render(t.Name)
 		return fmt.Sprintf("%s %s %s", icon, name, dur)
 	default: // tier 2 / recent: green icon + dim name
 		icon := greenStyle.Render(catIcon)
-		name := dimStyle.Render(t.Name)
+		name := DimStyle.Render(t.Name)
 		return fmt.Sprintf("%s %s %s", icon, name, dur)
 	}
 }

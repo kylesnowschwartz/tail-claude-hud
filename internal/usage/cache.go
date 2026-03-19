@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/logging"
+	"github.com/kylesnowschwartz/tail-claude-hud/internal/model"
 )
 
 const (
@@ -23,16 +24,16 @@ const (
 
 // cacheFile is the on-disk JSON shape.
 type cacheFile struct {
-	Data             *UsageData `json:"data"`
-	Timestamp        int64      `json:"timestamp"`          // Unix ms
-	RateLimitedCount int        `json:"rate_limited_count"` // for exponential backoff
-	RetryAfterUntil  int64      `json:"retry_after_until"`  // absolute ms
-	LastGoodData     *UsageData `json:"last_good_data"`     // preserved across rate-limit periods
+	Data             *model.UsageInfo `json:"data"`
+	Timestamp        int64            `json:"timestamp"`          // Unix ms
+	RateLimitedCount int              `json:"rate_limited_count"` // for exponential backoff
+	RetryAfterUntil  int64            `json:"retry_after_until"`  // absolute ms
+	LastGoodData     *model.UsageInfo `json:"last_good_data"`     // preserved across rate-limit periods
 }
 
 // cacheState is the result of reading and evaluating the cache file.
 type cacheState struct {
-	data    *UsageData
+	data    *model.UsageInfo
 	fresh   bool
 	rawFile *cacheFile // the full cache file for rate-limit bookkeeping
 }
@@ -67,8 +68,9 @@ func readCacheState(homeDir string) *cacheState {
 	// so the user sees their most recent real numbers instead of an error.
 	displayData := cf.Data
 	if cf.Data.APIError == "rate-limited" && cf.LastGoodData != nil {
-		displayData = cf.LastGoodData.clone()
-		displayData.APIError = "rate-limited" // syncing hint
+		clone := *cf.LastGoodData
+		clone.APIError = "rate-limited" // syncing hint
+		displayData = &clone
 	}
 
 	// Check rate-limit backoff: if we're still in the backoff window, treat as fresh.
@@ -111,7 +113,7 @@ func rateLimitedRetryUntil(cf *cacheFile) int64 {
 }
 
 // writeCache writes the cache file atomically.
-func writeCache(homeDir string, data *UsageData, opts *writeCacheOpts) {
+func writeCache(homeDir string, data *model.UsageInfo, opts *writeCacheOpts) {
 	dir := pluginDir(homeDir)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return
@@ -137,7 +139,7 @@ func writeCache(homeDir string, data *UsageData, opts *writeCacheOpts) {
 type writeCacheOpts struct {
 	rateLimitedCount int
 	retryAfterUntil  int64
-	lastGoodData     *UsageData
+	lastGoodData     *model.UsageInfo
 }
 
 // tryAcquireLock attempts to acquire the cache lock using exclusive file creation.

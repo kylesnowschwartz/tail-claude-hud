@@ -69,7 +69,7 @@ func TestThinkingWidget_InactiveWithCountShowsDim(t *testing.T) {
 	}
 
 	// Must match exactly the dim-styled icon+count.
-	want := dimStyle.Render(icons.Thinking + "3")
+	want := DimStyle.Render(icons.Thinking + "3")
 	if got != want {
 		t.Errorf("Thinking dim count: expected %q, got %q", want, got)
 	}

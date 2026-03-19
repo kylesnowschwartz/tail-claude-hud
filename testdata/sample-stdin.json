@@ -23,5 +23,15 @@
   },
   "output_style": {
     "name": "auto"
+  },
+  "rate_limits": {
+    "five_hour": {
+      "used_percentage": 45.2,
+      "resets_at": "2026-03-20T18:30:00Z"
+    },
+    "seven_day": {
+      "used_percentage": 62.8,
+      "resets_at": "2026-03-27T00:00:00Z"
+    }
   }
 }

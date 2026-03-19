@@ -11,16 +11,13 @@ import (
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/model"
 )
 
-// settingsFile is a minimal struct for extracting Claude Code settings.json keys
-// without caring about the full structure.
+// settingsFile is a minimal struct for extracting Claude Code settings.json
+// and .mcp.json keys without caring about the full structure. The Hooks field
+// is only present in settings.json; json.Unmarshal silently ignores it when
+// decoding .mcp.json files.
 type settingsFile struct {
 	McpServers map[string]json.RawMessage `json:"mcpServers"`
 	Hooks      map[string]json.RawMessage `json:"hooks"`
-}
-
-// mcpFile is a minimal struct for extracting .mcp.json keys.
-type mcpFile struct {
-	McpServers map[string]json.RawMessage `json:"mcpServers"`
 }
 
 // CountEnv counts the active Claude Code environment config items for the given
@@ -134,11 +131,11 @@ func addMcpNamesFromMcpFile(path string, names map[string]struct{}) {
 	if err != nil {
 		return
 	}
-	var mf mcpFile
-	if err := json.Unmarshal(data, &mf); err != nil {
+	var sf settingsFile
+	if err := json.Unmarshal(data, &sf); err != nil {
 		return
 	}
-	for name := range mf.McpServers {
+	for name := range sf.McpServers {
 		names[name] = struct{}{}
 	}
 }

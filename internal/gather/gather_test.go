@@ -221,6 +221,89 @@ func TestGather_TerminalWidthFallsBackTo120WhenEnvUnset(t *testing.T) {
 	}
 }
 
+func TestUsageFromStdin_PopulatesBothWindows(t *testing.T) {
+	fiveHourPct := 45.2
+	sevenDayPct := 62.8
+	fiveHourReset := "2026-03-20T18:30:00Z"
+	sevenDayReset := "2026-03-27T00:00:00Z"
+
+	input := minimalInput()
+	input.RateLimits = &model.StdinRateLimits{
+		FiveHour: &model.StdinRateWindow{
+			UsedPercentage: &fiveHourPct,
+			ResetsAt:       &fiveHourReset,
+		},
+		SevenDay: &model.StdinRateWindow{
+			UsedPercentage: &sevenDayPct,
+			ResetsAt:       &sevenDayReset,
+		},
+	}
+
+	got := usageFromStdin(input)
+	if got == nil {
+		t.Fatal("expected non-nil UsageInfo")
+	}
+	if got.FiveHourPercent != 45 {
+		t.Errorf("FiveHourPercent = %d, want 45", got.FiveHourPercent)
+	}
+	if got.SevenDayPercent != 63 {
+		t.Errorf("SevenDayPercent = %d, want 63", got.SevenDayPercent)
+	}
+	if got.FiveHourResetAt.IsZero() {
+		t.Error("FiveHourResetAt should be non-zero")
+	}
+	if got.SevenDayResetAt.IsZero() {
+		t.Error("SevenDayResetAt should be non-zero")
+	}
+}
+
+func TestUsageFromStdin_NilWhenAbsent(t *testing.T) {
+	input := minimalInput()
+	if got := usageFromStdin(input); got != nil {
+		t.Errorf("expected nil when RateLimits absent, got %+v", got)
+	}
+}
+
+func TestUsageFromStdin_PartialWindows(t *testing.T) {
+	pct := 80.0
+	input := minimalInput()
+	input.RateLimits = &model.StdinRateLimits{
+		FiveHour: &model.StdinRateWindow{
+			UsedPercentage: &pct,
+		},
+		// SevenDay absent
+	}
+
+	got := usageFromStdin(input)
+	if got == nil {
+		t.Fatal("expected non-nil UsageInfo")
+	}
+	if got.FiveHourPercent != 80 {
+		t.Errorf("FiveHourPercent = %d, want 80", got.FiveHourPercent)
+	}
+	if got.SevenDayPercent != -1 {
+		t.Errorf("SevenDayPercent = %d, want -1 (absent)", got.SevenDayPercent)
+	}
+}
+
+func TestGather_UsageFromStdinPreferred(t *testing.T) {
+	pct := 55.0
+	input := minimalInput()
+	input.RateLimits = &model.StdinRateLimits{
+		FiveHour: &model.StdinRateWindow{UsedPercentage: &pct},
+	}
+	cfg := cfgWithWidgets("usage")
+
+	ctx := Gather(input, cfg)
+
+	if ctx.Usage == nil {
+		t.Fatal("expected Usage non-nil when stdin rate_limits present")
+	}
+	if ctx.Usage.FiveHourPercent != 55 {
+		t.Errorf("FiveHourPercent = %d, want 55", ctx.Usage.FiveHourPercent)
+	}
+}
+
 // TestTerminalWidth_ColsIsLastResort verifies that COLUMNS is used as the
 // last-resort fallback when no fd yields a valid TTY size. In test environments
 // stdin/stderr/stdout are all pipes so GetSize fails on every fd, making this

@@ -1,37 +1,18 @@
 package usage
 
 import (
-	"os"
 	"time"
 
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/logging"
+	"github.com/kylesnowschwartz/tail-claude-hud/internal/model"
 )
-
-// UsageData holds the parsed usage API response, cached to disk.
-// FiveHourPercent and SevenDayPercent are -1 when the corresponding
-// window is unavailable from the API.
-type UsageData struct {
-	PlanName        string    `json:"plan_name"`
-	FiveHourPercent int       `json:"five_hour_percent"` // 0-100, or -1
-	FiveHourResetAt time.Time `json:"five_hour_reset_at"`
-	SevenDayPercent int       `json:"seven_day_percent"` // 0-100, or -1
-	SevenDayResetAt time.Time `json:"seven_day_reset_at"`
-	APIUnavailable  bool      `json:"api_unavailable"`
-	APIError        string    `json:"api_error"` // "rate-limited", "http-NNN", "network", "timeout", ""
-}
-
-// clone returns a shallow copy of the UsageData.
-func (u *UsageData) clone() *UsageData {
-	copy := *u
-	return &copy
-}
 
 // Fetch returns cached usage data, refreshing from the API when the cache
 // is stale. Returns nil for API users (no OAuth credentials) or when
 // credentials are unavailable. Never blocks longer than ~100ms on the fast
 // path (cache hit); the HTTP call runs synchronously when the cache is stale
 // because the gather stage already runs this on a background goroutine.
-func Fetch(homeDir string) *UsageData {
+func Fetch(homeDir string) *model.UsageInfo {
 	// Skip if using a custom API endpoint (non-Anthropic provider).
 	if isUsingCustomEndpoint() {
 		logging.Debug("usage: skipping — custom API endpoint configured")
@@ -89,7 +70,7 @@ func Fetch(homeDir string) *UsageData {
 			prevCount = cs.rawFile.RateLimitedCount
 		}
 
-		failureData := &UsageData{
+		failureData := &model.UsageInfo{
 			PlanName:        plan,
 			FiveHourPercent: -1,
 			SevenDayPercent: -1,
@@ -105,7 +86,7 @@ func Fetch(homeDir string) *UsageData {
 			}
 
 			// Preserve last good data for display during rate-limit backoff.
-			var goodData *UsageData
+			var goodData *model.UsageInfo
 			if cs != nil && !cs.data.APIUnavailable {
 				goodData = cs.data
 			} else if cs != nil && cs.rawFile != nil && cs.rawFile.LastGoodData != nil {
@@ -115,9 +96,9 @@ func Fetch(homeDir string) *UsageData {
 			if goodData != nil {
 				opts.lastGoodData = goodData
 				writeCache(homeDir, failureData, opts)
-				syncing := goodData.clone()
+				syncing := *goodData
 				syncing.APIError = "rate-limited"
-				return syncing
+				return &syncing
 			}
 		}
 
@@ -138,7 +119,7 @@ func Fetch(homeDir string) *UsageData {
 		sevenDayResetAt = parseResetTime(result.data.SevenDay.ResetsAt)
 	}
 
-	data := &UsageData{
+	data := &model.UsageInfo{
 		PlanName:        plan,
 		FiveHourPercent: fiveHour,
 		FiveHourResetAt: fiveHourResetAt,
@@ -148,13 +129,4 @@ func Fetch(homeDir string) *UsageData {
 
 	writeCache(homeDir, data, &writeCacheOpts{lastGoodData: data})
 	return data
-}
-
-// homeDir returns the user's home directory, with a fallback to os.TempDir().
-func homeDir() string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return os.TempDir()
-	}
-	return home
 }

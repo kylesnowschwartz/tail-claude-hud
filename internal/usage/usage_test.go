@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/kylesnowschwartz/tail-claude-hud/internal/model"
 )
 
 func TestParseCredentialsJSON_ValidToken(t *testing.T) {
@@ -107,7 +109,7 @@ func TestCacheRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	data := &UsageData{
+	data := &model.UsageInfo{
 		PlanName:        "Pro",
 		FiveHourPercent: 42,
 		SevenDayPercent: 60,
@@ -139,7 +141,7 @@ func TestCacheStaleAfterTTL(t *testing.T) {
 
 	// Write a cache entry with an old timestamp.
 	cf := cacheFile{
-		Data: &UsageData{
+		Data: &model.UsageInfo{
 			PlanName:        "Pro",
 			FiveHourPercent: 42,
 		},
@@ -258,13 +260,13 @@ func TestCacheRateLimitedBackoff(t *testing.T) {
 	}
 
 	// Write a rate-limited cache entry that is "fresh" due to backoff.
-	lastGood := &UsageData{
+	lastGood := &model.UsageInfo{
 		PlanName:        "Pro",
 		FiveHourPercent: 25,
 		SevenDayPercent: 40,
 	}
 	cf := cacheFile{
-		Data: &UsageData{
+		Data: &model.UsageInfo{
 			PlanName:       "Pro",
 			APIUnavailable: true,
 			APIError:       "rate-limited",

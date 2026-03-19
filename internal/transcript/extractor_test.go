@@ -434,7 +434,8 @@ func TestToTranscriptData_TodosCopied(t *testing.T) {
 	data.Todos[0].Content = "mutated"
 
 	// The internal state must not be affected.
-	if es.Todos[0].Content == "mutated" {
+	fresh := es.ToTranscriptData()
+	if fresh.Todos[0].Content == "mutated" {
 		t.Error("ToTranscriptData should return a copy, not a reference to internal state")
 	}
 }

@@ -15,7 +15,7 @@ func OutputStyle(ctx *model.RenderContext, cfg *config.Config) WidgetResult {
 	icons := IconsFor(cfg.Style.Icons)
 	plain := icons.Edit + " " + ctx.OutputStyle
 	return WidgetResult{
-		Text:      dimStyle.Render(plain),
+		Text:      DimStyle.Render(plain),
 		PlainText: plain,
 		FgColor:   "8",
 	}

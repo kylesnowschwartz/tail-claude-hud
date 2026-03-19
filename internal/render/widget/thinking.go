@@ -33,7 +33,7 @@ func Thinking(ctx *model.RenderContext, cfg *config.Config) WidgetResult {
 	if ctx.Transcript.ThinkingCount > 0 {
 		plain := fmt.Sprintf("%s%d", icons.Thinking, ctx.Transcript.ThinkingCount)
 		return WidgetResult{
-			Text:      dimStyle.Render(plain),
+			Text:      DimStyle.Render(plain),
 			PlainText: plain,
 			FgColor:   "8",
 		}

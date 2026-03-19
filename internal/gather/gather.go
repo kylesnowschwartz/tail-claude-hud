@@ -59,7 +59,7 @@ func Gather(input *model.StdinData, cfg *config.Config) *model.RenderContext {
 	if input.Cost != nil {
 		ctx.SessionCostUSD = input.Cost.TotalCostUSD
 		ctx.TotalDurationMs = input.Cost.TotalDurationMs
-		ctx.ApiDurationMs = input.Cost.TotalAPIDurationMs
+		ctx.APIDurationMs = input.Cost.TotalAPIDurationMs
 		ctx.LinesAdded = input.Cost.TotalLinesAdded
 		ctx.LinesRemoved = input.Cost.TotalLinesRemoved
 	}
@@ -111,14 +111,17 @@ func Gather(input *model.StdinData, cfg *config.Config) *model.RenderContext {
 		}()
 	}
 
-	// Usage goroutine: fetches rate-limit data from the Anthropic OAuth API.
-	// The cache fast-path returns in <1ms; API calls happen once per cache TTL.
+	// Usage: prefer stdin rate_limits (zero-cost, no network) over the OAuth API.
 	if active["usage"] {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			ctx.Usage = gatherUsage()
-		}()
+		if stdinUsage := usageFromStdin(input); stdinUsage != nil {
+			ctx.Usage = stdinUsage
+		} else {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				ctx.Usage = gatherUsage()
+			}()
+		}
 	}
 
 	// Permission detection goroutine: scans breadcrumb files written by
@@ -457,27 +460,69 @@ func readAgentMeta(path string) agentMeta {
 	return agentMeta{agentType: meta.AgentType, description: meta.Description}
 }
 
-// gatherUsage fetches usage data from the Anthropic OAuth API (via cache)
-// and converts it to the model type. Returns nil when credentials are
-// unavailable or the user is an API user.
+// usageFromStdin converts stdin rate_limits into a UsageInfo when present.
+// Returns nil when the field is absent (older Claude Code or API users),
+// letting the caller fall back to the OAuth API path.
+func usageFromStdin(input *model.StdinData) *model.UsageInfo {
+	if input.RateLimits == nil {
+		return nil
+	}
+	rl := input.RateLimits
+
+	info := &model.UsageInfo{
+		FiveHourPercent: -1,
+		SevenDayPercent: -1,
+	}
+
+	if rl.FiveHour != nil {
+		info.FiveHourPercent = parseStdinPercent(rl.FiveHour.UsedPercentage)
+		info.FiveHourResetAt = parseStdinTime(rl.FiveHour.ResetsAt)
+	}
+	if rl.SevenDay != nil {
+		info.SevenDayPercent = parseStdinPercent(rl.SevenDay.UsedPercentage)
+		info.SevenDayResetAt = parseStdinTime(rl.SevenDay.ResetsAt)
+	}
+
+	return info
+}
+
+// parseStdinPercent clamps a float percentage to 0-100 and rounds.
+// Returns -1 when nil.
+func parseStdinPercent(v *float64) int {
+	if v == nil {
+		return -1
+	}
+	pct := *v
+	if pct < 0 {
+		return 0
+	}
+	if pct > 100 {
+		return 100
+	}
+	return int(pct + 0.5)
+}
+
+// parseStdinTime parses an ISO 8601 timestamp string. Returns zero time when
+// nil or unparseable.
+func parseStdinTime(s *string) time.Time {
+	if s == nil || *s == "" {
+		return time.Time{}
+	}
+	t, err := time.Parse(time.RFC3339, *s)
+	if err != nil {
+		t, _ = time.Parse("2006-01-02T15:04:05.999Z07:00", *s)
+	}
+	return t
+}
+
+// gatherUsage fetches usage data from the Anthropic OAuth API (via cache).
+// Returns nil when credentials are unavailable or the user is an API user.
 func gatherUsage() *model.UsageInfo {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return nil
 	}
-	data := usage.Fetch(home)
-	if data == nil {
-		return nil
-	}
-	return &model.UsageInfo{
-		PlanName:        data.PlanName,
-		FiveHourPercent: data.FiveHourPercent,
-		FiveHourResetAt: data.FiveHourResetAt,
-		SevenDayPercent: data.SevenDayPercent,
-		SevenDayResetAt: data.SevenDayResetAt,
-		APIUnavailable:  data.APIUnavailable,
-		APIError:        data.APIError,
-	}
+	return usage.Fetch(home)
 }
 
 // mergeSubagents is a union merge that keeps transcript agents as the base.

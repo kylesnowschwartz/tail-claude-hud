@@ -43,7 +43,7 @@ type internalTool struct {
 // internalAgent holds richer per-invocation state than model.AgentEntry.
 type internalAgent struct {
 	id          string
-	agentType   string
+	name        string // display name: subagent_type, truncated description, or tool name
 	model       string
 	description string
 	status      string // "running" or "completed"
@@ -71,9 +71,9 @@ type ExtractionState struct {
 	// agentMap correlates agent tool_use IDs with their state.
 	agentMap map[string]*internalAgent
 
-	// Todos is the authoritative todo list; replaced on TodoWrite, mutated on
+	// todos is the authoritative todo list; replaced on TodoWrite, mutated on
 	// TaskCreate/TaskUpdate.
-	Todos []model.TodoItem
+	todos []model.TodoItem
 
 	// taskIDIndex maps TaskCreate-assigned IDs to positions in Todos.
 	taskIDIndex map[string]int
@@ -119,10 +119,10 @@ type ExtractionState struct {
 	// across statusline invocations.
 	dividerOffset int
 
-	// MessageCount is the number of user/assistant conversation turns observed
+	// messageCount is the number of user/assistant conversation turns observed
 	// in the transcript, excluding tool_result entries (which are infrastructure
 	// messages, not conversational turns).
-	MessageCount int
+	messageCount int
 
 	// skillNames is the ordered list of skill names invoked in the session
 	// (newest last), capped at maxSkills. Skills appear as tool_use blocks
@@ -178,7 +178,7 @@ func (es *ExtractionState) ProcessEntry(e Entry) {
 			len(blocks.Thinking) == 0 &&
 			!blocks.HasText
 		if !isToolResultOnly {
-			es.MessageCount++
+			es.messageCount++
 		}
 	}
 	if ts.IsZero() {
@@ -285,14 +285,29 @@ func (es *ExtractionState) handleRegularToolUse(b ToolUseBlock, ts time.Time) {
 		startTime: ts,
 	}
 	es.toolMap[b.ID] = t
+	es.appendTool(t)
+}
+
+// appendTool adds a tool to the display slice, increments the divider offset,
+// and prunes the oldest entry when the slice exceeds maxTools.
+func (es *ExtractionState) appendTool(t *internalTool) {
 	es.displayTools = append(es.displayTools, t)
 	es.dividerOffset++
-
 	if len(es.displayTools) > maxTools {
-		// Prune the oldest entry from both the display slice and the map.
 		oldest := es.displayTools[0]
 		es.displayTools = es.displayTools[1:]
 		delete(es.toolMap, oldest.id)
+	}
+}
+
+// appendAgent adds an agent to the display slice and prunes the oldest entry
+// when the slice exceeds maxAgents.
+func (es *ExtractionState) appendAgent(a *internalAgent) {
+	es.displayAgents = append(es.displayAgents, a)
+	if len(es.displayAgents) > maxAgents {
+		oldest := es.displayAgents[0]
+		es.displayAgents = es.displayAgents[1:]
+		delete(es.agentMap, oldest.id)
 	}
 }
 
@@ -309,15 +324,7 @@ func (es *ExtractionState) handleThinkingStart(ts time.Time) {
 		startTime: ts,
 	}
 	es.toolMap[id] = t
-	es.displayTools = append(es.displayTools, t)
-	es.dividerOffset++
-
-	if len(es.displayTools) > maxTools {
-		oldest := es.displayTools[0]
-		es.displayTools = es.displayTools[1:]
-		delete(es.toolMap, oldest.id)
-	}
-
+	es.appendTool(t)
 	es.thinkingTool = t
 }
 
@@ -357,20 +364,14 @@ func (es *ExtractionState) handleAgentToolUse(b ToolUseBlock, ts time.Time) {
 
 	a := &internalAgent{
 		id:          b.ID,
-		agentType:   agentType,
+		name:        agentType,
 		model:       input.Model,
 		description: input.Description,
 		status:      "running",
 		startTime:   ts,
 	}
 	es.agentMap[b.ID] = a
-	es.displayAgents = append(es.displayAgents, a)
-
-	if len(es.displayAgents) > maxAgents {
-		oldest := es.displayAgents[0]
-		es.displayAgents = es.displayAgents[1:]
-		delete(es.agentMap, oldest.id)
-	}
+	es.appendAgent(a)
 }
 
 // handleTodoWrite replaces the entire todo list. The input JSON is expected to
@@ -387,17 +388,17 @@ func (es *ExtractionState) handleTodoWrite(b ToolUseBlock) {
 		return
 	}
 
-	es.Todos = es.Todos[:0]
+	es.todos = es.todos[:0]
 	es.taskIDIndex = make(map[string]int)
 
 	for _, t := range input.Todos {
-		es.Todos = append(es.Todos, model.TodoItem{
+		es.todos = append(es.todos, model.TodoItem{
 			ID:      t.ID,
 			Content: t.Content,
 			Done:    normalizeStatusDone(t.Status),
 		})
 		if t.ID != "" {
-			es.taskIDIndex[t.ID] = len(es.Todos) - 1
+			es.taskIDIndex[t.ID] = len(es.todos) - 1
 		}
 	}
 }
@@ -435,9 +436,9 @@ func (es *ExtractionState) handleTaskCreate(b ToolUseBlock) {
 	}
 	item.ID = taskID
 
-	es.Todos = append(es.Todos, item)
+	es.todos = append(es.todos, item)
 	if taskID != "" {
-		es.taskIDIndex[taskID] = len(es.Todos) - 1
+		es.taskIDIndex[taskID] = len(es.todos) - 1
 	}
 }
 
@@ -459,7 +460,7 @@ func (es *ExtractionState) handleTaskUpdate(b ToolUseBlock) {
 	}
 
 	if input.Status != "" {
-		es.Todos[idx].Done = normalizeStatusDone(input.Status)
+		es.todos[idx].Done = normalizeStatusDone(input.Status)
 	}
 
 	newContent := input.Subject
@@ -467,7 +468,7 @@ func (es *ExtractionState) handleTaskUpdate(b ToolUseBlock) {
 		newContent = input.Description
 	}
 	if newContent != "" {
-		es.Todos[idx].Content = newContent
+		es.todos[idx].Content = newContent
 	}
 }
 
@@ -513,7 +514,7 @@ func (es *ExtractionState) ToTranscriptData() *model.TranscriptData {
 	for i, a := range es.displayAgents {
 		agents = append(agents, model.AgentEntry{
 			ID:          a.id,
-			Name:        a.agentType,
+			Name:        a.name,
 			Status:      a.status,
 			Model:       a.model,
 			Description: a.description,
@@ -523,8 +524,8 @@ func (es *ExtractionState) ToTranscriptData() *model.TranscriptData {
 		})
 	}
 
-	todos := make([]model.TodoItem, len(es.Todos))
-	copy(todos, es.Todos)
+	todos := make([]model.TodoItem, len(es.todos))
+	copy(todos, es.todos)
 
 	skillNames := make([]string, len(es.skillNames))
 	copy(skillNames, es.skillNames)
@@ -543,7 +544,7 @@ func (es *ExtractionState) ToTranscriptData() *model.TranscriptData {
 		ThinkingCount:  es.thinkingCount,
 		SpinnerFrame:   es.spinnerFrame,
 		DividerOffset:  es.dividerOffset,
-		MessageCount:   es.MessageCount,
+		MessageCount:   es.messageCount,
 	}
 }
 
@@ -555,14 +556,14 @@ func (es *ExtractionState) resolveTaskIndex(taskID string) int {
 		return -1
 	}
 
-	if idx, ok := es.taskIDIndex[taskID]; ok && idx < len(es.Todos) {
+	if idx, ok := es.taskIDIndex[taskID]; ok && idx < len(es.todos) {
 		return idx
 	}
 
 	// Numeric one-based fallback: "1" => index 0.
 	if isNumericString(taskID) {
 		n := parseInt(taskID)
-		if n >= 1 && n <= len(es.Todos) {
+		if n >= 1 && n <= len(es.todos) {
 			return n - 1
 		}
 	}
@@ -723,7 +724,7 @@ func (es *ExtractionState) MarshalSnapshot() (json.RawMessage, error) {
 	for _, a := range es.displayAgents {
 		sa := snapshotAgent{
 			ID:          a.id,
-			AgentType:   a.agentType,
+			AgentType:   a.name,
 			Model:       a.model,
 			Description: a.description,
 			Status:      a.status,
@@ -735,8 +736,8 @@ func (es *ExtractionState) MarshalSnapshot() (json.RawMessage, error) {
 		agents = append(agents, sa)
 	}
 
-	todos := make([]model.TodoItem, len(es.Todos))
-	copy(todos, es.Todos)
+	todos := make([]model.TodoItem, len(es.todos))
+	copy(todos, es.todos)
 
 	skillNames := make([]string, len(es.skillNames))
 	copy(skillNames, es.skillNames)
@@ -760,7 +761,7 @@ func (es *ExtractionState) MarshalSnapshot() (json.RawMessage, error) {
 		ThinkingCount:  es.thinkingCount,
 		SpinnerFrame:   es.spinnerFrame,
 		DividerOffset:  es.dividerOffset,
-		MessageCount:   es.MessageCount,
+		MessageCount:   es.messageCount,
 	}
 	return json.Marshal(snap)
 }
@@ -806,7 +807,7 @@ func (es *ExtractionState) UnmarshalSnapshot(data json.RawMessage) error {
 	for _, sa := range snap.Agents {
 		a := &internalAgent{
 			id:          sa.ID,
-			agentType:   sa.AgentType,
+			name:        sa.AgentType,
 			model:       sa.Model,
 			description: sa.Description,
 			status:      sa.Status,
@@ -825,9 +826,9 @@ func (es *ExtractionState) UnmarshalSnapshot(data json.RawMessage) error {
 	}
 
 	if snap.Todos != nil {
-		es.Todos = snap.Todos
+		es.todos = snap.Todos
 		es.taskIDIndex = make(map[string]int)
-		for i, item := range es.Todos {
+		for i, item := range es.todos {
 			if item.ID != "" {
 				es.taskIDIndex[item.ID] = i
 			}
@@ -858,7 +859,7 @@ func (es *ExtractionState) UnmarshalSnapshot(data json.RawMessage) error {
 	es.thinkingCount = snap.ThinkingCount
 	es.spinnerFrame = snap.SpinnerFrame
 	es.dividerOffset = snap.DividerOffset
-	es.MessageCount = snap.MessageCount
+	es.messageCount = snap.MessageCount
 	return nil
 }
 

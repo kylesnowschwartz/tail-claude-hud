@@ -32,7 +32,7 @@ type RenderContext struct {
 	// prefer it over transcript-derived duration when non-zero.
 	SessionCostUSD  float64
 	TotalDurationMs int
-	ApiDurationMs   int
+	APIDurationMs   int
 	LinesAdded      int
 	LinesRemoved    int
 
@@ -60,16 +60,16 @@ type RenderContext struct {
 	Usage *UsageInfo
 }
 
-// UsageInfo holds rate-limit utilization data for rendering.
+// UsageInfo holds rate-limit utilization data for rendering and caching.
 // FiveHourPercent and SevenDayPercent are -1 when unavailable.
 type UsageInfo struct {
-	PlanName        string
-	FiveHourPercent int // 0-100, or -1
-	FiveHourResetAt time.Time
-	SevenDayPercent int // 0-100, or -1
-	SevenDayResetAt time.Time
-	APIUnavailable  bool
-	APIError        string // "rate-limited", "http-NNN", "network", "timeout", ""
+	PlanName        string    `json:"plan_name"`
+	FiveHourPercent int       `json:"five_hour_percent"` // 0-100, or -1
+	FiveHourResetAt time.Time `json:"five_hour_reset_at"`
+	SevenDayPercent int       `json:"seven_day_percent"` // 0-100, or -1
+	SevenDayResetAt time.Time `json:"seven_day_reset_at"`
+	APIUnavailable  bool      `json:"api_unavailable"`
+	APIError        string    `json:"api_error"` // "rate-limited", "http-NNN", "network", "timeout", ""
 }
 
 // TokenSample records a token count observation at a point in time.
@@ -217,8 +217,28 @@ type StdinData struct {
 	// OutputStyle is nil when Claude Code does not include output_style in the stdin payload.
 	OutputStyle *OutputStyle `json:"output_style"`
 
+	// RateLimits is nil on older Claude Code versions or for API users.
+	// When present, it provides rate-limit utilization directly from stdin,
+	// avoiding the need for OAuth API calls.
+	RateLimits *StdinRateLimits `json:"rate_limits"`
+
 	// ContextPercent is computed by the stdin package — not decoded from JSON.
 	ContextPercent int `json:"-"`
+}
+
+// StdinRateLimits holds rate-limit windows provided by Claude Code via stdin.
+// Field names mirror the changelog description: used_percentage and resets_at
+// per window. The exact JSON shape is speculative until confirmed by a live
+// stdin snapshot — the struct uses flexible types to tolerate minor variations.
+type StdinRateLimits struct {
+	FiveHour *StdinRateWindow `json:"five_hour"`
+	SevenDay *StdinRateWindow `json:"seven_day"`
+}
+
+// StdinRateWindow is a single rate-limit window from the stdin JSON.
+type StdinRateWindow struct {
+	UsedPercentage *float64 `json:"used_percentage"`
+	ResetsAt       *string  `json:"resets_at"`
 }
 
 // PluginDir returns the directory used for plugin state files:

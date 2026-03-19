@@ -72,7 +72,6 @@ var (
 	SecondaryStyle = lipgloss.NewStyle()
 
 	// DimStyle is tier 3: faint emphasis for supporting detail.
-	// Equivalent to the existing dimStyle in context.go.
 	// Used for: completed tool names, elapsed times, separators.
 	DimStyle = lipgloss.NewStyle().Faint(true)
 

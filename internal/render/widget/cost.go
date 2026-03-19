@@ -3,7 +3,6 @@ package widget
 import (
 	"fmt"
 
-	"github.com/kylesnowschwartz/tail-claude-hud/internal/color"
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/config"
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/model"
 )
@@ -20,11 +19,6 @@ func Cost(ctx *model.RenderContext, cfg *config.Config) WidgetResult {
 		return WidgetResult{}
 	}
 
-	// Resolve colors: prefer config overrides, fall back to package-level defaults.
-	contextColor := colorStyle(cfg.Style.Colors.Context, greenStyle)
-	warningColor := colorStyle(cfg.Style.Colors.Warning, yellowStyle)
-	criticalColor := colorStyle(cfg.Style.Colors.Critical, redStyle)
-
 	// Resolve thresholds with safe fallbacks.
 	warnAt := cfg.Thresholds.CostWarning
 	critAt := cfg.Thresholds.CostCritical
@@ -35,34 +29,20 @@ func Cost(ctx *model.RenderContext, cfg *config.Config) WidgetResult {
 		critAt = 10.00
 	}
 
+	// Map cost to a 0-100 scale relative to the critical threshold so we
+	// can reuse the shared integer-based threshold helpers.
 	cost := ctx.SessionCostUSD
-	activeStyle := contextColor
-	if cost >= critAt {
-		activeStyle = criticalColor
-	} else if cost >= warnAt {
-		activeStyle = warningColor
-	}
+	scaledPct := int(cost / critAt * 100)
+
+	// Scale warning threshold to the same 0-100 range.
+	scaledWarn := int(warnAt / critAt * 100)
+
+	colors := resolveThresholdColors(cfg)
+	activeStyle := contextThresholds(scaledPct, scaledWarn, 100, colors.context, colors.warning, colors.critical)
 
 	plain := fmt.Sprintf("$%.2f", cost)
-
-	// Determine fg color for powerline/minimal modes.
-	// Named ANSI colors (e.g. "green") are resolved to numeric strings so
-	// the renderer can pass them to lipgloss.Color() without losing the color.
-	fgColor := "2" // green default
-	if cfgCtx := cfg.Style.Colors.Context; cfgCtx != "" {
-		fgColor = color.ResolveColorName(cfgCtx)
-	}
-	if cost >= critAt {
-		fgColor = "1"
-		if cfgCrit := cfg.Style.Colors.Critical; cfgCrit != "" {
-			fgColor = color.ResolveColorName(cfgCrit)
-		}
-	} else if cost >= warnAt {
-		fgColor = "3"
-		if cfgWarn := cfg.Style.Colors.Warning; cfgWarn != "" {
-			fgColor = color.ResolveColorName(cfgWarn)
-		}
-	}
+	fgColor := thresholdFgColor(scaledPct, scaledWarn, 100,
+		cfg.Style.Colors.Context, cfg.Style.Colors.Warning, cfg.Style.Colors.Critical)
 
 	return WidgetResult{
 		Text:      activeStyle.Render(plain),

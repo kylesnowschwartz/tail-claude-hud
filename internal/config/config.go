@@ -108,7 +108,7 @@ type Config struct {
 
 	// ResolvedTheme is the effective per-widget color map after merging the
 	// selected built-in theme with any custom [theme.overrides].
-	// Populated by resolveTheme() during LoadHud. Not read from TOML directly.
+	// Populated by ResolveTheme() during LoadHud. Not read from TOML directly.
 	ResolvedTheme theme.Theme `toml:"-"`
 }
 
@@ -170,16 +170,11 @@ func defaults() *Config {
 	return cfg
 }
 
-// resolveTheme populates cfg.ResolvedTheme by loading the named built-in theme
+// ResolveTheme populates cfg.ResolvedTheme by loading the named built-in theme
 // and merging any custom [theme.overrides] on top of it. Called after the TOML
 // decode so that both built-in selection and user overrides are captured.
-func resolveTheme(cfg *Config) {
-	ResolveTheme(cfg)
-}
-
-// ResolveTheme is the exported equivalent of resolveTheme, exposed so that
-// packages that hold a *Config (e.g. the preset package) can trigger a
-// palette refresh after mutating Style fields.
+// Also used by the preset package to trigger a palette refresh after mutating
+// Style fields.
 func ResolveTheme(cfg *Config) {
 	base := theme.Load(cfg.Style.Theme)
 	if len(cfg.Theme.Overrides) > 0 {
@@ -221,13 +216,13 @@ func LoadHud() *Config {
 
 	path := configPath()
 	if path == "" {
-		resolveTheme(cfg)
+		ResolveTheme(cfg)
 		return cfg
 	}
 
 	data, err := os.ReadFile(path)
 	if err != nil {
-		resolveTheme(cfg)
+		ResolveTheme(cfg)
 		return cfg
 	}
 
@@ -236,10 +231,10 @@ func LoadHud() *Config {
 	// BurntSushi/toml does not zero out unmentioned struct fields, so this
 	// overlay pattern is safe.
 	if _, err := toml.Decode(string(data), cfg); err != nil {
-		resolveTheme(cfg)
+		ResolveTheme(cfg)
 		return cfg
 	}
 
-	resolveTheme(cfg)
+	ResolveTheme(cfg)
 	return cfg
 }
