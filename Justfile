@@ -45,3 +45,68 @@ eval:
 # Clean build artifacts
 clean:
     rm -rf bin/
+
+# Bump the version. Usage: just bump patch|minor|major
+bump level:
+    #!/usr/bin/env zsh
+    set -e
+
+    v=$(cat VERSION)
+    M=${v%%.*}; rest=${v#*.}; m=${rest%%.*}; p=${rest#*.}
+
+    case "{{level}}" in
+        patch) new="$M.$m.$((p+1))" ;;
+        minor) new="$M.$((m+1)).0" ;;
+        major) new="$((M+1)).0.0" ;;
+        *) echo "Usage: just bump patch|minor|major" && exit 1 ;;
+    esac
+
+    echo "Bumping $v → $new"
+    echo "$new" > VERSION
+    git add VERSION
+    echo "Version bumped to $new. Run 'just release' to commit, tag, and push."
+
+# Commit, tag, push, and create a GitHub release. Pass a notes file for custom release notes.
+release notes="":
+    #!/usr/bin/env zsh
+    set -e
+
+    v=$(cat VERSION)
+
+    # Safety: must be on main and up to date
+    branch=$(git branch --show-current)
+    if [[ "$branch" != "main" ]]; then
+        echo "Error: must be on main branch (currently on $branch)"
+        exit 1
+    fi
+
+    git fetch origin main
+    behind=$(git rev-list HEAD..origin/main --count)
+    if [[ "$behind" -gt 0 ]]; then
+        echo "Error: $behind commit(s) behind origin/main"
+        echo "Run 'git pull --rebase' first"
+        exit 1
+    fi
+
+    if git diff --cached --quiet; then
+        echo "Error: nothing staged. Run 'just bump' first."
+        exit 1
+    fi
+
+    git commit -m "chore: Bump version to $v"
+    git tag "$v"
+    git push && git push --tags
+
+    # Create GitHub release
+    notes="{{notes}}"
+    if [[ -n "$notes" && -f "$notes" ]]; then
+        gh release create "$v" --title "$v" --notes-file "$notes" --latest
+    else
+        gh release create "$v" --title "$v" --generate-notes --latest
+    fi
+
+    # Prime the Go module proxy so `go install ...@latest` resolves immediately
+    GOPROXY=https://proxy.golang.org go list -m "github.com/kylesnowschwartz/tail-claude-hud@$v" || true
+    GOPROXY=https://proxy.golang.org go list -m "github.com/kylesnowschwartz/tail-claude-hud@latest" || true
+
+    echo "Released $v"

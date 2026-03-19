@@ -4,6 +4,8 @@ A terminal statusline for [Claude Code](https://docs.anthropic.com/en/docs/claud
 
 Reads JSON from Claude Code's stdin pipe on every tick, parses transcript state, gathers git/env data, and renders a styled multi-line statusline. The full cycle completes in single-digit milliseconds.
 
+![tail-claude-hud demo](demo.gif)
+
 ## Requirements
 
 - Go 1.25+
@@ -13,7 +15,7 @@ Reads JSON from Claude Code's stdin pipe on every tick, parses transcript state,
 ## Install
 
 ```bash
-go install github.com/kylesnowschwartz/tail-claude-hud@latest
+go install github.com/kylesnowschwartz/tail-claude-hud/cmd/tail-claude-hud@latest
 ```
 
 Or build from source:
@@ -24,15 +26,42 @@ cd tail-claude-hud
 just build
 ```
 
+## Update
+
+```bash
+go install github.com/kylesnowschwartz/tail-claude-hud/cmd/tail-claude-hud@latest
+```
+
 ## Setup
 
 Generate a default config and point Claude Code at the binary:
 
 ```bash
+# Generate config
 tail-claude-hud --init
 ```
 
 This creates `~/.config/tail-claude-hud/config.toml`.
+
+Add the statusline to your Claude Code settings (`~/.claude/settings.json`):
+
+```json
+{
+  "statusline": {
+    "command": "tail-claude-hud"
+  }
+}
+```
+
+If `$GOBIN` (typically `~/go/bin`) isn't on your `PATH`, use the full path:
+
+```json
+{
+  "statusline": {
+    "command": "~/go/bin/tail-claude-hud"
+  }
+}
+```
 
 ## Quick start with presets
 
