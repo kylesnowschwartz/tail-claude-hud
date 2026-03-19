@@ -115,6 +115,14 @@ func Gather(input *model.StdinData, cfg *config.Config) *model.RenderContext {
 	ctx.SessionStart = sessionStart(ctx.Transcript, input.TranscriptPath)
 	ctx.TerminalWidth = terminalWidth()
 
+	// When all fds are pipes (Claude Code's statusline mode), terminalWidth()
+	// returns 0. Fall back to the same width the render stage uses
+	// (defaultTerminalWidth = 120 in render.go) so widgets that do their own
+	// width-aware truncation agree with the render stage's final truncation.
+	if ctx.TerminalWidth == 0 {
+		ctx.TerminalWidth = 120
+	}
+
 	return ctx
 }
 

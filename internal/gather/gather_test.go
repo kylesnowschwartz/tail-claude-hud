@@ -205,7 +205,7 @@ func TestGather_TerminalWidthFromEnv(t *testing.T) {
 	}
 }
 
-func TestGather_TerminalWidthZeroWhenEnvUnset(t *testing.T) {
+func TestGather_TerminalWidthFallsBackTo120WhenEnvUnset(t *testing.T) {
 	t.Setenv("COLUMNS", "")
 
 	input := minimalInput()
@@ -213,8 +213,11 @@ func TestGather_TerminalWidthZeroWhenEnvUnset(t *testing.T) {
 
 	ctx := Gather(input, cfg)
 
-	if ctx.TerminalWidth != 0 {
-		t.Errorf("TerminalWidth: got %d, want 0 when COLUMNS unset", ctx.TerminalWidth)
+	// When COLUMNS is unset and all fds are pipes (test environment),
+	// terminalWidth() returns 0. Gather now applies a fallback of 120
+	// so widgets and the render stage agree on width.
+	if ctx.TerminalWidth != 120 {
+		t.Errorf("TerminalWidth: got %d, want 120 (fallback) when COLUMNS unset", ctx.TerminalWidth)
 	}
 }
 

@@ -120,12 +120,28 @@ func truncateAgentEntries(styled, plain []string, maxWidth int) ([]string, []str
 	return styled[:1], plain[:1]
 }
 
+// maxAgentNameWidth is the character budget for the name/description portion
+// of an agent entry. The full entry also includes icon, model suffix, status
+// indicator, and elapsed/duration, so the name must be capped to prevent a
+// single verbose description from consuming the entire line.
+const maxAgentNameWidth = 25
+
+// truncateAgentName caps name to maxWidth visible characters, appending "…"
+// when truncation is needed. Returns name unchanged when it fits.
+func truncateAgentName(name string, maxWidth int) string {
+	if ansi.StringWidth(name) <= maxWidth {
+		return name
+	}
+	return ansi.Truncate(name, maxWidth-1, "") + "…"
+}
+
 // formatAgentEntryPlain renders a single agent entry as unstyled text.
 func formatAgentEntryPlain(a model.AgentEntry, icons Icons) string {
 	displayName := a.Name
 	if a.Description != "" {
 		displayName = a.Description
 	}
+	displayName = truncateAgentName(displayName, maxAgentNameWidth)
 	modelSuffix := modelFamilySuffix(a.Model)
 	label := icons.Task + " " + displayName + modelSuffix
 
@@ -150,6 +166,7 @@ func formatAgentEntry(a model.AgentEntry, icons Icons) string {
 	if a.Description != "" {
 		displayName = a.Description
 	}
+	displayName = truncateAgentName(displayName, maxAgentNameWidth)
 
 	if a.Status == "running" {
 		elapsed := formatElapsed(time.Since(a.StartTime))
