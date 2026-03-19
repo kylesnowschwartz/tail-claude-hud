@@ -73,10 +73,10 @@ var (
 )
 
 var (
-	opusStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("9")).Bold(true)
-	sonnetStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("12")).Bold(true)
-	haikuStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("10")).Bold(true)
-	defaultModelStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("14")).Bold(true)
+	opusStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
+	sonnetStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("12"))
+	haikuStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
+	defaultModelStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("14"))
 )
 
 // ModelFamily returns the model family name ("opus", "sonnet", "haiku") from

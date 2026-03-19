@@ -1,7 +1,6 @@
 package widget
 
 import (
-	"fmt"
 	"regexp"
 	"strings"
 
@@ -76,6 +75,12 @@ func normalizeModelName(raw string) string {
 	return slug
 }
 
+// shortModelName strips the "Claude " prefix from a normalized model name.
+// Unknown models that don't start with "Claude " are returned as-is.
+func shortModelName(fullName string) string {
+	return strings.TrimPrefix(fullName, "Claude ")
+}
+
 // Model renders the normalized model display name colored by model family.
 // Returns an empty WidgetResult when ctx.ModelDisplayName is empty.
 //
@@ -91,7 +96,7 @@ func Model(ctx *model.RenderContext, cfg *config.Config) WidgetResult {
 
 	name := normalizeModelName(ctx.ModelDisplayName)
 	style := ModelFamilyColor(name)
-	plain := fmt.Sprintf("[%s]", name)
+	plain := shortModelName(name)
 
 	return WidgetResult{
 		Text:      style.Render(plain),

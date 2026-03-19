@@ -1455,8 +1455,8 @@ func TestModelWidget_NormalizesBedrockID(t *testing.T) {
 	cfg := defaultCfg()
 
 	got := Model(ctx, cfg).Text
-	if !strings.Contains(got, "Claude Sonnet 4") {
-		t.Errorf("Model widget: expected 'Claude Sonnet 4', got %q", got)
+	if !strings.Contains(got, "Sonnet 4") {
+		t.Errorf("Model widget: expected 'Sonnet 4', got %q", got)
 	}
 	if strings.Contains(got, "anthropic.") {
 		t.Errorf("Model widget: Bedrock prefix should be stripped, got %q", got)
@@ -1472,7 +1472,7 @@ func TestModelWidget_OpusRendersInCoral(t *testing.T) {
 	got := Model(ctx, cfg).Text
 	// Coral is ANSI color 204. Verify the rendered output contains the ANSI sequence.
 	coralStyle := ModelFamilyColor("Claude Opus 4.6")
-	want := coralStyle.Render("[Claude Opus 4.6]")
+	want := coralStyle.Render("Opus 4.6")
 	if got != want {
 		t.Errorf("Opus model: expected coral rendering %q, got %q", want, got)
 	}
@@ -1484,7 +1484,7 @@ func TestModelWidget_SonnetRendersInBlue(t *testing.T) {
 
 	got := Model(ctx, cfg).Text
 	blueStyle := ModelFamilyColor("Claude Sonnet 4.6")
-	want := blueStyle.Render("[Claude Sonnet 4.6]")
+	want := blueStyle.Render("Sonnet 4.6")
 	if got != want {
 		t.Errorf("Sonnet model: expected blue rendering %q, got %q", want, got)
 	}
@@ -1496,7 +1496,7 @@ func TestModelWidget_HaikuRendersInGreen(t *testing.T) {
 
 	got := Model(ctx, cfg).Text
 	greenStyle := ModelFamilyColor("Claude Haiku 3.5")
-	want := greenStyle.Render("[Claude Haiku 3.5]")
+	want := greenStyle.Render("Haiku 3.5")
 	if got != want {
 		t.Errorf("Haiku model: expected green rendering %q, got %q", want, got)
 	}
@@ -1508,7 +1508,7 @@ func TestModelWidget_UnknownRendersInCyan(t *testing.T) {
 
 	got := Model(ctx, cfg).Text
 	cyanStyle := ModelFamilyColor("gpt-4o")
-	want := cyanStyle.Render("[gpt-4o]")
+	want := cyanStyle.Render("gpt-4o")
 	if got != want {
 		t.Errorf("Unknown model: expected cyan rendering %q, got %q", want, got)
 	}
