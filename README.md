@@ -22,13 +22,7 @@ just build
 
 ## Setup
 
-Generate a config and add the statusline to Claude Code:
-
-```bash
-tail-claude-hud --init
-```
-
-Then add to `~/.claude/settings.json`:
+Add to `~/.claude/settings.json`:
 
 ```json
 {
@@ -37,6 +31,8 @@ Then add to `~/.claude/settings.json`:
   }
 }
 ```
+
+Works out of the box with the `default` preset. To customize, run `tail-claude-hud --init` to generate a config at `~/.config/tail-claude-hud/config.toml`.
 
 ## Presets
 
@@ -58,7 +54,7 @@ Custom presets go in `~/.config/tail-claude-hud/presets/*.toml`.
 
 ## Documentation
 
-- [Widgets](docs/widgets.md) -- 18 available widgets and what they display
+- [Widgets](docs/widgets.md) -- 19 available widgets and what they display
 - [Configuration](docs/configuration.md) -- TOML reference, render modes, themes
 - [CLI](docs/cli.md) -- Flags and commands
 - [Architecture](docs/architecture.md) -- Pipeline design and transcript processing
