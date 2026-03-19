@@ -88,6 +88,18 @@ type Config struct {
 		ShowProject bool `toml:"show_project"`
 	} `toml:"permission"`
 
+	// Usage controls the usage/rate-limit widget.
+	Usage struct {
+		// FiveHourThreshold is the minimum 5-hour usage percentage at which
+		// the widget appears. Below this value the widget is hidden. Default: 0.
+		FiveHourThreshold int `toml:"five_hour_threshold"`
+		// SevenDayThreshold is the minimum 7-day usage percentage at which
+		// the 7-day window is appended. Default: 80.
+		SevenDayThreshold int `toml:"seven_day_threshold"`
+		// CacheTTLSeconds overrides the success cache TTL. Default: 180.
+		CacheTTLSeconds int `toml:"cache_ttl_seconds"`
+	} `toml:"usage"`
+
 	// Extra holds user-configured extra command settings. When Command is set,
 	// the gather stage runs it and stores the result in RenderContext.ExtraOutput.
 	Extra struct {
@@ -135,6 +147,10 @@ func defaults() *Config {
 	cfg.Git.FileStats = false
 
 	cfg.Permission.ShowProject = true
+
+	cfg.Usage.FiveHourThreshold = 0
+	cfg.Usage.SevenDayThreshold = 80
+	cfg.Usage.CacheTTLSeconds = 180
 
 	cfg.Style.Separator = " | "
 	cfg.Style.Icons = "nerdfont"

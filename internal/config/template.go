@@ -40,6 +40,7 @@ const DefaultTemplate = `# tail-claude-hud configuration
 #   env         — environment variable counts (opt-in)
 #   speed       — rolling tokens/sec average (requires transcript)
 #   permission  — red alert when another Claude session is waiting for permission
+#   usage       — Anthropic rate-limit utilization (5-hour and 7-day windows)
 #
 # Each [[line]] can optionally override the global style.mode:
 #   mode = "powerline"  — use powerline arrows for this line only
@@ -163,6 +164,17 @@ cost_critical = 10.00
 # Show the project name of the waiting session next to the icon.
 # When false, only the icon is shown.
 show_project = true
+
+# Usage widget — Anthropic rate-limit utilization.
+# Requires OAuth credentials (macOS Keychain or ~/.claude/.credentials.json).
+# Only applicable for plan subscribers (Pro, Max, Team).
+[usage]
+# Minimum 5-hour usage percentage to show the widget (0 = always).
+five_hour_threshold = 0
+# Minimum 7-day usage percentage to show the 7-day window.
+seven_day_threshold = 80
+# Cache TTL in seconds for successful API responses.
+cache_ttl_seconds = 180
 
 [extra]
 # Uncomment to run a shell command and append its output to the statusline.

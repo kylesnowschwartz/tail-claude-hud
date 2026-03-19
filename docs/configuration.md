@@ -4,7 +4,7 @@ TOML at `~/.config/tail-claude-hud/config.toml`. Generate defaults with `tail-cl
 
 ## Layout
 
-Each `[[line]]` defines a row of widgets:
+Each `[[line]]` defines a row of widgets. Widgets render left to right in array order -- reorder the array to change the layout:
 
 ```toml
 [[line]]
@@ -40,6 +40,17 @@ levels = 2
 dirty = true
 ahead_behind = true
 ```
+
+## Usage (rate limits)
+
+```toml
+[usage]
+five_hour_threshold = 0   # show when 5h usage >= this % (0 = always)
+seven_day_threshold = 80  # append 7d window when >= this %
+cache_ttl_seconds = 180   # how long to cache successful API responses
+```
+
+Requires OAuth credentials (macOS Keychain or `~/.claude/.credentials.json`). Only applies to plan subscribers (Pro, Max, Team). Returns empty for API users.
 
 ## Thresholds
 

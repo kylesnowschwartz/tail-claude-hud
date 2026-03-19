@@ -56,6 +56,7 @@ var Registry = map[string]RenderFunc{
 	"skills":      Skills,
 	"speed":       Speed,
 	"permission":  Permission,
+	"usage":       Usage,
 }
 
 // Icons holds the icon strings for a given display mode (nerdfont, unicode, ascii).

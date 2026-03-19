@@ -20,6 +20,7 @@ import (
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/model"
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/sessions"
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/transcript"
+	"github.com/kylesnowschwartz/tail-claude-hud/internal/usage"
 )
 
 // transcriptWidgets are the widget names that require transcript data.
@@ -107,6 +108,16 @@ func Gather(input *model.StdinData, cfg *config.Config) *model.RenderContext {
 		go func() {
 			defer wg.Done()
 			ctx.ExtraOutput = extracmd.Run(cfg.Extra.Command)
+		}()
+	}
+
+	// Usage goroutine: fetches rate-limit data from the Anthropic OAuth API.
+	// The cache fast-path returns in <1ms; API calls happen once per cache TTL.
+	if active["usage"] {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			ctx.Usage = gatherUsage()
 		}()
 	}
 
@@ -444,6 +455,29 @@ func readAgentMeta(path string) agentMeta {
 		return agentMeta{}
 	}
 	return agentMeta{agentType: meta.AgentType, description: meta.Description}
+}
+
+// gatherUsage fetches usage data from the Anthropic OAuth API (via cache)
+// and converts it to the model type. Returns nil when credentials are
+// unavailable or the user is an API user.
+func gatherUsage() *model.UsageInfo {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil
+	}
+	data := usage.Fetch(home)
+	if data == nil {
+		return nil
+	}
+	return &model.UsageInfo{
+		PlanName:        data.PlanName,
+		FiveHourPercent: data.FiveHourPercent,
+		FiveHourResetAt: data.FiveHourResetAt,
+		SevenDayPercent: data.SevenDayPercent,
+		SevenDayResetAt: data.SevenDayResetAt,
+		APIUnavailable:  data.APIUnavailable,
+		APIError:        data.APIError,
+	}
 }
 
 // mergeSubagents is a union merge that keeps transcript agents as the base.
