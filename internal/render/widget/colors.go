@@ -25,12 +25,12 @@ var circleSliceIcons = [8]string{
 }
 
 // percentToIcon maps a percentage (0–100) to one of 8 circle-slice Nerd Font icons.
-// Bucket boundaries are centered so the icon's visual fill aligns with the value:
+// The icons represent fill levels of 12.5%, 25%, 37.5%, 50%, 62.5%, 75%, 87.5%, 100%.
+// Each percentage maps to the icon whose fill level is closest:
 //
-//	0-6%: 1/8, 7-18%: 2/8, 19-31%: 3/8, 32-43%: 4/8,
-//	44-56%: 5/8, 57-68%: 6/8, 69-81%: 7/8, 82-100%: 8/8
-//
-// This avoids the off-by-one feeling where 38% renders as half-filled.
+//	 0-18%: 1/8 (idx 0)    19-31%: 2/8 (idx 1)    32-43%: 3/8 (idx 2)
+//	44-56%: 4/8 (idx 3)    57-68%: 5/8 (idx 4)    69-81%: 6/8 (idx 5)
+//	82-93%: 7/8 (idx 6)    94-100%: 8/8 (idx 7)
 func percentToIcon(percent int) string {
 	if percent <= 0 {
 		return circleSliceIcons[0]
@@ -38,9 +38,13 @@ func percentToIcon(percent int) string {
 	if percent >= 100 {
 		return circleSliceIcons[7]
 	}
-	// Shift by half a bucket (100/16 = 6.25) so boundaries sit between
-	// visual levels rather than at the start of each level.
-	idx := (percent*8 + 50) / 100
+	// Map to nearest icon: round(percent / 12.5) - 1, using integer math.
+	// Multiply by 2 to avoid floating point: round(percent*2 / 25) - 1.
+	idx := (percent*2 + 12) / 25 // +12 is half of 25, for rounding
+	if idx < 1 {
+		idx = 1
+	}
+	idx-- // convert from 1-based (icon labels) to 0-based (array index)
 	if idx > 7 {
 		idx = 7
 	}

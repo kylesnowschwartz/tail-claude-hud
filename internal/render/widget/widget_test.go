@@ -2144,31 +2144,31 @@ func TestPercentToIcon_BoundaryValues(t *testing.T) {
 		{100, icons[7], "100% is last icon"},
 		{101, icons[7], "over 100 clamps to last"},
 
-		// Centered-bucket boundaries: index = (percent*8 + 50) / 100
-		// idx 0: 0–6%
+		// Nearest-icon mapping: round(percent / 12.5) - 1
+		// idx 0 (1/8 = 12.5%): 0–18%
 		{1, icons[0], "1% → idx 0"},
-		{6, icons[0], "6% → idx 0"},
-		// idx 1: 7–18%
-		{7, icons[1], "7% → idx 1"},
-		{18, icons[1], "18% → idx 1"},
-		// idx 2: 19–31%
-		{19, icons[2], "19% → idx 2"},
-		{31, icons[2], "31% → idx 2"},
-		// idx 3: 32–43%
-		{32, icons[3], "32% → idx 3"},
-		{43, icons[3], "43% → idx 3"},
-		// idx 4: 44–56%
-		{44, icons[4], "44% → idx 4"},
-		{50, icons[4], "50% → idx 4"},
-		{56, icons[4], "56% → idx 4"},
-		// idx 5: 57–68%
-		{57, icons[5], "57% → idx 5"},
-		{68, icons[5], "68% → idx 5"},
-		// idx 6: 69–81%
-		{69, icons[6], "69% → idx 6"},
-		{81, icons[6], "81% → idx 6"},
-		// idx 7: 82–99%
-		{82, icons[7], "82% → idx 7"},
+		{18, icons[0], "18% → idx 0"},
+		// idx 1 (2/8 = 25%): 19–31%
+		{19, icons[1], "19% → idx 1"},
+		{31, icons[1], "31% → idx 1"},
+		// idx 2 (3/8 = 37.5%): 32–43%
+		{32, icons[2], "32% → idx 2"},
+		{43, icons[2], "43% → idx 2"},
+		// idx 3 (4/8 = 50%): 44–56%
+		{44, icons[3], "44% → idx 3"},
+		{50, icons[3], "50% → idx 3"},
+		{56, icons[3], "56% → idx 3"},
+		// idx 4 (5/8 = 62.5%): 57–68%
+		{57, icons[4], "57% → idx 4"},
+		{68, icons[4], "68% → idx 4"},
+		// idx 5 (6/8 = 75%): 69–81%
+		{69, icons[5], "69% → idx 5"},
+		{81, icons[5], "81% → idx 5"},
+		// idx 6 (7/8 = 87.5%): 82–93%
+		{82, icons[6], "82% → idx 6"},
+		{93, icons[6], "93% → idx 6"},
+		// idx 7 (8/8 = 100%): 94–99%
+		{94, icons[7], "94% → idx 7"},
 		{99, icons[7], "99% → idx 7"},
 	}
 
