@@ -217,40 +217,8 @@ func TestRender_UsesSeparator(t *testing.T) {
 	Render(&buf, ctx, cfg)
 
 	out := buf.String()
-	// Spaces are replaced with NBSP in final output, so the separator
-	// " :: " becomes "\u00a0::\u00a0".
-	nbspSep := strings.ReplaceAll(" :: ", " ", "\u00a0")
-	if !strings.Contains(out, nbspSep) {
-		t.Errorf("expected NBSP separator %q in output, got %q", nbspSep, out)
-	}
-}
-
-func TestRender_ReplacesSpacesWithNBSP(t *testing.T) {
-	// VS Code's integrated terminal trims trailing spaces from lines, which
-	// collapses padded statusline content. All regular spaces in the final
-	// output are replaced with non-breaking spaces (U+00A0) to prevent this.
-	ctx := &model.RenderContext{
-		ModelDisplayName:  "Sonnet",
-		ContextWindowSize: 200000,
-		ContextPercent:    50,
-	}
-	cfg := config.LoadHud()
-	cfg.Style.Separator = " | "
-	cfg.Lines = []config.Line{
-		{Widgets: []string{"model", "context"}},
-	}
-
-	var buf bytes.Buffer
-	Render(&buf, ctx, cfg)
-
-	out := buf.String()
-	// No regular space must appear in any output line.
-	if strings.Contains(out, " ") {
-		t.Errorf("expected no regular spaces in output (should be NBSP), got %q", out)
-	}
-	// Non-breaking spaces must be present (the separator has spaces).
-	if !strings.Contains(out, "\u00a0") {
-		t.Errorf("expected NBSP (U+00A0) in output, got %q", out)
+	if !strings.Contains(out, " :: ") {
+		t.Errorf("expected separator %q in output, got %q", " :: ", out)
 	}
 }
 
@@ -275,7 +243,7 @@ func TestRender_PlainModeOutputIdentical(t *testing.T) {
 	// Default theme has env fg = "135". Plain mode now re-renders PlainText
 	// ("3M 2H") with that fg override instead of passing through MutedStyle.
 	styled := lipgloss.NewStyle().Foreground(lipgloss.Color("135")).Render("3M 2H")
-	want := strings.ReplaceAll("\x1b[0m"+styled+"\x1b[0m\x1b[K", " ", "\u00a0")
+	want := "\x1b[0m" + styled + "\x1b[0m\x1b[K"
 	if rendered != want {
 		t.Errorf("plain mode output mismatch: got %q, want %q", rendered, want)
 	}
@@ -511,9 +479,8 @@ func TestRender_CapsuleModeFallsToPlain(t *testing.T) {
 	if !strings.Contains(out, "42%") {
 		t.Errorf("expected '42%%' in plain fallback output, got %q", out)
 	}
-	// Plain mode uses the separator (spaces become NBSP in output).
-	nbspSep := strings.ReplaceAll(" | ", " ", "\u00a0")
-	if !strings.Contains(out, nbspSep) {
+	// Plain mode uses the separator between widgets.
+	if !strings.Contains(out, " | ") {
 		t.Errorf("expected separator in plain fallback output, got %q", out)
 	}
 }

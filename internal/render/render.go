@@ -286,14 +286,10 @@ func Render(w io.Writer, ctx *model.RenderContext, cfg *config.Config) {
 		}
 
 		// Prepend reset so our colors aren't affected by Claude Code's dim styling.
-		// Append reset + erase-to-EOL (\x1b[K) so background colors don't bleed
+		// Append reset + erase-to-EOL (\x1b[K] so background colors don't bleed
 		// through the newline into the next line. The erase-to-EOL tells the terminal
 		// to fill the remainder of the line with the default background.
-		// Then replace spaces with non-breaking spaces (U+00A0) to prevent
-		// VS Code's integrated terminal from trimming trailing whitespace.
-		// ANSI escape sequences do not contain spaces, so this replacement
-		// is safe to apply to the full line including escape codes.
-		outLine := strings.ReplaceAll(ansiReset+output+ansiReset+"\x1b[K", " ", "\u00a0")
+		outLine := ansiReset + output + ansiReset + "\x1b[K"
 		fmt.Fprintln(w, outLine)
 	}
 
@@ -301,7 +297,7 @@ func Render(w io.Writer, ctx *model.RenderContext, cfg *config.Config) {
 	// The output is already sanitized by extracmd.Run (only printable chars
 	// and safe ANSI color sequences are retained).
 	if ctx.ExtraOutput != "" {
-		extraLine := strings.ReplaceAll(ansiReset+ctx.ExtraOutput+ansiReset+"\x1b[K", " ", "\u00a0")
+		extraLine := ansiReset + ctx.ExtraOutput + ansiReset + "\x1b[K"
 		fmt.Fprintln(w, extraLine)
 	}
 }
