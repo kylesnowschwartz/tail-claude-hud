@@ -133,12 +133,16 @@ func Gather(input *model.StdinData, cfg *config.Config) *model.RenderContext {
 	ctx.SessionStart = sessionStart(ctx.Transcript, input.TranscriptPath)
 	ctx.TerminalWidth = terminalWidth()
 
-	// When all fds are pipes (Claude Code's statusline mode), terminalWidth()
-	// returns 0. Fall back to the same width the render stage uses
-	// (defaultTerminalWidth = 120 in render.go) so widgets that do their own
-	// width-aware truncation agree with the render stage's final truncation.
-	if ctx.TerminalWidth == 0 {
-		ctx.TerminalWidth = 120
+	// Claude Code's pseudo-TTY reports 80 columns regardless of actual
+	// window width. In pipe mode ioctl fails entirely and COLUMNS is often
+	// inherited as 80. Both sources are unreliable. Use 120 as a floor so
+	// the statusline uses available space instead of truncating at a fake
+	// 80. On a genuinely narrow split pane the line may wrap, but Claude
+	// Code already hides wrapped output — no worse than the existing
+	// behavior when COLUMNS is unset.
+	const minWidth = 120
+	if ctx.TerminalWidth < minWidth {
+		ctx.TerminalWidth = minWidth
 	}
 
 	return ctx

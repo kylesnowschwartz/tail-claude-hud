@@ -26,8 +26,15 @@ const (
 	sweepOdds = 100
 )
 
+// stateSchemaVersion is bumped when extraction semantics change so that
+// stale snapshots are discarded and the transcript is re-read from byte 0.
+// Bump this whenever the extraction logic changes in a way that would
+// produce different results from the same transcript data.
+const stateSchemaVersion = 2 // v2: skill detection from <command-name> tags
+
 // stateFile is the JSON structure persisted to disk.
 type stateFile struct {
+	SchemaVersion      int             `json:"schema_version,omitempty"`
 	TranscriptPath     string          `json:"transcript_path"`
 	ByteOffset         int64           `json:"byte_offset"`
 	SessionStart       string          `json:"session_start"` // RFC3339, informational
@@ -73,6 +80,12 @@ func (sm *StateManager) loadState(transcriptPath string) stateFile {
 	}
 	var sf stateFile
 	if json.Unmarshal(data, &sf) != nil {
+		sm.loadedSnapshot = nil
+		return stateFile{}
+	}
+	// Schema mismatch: extraction logic has changed since this snapshot was
+	// written. Discard it so the transcript is re-read from byte 0.
+	if sf.SchemaVersion != stateSchemaVersion {
 		sm.loadedSnapshot = nil
 		return stateFile{}
 	}
@@ -210,6 +223,7 @@ func (sm *StateManager) SaveState(transcriptPath string) error {
 	}
 
 	sf := stateFile{
+		SchemaVersion:      stateSchemaVersion,
 		TranscriptPath:     transcriptPath,
 		ByteOffset:         sm.offset,
 		ExtractionSnapshot: sm.snapshot,

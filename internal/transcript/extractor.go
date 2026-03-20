@@ -6,8 +6,10 @@
 package transcript
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/model"
@@ -125,8 +127,9 @@ type ExtractionState struct {
 	messageCount int
 
 	// skillNames is the ordered list of skill names invoked in the session
-	// (newest last), capped at maxSkills. Skills appear as tool_use blocks
-	// with name=="Skill" and input.skill containing the skill name.
+	// (newest last), capped at maxSkills. Detected from two sources:
+	// user-typed slash commands (<command-name> tags) and assistant-side
+	// Skill tool_use blocks.
 	skillNames []string
 }
 
@@ -181,6 +184,13 @@ func (es *ExtractionState) ProcessEntry(e Entry) {
 			es.messageCount++
 		}
 	}
+	// Detect skill invocations from user messages. Claude Code records
+	// slash-command usage as user messages with the skill name wrapped in
+	// <command-name>/skill-name</command-name> XML tags in the raw content string.
+	if role == "user" {
+		es.extractSkillFromUserMessage(e)
+	}
+
 	if ts.IsZero() {
 		ts = time.Now()
 	}
@@ -252,26 +262,73 @@ func (es *ExtractionState) processToolUse(b ToolUseBlock, ts time.Time) {
 	}
 }
 
-// handleSkillToolUse records a skill invocation. Skills appear as tool_use blocks
-// with name=="Skill" and input {"skill": "namespace:skill-name"}. The skill name
-// is appended to skillNames (capped at maxSkills) and also recorded as a regular
-// tool entry so it appears in the tools widget activity feed.
+// extractSkillFromUserMessage parses a <command-name>/skill</command-name> tag
+// from a user message's raw content string. Claude Code records slash-command
+// invocations this way rather than as tool_use blocks.
+func (es *ExtractionState) extractSkillFromUserMessage(e Entry) {
+	// User message content is either a JSON string or an array. Skill
+	// invocations arrive as plain strings, so skip arrays early.
+	if len(e.Message.Content) == 0 || e.Message.Content[0] == '[' {
+		return
+	}
+
+	// Fast path: skip the unmarshal when the tag isn't in the raw JSON.
+	if !bytes.Contains(e.Message.Content, []byte("<command-name>/")) {
+		return
+	}
+
+	var content string
+	if err := json.Unmarshal(e.Message.Content, &content); err != nil {
+		return
+	}
+
+	// Real skill invocations are short messages that start with
+	// <command-message> or <command-name>. Longer messages that happen
+	// to contain these tags (e.g. agent results quoting code) are not
+	// skill invocations.
+	if !strings.HasPrefix(content, "<command-message>") && !strings.HasPrefix(content, "<command-name>") {
+		return
+	}
+
+	const prefix = "<command-name>/"
+	const suffix = "</command-name>"
+	start := strings.Index(content, prefix)
+	if start < 0 {
+		return
+	}
+	start += len(prefix)
+	end := strings.Index(content[start:], suffix)
+	if end < 0 {
+		return
+	}
+	name := content[start : start+end]
+	if name == "" {
+		return
+	}
+
+	es.recordSkill(name)
+}
+
+// handleSkillToolUse records a skill invocation from an assistant-side Skill
+// tool_use block (input.skill contains the skill name). Also registers as a
+// regular tool so the entry appears in the tools activity feed.
 func (es *ExtractionState) handleSkillToolUse(b ToolUseBlock, ts time.Time) {
 	var input struct {
 		Skill string `json:"skill"`
 	}
-	// Intentionally ignore parse errors — partial data is acceptable.
 	_ = json.Unmarshal(b.Input, &input)
-
 	if input.Skill != "" {
-		es.skillNames = append(es.skillNames, input.Skill)
-		if len(es.skillNames) > maxSkills {
-			es.skillNames = es.skillNames[1:]
-		}
+		es.recordSkill(input.Skill)
 	}
-
-	// Also register as a regular tool so it appears in the tools feed.
 	es.handleRegularToolUse(b, ts)
+}
+
+// recordSkill appends a skill name and enforces the cap.
+func (es *ExtractionState) recordSkill(name string) {
+	es.skillNames = append(es.skillNames, name)
+	if len(es.skillNames) > maxSkills {
+		es.skillNames = es.skillNames[1:]
+	}
 }
 
 // handleRegularToolUse records a running tool entry and appends it to the

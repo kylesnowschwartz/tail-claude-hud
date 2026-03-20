@@ -1,28 +1,26 @@
 package widget
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/config"
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/model"
 )
 
-// Skills renders the list of skill names invoked in the current session.
-// Skills are extracted from "Skill" tool_use blocks in the transcript.
+// Skills renders the most recently invoked skill name with a "+N more" suffix
+// when multiple unique skills have been used. Plugin namespace prefixes
+// (e.g. "sc-skills:") are stripped for display since the skill name alone
+// is what matters on the status line.
 //
-// The widget shows a comma-separated list of unique skill names seen so far,
-// newest-first. Returns an empty WidgetResult when ctx.Transcript is nil or no skills
+// Returns an empty WidgetResult when ctx.Transcript is nil or no skills
 // have been invoked.
-// FgColor is left empty because dimStyle uses faint rather than a foreground color;
-// the renderer passes the pre-styled Text through as-is.
 func Skills(ctx *model.RenderContext, cfg *config.Config) WidgetResult {
 	if ctx.Transcript == nil || len(ctx.Transcript.SkillNames) == 0 {
 		return WidgetResult{}
 	}
 
-	// Deduplicate while preserving most-recent-first order. Walk the slice
-	// in reverse (newest last → newest first after reversal) and keep the
-	// first occurrence of each name.
+	// Deduplicate while preserving most-recent-first order.
 	seen := make(map[string]bool, len(ctx.Transcript.SkillNames))
 	unique := make([]string, 0, len(ctx.Transcript.SkillNames))
 	for i := len(ctx.Transcript.SkillNames) - 1; i >= 0; i-- {
@@ -33,10 +31,24 @@ func Skills(ctx *model.RenderContext, cfg *config.Config) WidgetResult {
 		}
 	}
 
-	list := strings.Join(unique, ", ")
+	icons := IconsFor(cfg.Style.Icons)
+	label := icons.Skill + " " + shortSkillName(unique[0])
+	if len(unique) > 1 {
+		label += fmt.Sprintf(" +%d more", len(unique)-1)
+	}
+
 	return WidgetResult{
-		Text:      MutedStyle.Render(list),
-		PlainText: list,
+		Text:      MutedStyle.Render(label),
+		PlainText: label,
 		FgColor:   "8",
 	}
+}
+
+// shortSkillName strips the plugin namespace prefix from a skill name.
+// "sc-skills:effective-go" becomes "effective-go"; "commit" stays "commit".
+func shortSkillName(name string) string {
+	if i := strings.LastIndex(name, ":"); i >= 0 {
+		return name[i+1:]
+	}
+	return name
 }

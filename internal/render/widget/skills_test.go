@@ -36,14 +36,16 @@ func TestSkillsWidget_SingleSkill_DisplaysName(t *testing.T) {
 	cfg := defaultCfg()
 
 	got := Skills(ctx, cfg)
-	if !strings.Contains(got.Text, "commit") {
-		t.Errorf("expected output to contain 'commit', got %q", got.Text)
+	if !strings.Contains(got.PlainText, "commit") {
+		t.Errorf("expected output to contain 'commit', got %q", got.PlainText)
+	}
+	// Single skill should not show "+N more".
+	if strings.Contains(got.PlainText, "more") {
+		t.Errorf("single skill should not show '+N more', got %q", got.PlainText)
 	}
 }
 
-func TestSkillsWidget_MultipleSkills_DisplaysNewestFirst(t *testing.T) {
-	// SkillNames is ordered oldest-first; the widget reverses to newest-first
-	// for display.
+func TestSkillsWidget_MultipleSkills_ShowsNewestPlusCount(t *testing.T) {
 	ctx := &model.RenderContext{
 		Transcript: &model.TranscriptData{
 			SkillNames: []string{"commit", "review-pr", "lint"},
@@ -52,24 +54,18 @@ func TestSkillsWidget_MultipleSkills_DisplaysNewestFirst(t *testing.T) {
 	cfg := defaultCfg()
 
 	got := Skills(ctx, cfg)
-	// All names should appear.
-	for _, name := range []string{"commit", "review-pr", "lint"} {
-		if !strings.Contains(got.Text, name) {
-			t.Errorf("expected output to contain %q, got %q", name, got.Text)
-		}
+	// "lint" is the newest (last in slice), should be the displayed name.
+	if !strings.Contains(got.PlainText, "lint") {
+		t.Errorf("expected newest skill 'lint' in output, got %q", got.PlainText)
 	}
-
-	// "lint" is the newest (last in slice) so it should appear first in output.
-	lintIdx := strings.Index(got.Text, "lint")
-	reviewIdx := strings.Index(got.Text, "review-pr")
-	if lintIdx > reviewIdx {
-		t.Errorf("expected 'lint' (newest) to appear before 'review-pr', got %q", got.Text)
+	// Should show "+2 more" for the other two unique skills.
+	if !strings.Contains(got.PlainText, "+2 more") {
+		t.Errorf("expected '+2 more' suffix, got %q", got.PlainText)
 	}
 }
 
-func TestSkillsWidget_DuplicateSkills_DeduplicatesNewestFirst(t *testing.T) {
-	// "commit" appears twice; the widget should deduplicate and keep only the
-	// newest occurrence (position closest to end of slice).
+func TestSkillsWidget_DuplicateSkills_DeduplicatesBeforeCounting(t *testing.T) {
+	// "commit" appears twice; after dedup there are 2 unique skills.
 	ctx := &model.RenderContext{
 		Transcript: &model.TranscriptData{
 			SkillNames: []string{"commit", "lint", "commit"},
@@ -78,16 +74,45 @@ func TestSkillsWidget_DuplicateSkills_DeduplicatesNewestFirst(t *testing.T) {
 	cfg := defaultCfg()
 
 	got := Skills(ctx, cfg)
-
-	// "commit" should appear exactly once.
-	count := strings.Count(got.Text, "commit")
-	if count != 1 {
-		t.Errorf("expected 'commit' to appear once after dedup, got %d occurrences in %q", count, got.Text)
+	// "commit" is the newest (last), should be displayed.
+	if !strings.Contains(got.PlainText, "commit") {
+		t.Errorf("expected newest skill 'commit' in output, got %q", got.PlainText)
 	}
-	// "commit" is the newest (last), so it should appear before "lint".
-	commitIdx := strings.Index(got.Text, "commit")
-	lintIdx := strings.Index(got.Text, "lint")
-	if commitIdx > lintIdx {
-		t.Errorf("expected newest 'commit' before 'lint', got %q", got.Text)
+	// 2 unique skills, so "+1 more".
+	if !strings.Contains(got.PlainText, "+1 more") {
+		t.Errorf("expected '+1 more' for 2 unique skills, got %q", got.PlainText)
+	}
+}
+
+func TestSkillsWidget_NamespacedSkill_StripsPrefix(t *testing.T) {
+	ctx := &model.RenderContext{
+		Transcript: &model.TranscriptData{
+			SkillNames: []string{"sc-skills:effective-go"},
+		},
+	}
+	cfg := defaultCfg()
+
+	got := Skills(ctx, cfg)
+	if !strings.Contains(got.PlainText, "effective-go") {
+		t.Errorf("expected stripped name 'effective-go', got %q", got.PlainText)
+	}
+	if strings.Contains(got.PlainText, "sc-skills:") {
+		t.Errorf("namespace prefix should be stripped, got %q", got.PlainText)
+	}
+}
+
+func TestShortSkillName(t *testing.T) {
+	tests := []struct {
+		input, want string
+	}{
+		{"commit", "commit"},
+		{"sc-skills:effective-go", "effective-go"},
+		{"my-plugin:deploy", "deploy"},
+		{"a:b:c", "c"},
+	}
+	for _, tt := range tests {
+		if got := shortSkillName(tt.input); got != tt.want {
+			t.Errorf("shortSkillName(%q) = %q, want %q", tt.input, got, tt.want)
+		}
 	}
 }

@@ -2242,6 +2242,17 @@ func TestMessageCount_PersistedInSnapshot(t *testing.T) {
 
 // ---- Skills extraction -----------------------------------------------------
 
+// makeSkillEntry creates a user message with the <command-name>/skill</command-name>
+// format that Claude Code uses for slash-command invocations.
+func makeSkillEntry(skill string) Entry {
+	content := fmt.Appendf(nil, `"<command-message>%s</command-message>\n<command-name>/%s</command-name>"`, skill, skill)
+	var e Entry
+	e.Message.Role = "user"
+	e.Message.Content = content
+	e.Timestamp = "2024-01-01T00:00:00Z"
+	return e
+}
+
 func TestSkills_NoSkills_EmptySlice(t *testing.T) {
 	es := NewExtractionState()
 	es.ProcessEntry(makeToolUseEntry("id-1", "Read", map[string]interface{}{"file_path": "main.go"}))
@@ -2254,9 +2265,7 @@ func TestSkills_NoSkills_EmptySlice(t *testing.T) {
 
 func TestSkills_SingleSkill_RecordsName(t *testing.T) {
 	es := NewExtractionState()
-	es.ProcessEntry(makeToolUseEntry("skill-1", "Skill", map[string]interface{}{
-		"skill": "commit",
-	}))
+	es.ProcessEntry(makeSkillEntry("commit"))
 
 	data := es.ToTranscriptData()
 	if len(data.SkillNames) != 1 {
@@ -2267,30 +2276,45 @@ func TestSkills_SingleSkill_RecordsName(t *testing.T) {
 	}
 }
 
-func TestSkills_SingleSkill_AlsoAppearsInTools(t *testing.T) {
-	// Skills are also recorded as regular tool entries so they appear in the
-	// tools activity feed.
+func TestSkills_AssistantSkillToolUse_RecordsName(t *testing.T) {
+	// Skills invoked by the assistant via the Skill tool appear as tool_use
+	// blocks with name=="Skill" and input.skill containing the skill name.
 	es := NewExtractionState()
-	es.ProcessEntry(makeToolUseEntry("skill-1", "Skill", map[string]interface{}{
-		"skill": "commit",
+	es.ProcessEntry(makeToolUseEntry("skill-1", "Skill", map[string]any{
+		"skill": "simplify",
 	}))
 
 	data := es.ToTranscriptData()
-	if len(data.Tools) != 1 {
-		t.Fatalf("expected 1 tool entry, got %d", len(data.Tools))
+	if len(data.SkillNames) != 1 {
+		t.Fatalf("expected 1 skill name, got %d", len(data.SkillNames))
 	}
-	if data.Tools[0].Name != "Skill" {
-		t.Errorf("expected tool name 'Skill', got %q", data.Tools[0].Name)
+	if data.SkillNames[0] != "simplify" {
+		t.Errorf("expected skill name 'simplify', got %q", data.SkillNames[0])
+	}
+}
+
+func TestSkills_BothPaths_RecordsBoth(t *testing.T) {
+	// User-typed slash command + assistant Skill tool_use should both record.
+	es := NewExtractionState()
+	es.ProcessEntry(makeSkillEntry("hud"))
+	es.ProcessEntry(makeToolUseEntry("skill-1", "Skill", map[string]any{
+		"skill": "simplify",
+	}))
+
+	data := es.ToTranscriptData()
+	if len(data.SkillNames) != 2 {
+		t.Fatalf("expected 2 skill names, got %d", len(data.SkillNames))
+	}
+	if data.SkillNames[0] != "hud" || data.SkillNames[1] != "simplify" {
+		t.Errorf("unexpected skill names: %v", data.SkillNames)
 	}
 }
 
 func TestSkills_MultipleSkills_RecordsAllInOrder(t *testing.T) {
 	es := NewExtractionState()
 	skills := []string{"commit", "review-pr", "lint"}
-	for i, s := range skills {
-		es.ProcessEntry(makeToolUseEntry(fmt.Sprintf("skill-%d", i), "Skill", map[string]interface{}{
-			"skill": s,
-		}))
+	for _, s := range skills {
+		es.ProcessEntry(makeSkillEntry(s))
 	}
 
 	data := es.ToTranscriptData()
@@ -2308,9 +2332,7 @@ func TestSkills_NamespacedSkill_FullNamePreserved(t *testing.T) {
 	// Skills use a "namespace:skill-name" format; the full string should be
 	// stored without modification.
 	es := NewExtractionState()
-	es.ProcessEntry(makeToolUseEntry("skill-1", "Skill", map[string]interface{}{
-		"skill": "my-plugin:deploy",
-	}))
+	es.ProcessEntry(makeSkillEntry("my-plugin:deploy"))
 
 	data := es.ToTranscriptData()
 	if len(data.SkillNames) != 1 {
@@ -2324,11 +2346,7 @@ func TestSkills_NamespacedSkill_FullNamePreserved(t *testing.T) {
 func TestSkills_Cap_KeepsLast20(t *testing.T) {
 	es := NewExtractionState()
 	for i := 0; i < 25; i++ {
-		es.ProcessEntry(makeToolUseEntry(
-			fmt.Sprintf("skill-%d", i),
-			"Skill",
-			map[string]interface{}{"skill": fmt.Sprintf("skill-%d", i)},
-		))
+		es.ProcessEntry(makeSkillEntry(fmt.Sprintf("skill-%d", i)))
 	}
 
 	data := es.ToTranscriptData()
@@ -2344,22 +2362,40 @@ func TestSkills_Cap_KeepsLast20(t *testing.T) {
 	}
 }
 
-func TestSkills_MissingSkillField_SkillNameEmpty(t *testing.T) {
-	// A Skill tool_use block without the "skill" field in input should not
-	// append an empty string to skillNames.
+func TestSkills_NoCommandNameTag_Ignored(t *testing.T) {
+	// A user message without <command-name> should not produce skill names.
 	es := NewExtractionState()
-	es.ProcessEntry(makeToolUseEntry("skill-1", "Skill", map[string]interface{}{}))
+	es.ProcessEntry(makeTextEntry("user", "just a normal message"))
 
 	data := es.ToTranscriptData()
 	if len(data.SkillNames) != 0 {
-		t.Errorf("expected no skill names for empty input, got %v", data.SkillNames)
+		t.Errorf("expected no skill names, got %v", data.SkillNames)
+	}
+}
+
+func TestSkills_EmbeddedCommandNameTag_Ignored(t *testing.T) {
+	// A user message that quotes <command-name> in prose (e.g. agent results
+	// discussing the tag format) should not be mistaken for a skill invocation.
+	es := NewExtractionState()
+	prose := `The tag format is <command-name>/...</command-name> for skills.`
+	// Build a raw JSON string entry (not an array).
+	content := fmt.Appendf(nil, `%q`, prose)
+	var e Entry
+	e.Message.Role = "user"
+	e.Message.Content = content
+	e.Timestamp = "2024-01-01T00:00:00Z"
+	es.ProcessEntry(e)
+
+	data := es.ToTranscriptData()
+	if len(data.SkillNames) != 0 {
+		t.Errorf("expected no skill names from embedded tag, got %v", data.SkillNames)
 	}
 }
 
 func TestSkills_SnapshotRoundTrip_PreservesSkillNames(t *testing.T) {
 	es := NewExtractionState()
-	es.ProcessEntry(makeToolUseEntry("skill-1", "Skill", map[string]interface{}{"skill": "commit"}))
-	es.ProcessEntry(makeToolUseEntry("skill-2", "Skill", map[string]interface{}{"skill": "review-pr"}))
+	es.ProcessEntry(makeSkillEntry("commit"))
+	es.ProcessEntry(makeSkillEntry("review-pr"))
 
 	snap, err := es.MarshalSnapshot()
 	if err != nil {

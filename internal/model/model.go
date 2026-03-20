@@ -84,8 +84,8 @@ type TranscriptData struct {
 	Agents      []AgentEntry
 	Todos       []TodoItem
 	// SkillNames is the ordered list of skill names invoked in the session
-	// (newest last), capped at 20. Each entry is the full skill identifier
-	// extracted from a "Skill" tool_use block's input.skill field.
+	// (newest last), capped at 20. Each entry is the skill name extracted
+	// from <command-name>/skill</command-name> tags in user messages.
 	SkillNames []string
 
 	// TokenSamples holds timestamp+token pairs extracted from assistant messages.
