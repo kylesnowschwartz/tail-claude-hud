@@ -502,17 +502,15 @@ func parseStdinPercent(v *float64) int {
 	return int(pct + 0.5)
 }
 
-// parseStdinTime parses an ISO 8601 timestamp string. Returns zero time when
-// nil or unparseable.
-func parseStdinTime(s *string) time.Time {
-	if s == nil || *s == "" {
+// parseStdinTime converts a Unix epoch timestamp (seconds) to time.Time.
+// Returns zero time when nil.
+func parseStdinTime(epoch *float64) time.Time {
+	if epoch == nil {
 		return time.Time{}
 	}
-	t, err := time.Parse(time.RFC3339, *s)
-	if err != nil {
-		t, _ = time.Parse("2006-01-02T15:04:05.999Z07:00", *s)
-	}
-	return t
+	sec := int64(*epoch)
+	nsec := int64((*epoch - float64(sec)) * 1e9)
+	return time.Unix(sec, nsec)
 }
 
 // gatherUsage fetches usage data from the Anthropic OAuth API (via cache).

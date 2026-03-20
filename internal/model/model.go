@@ -236,9 +236,10 @@ type StdinRateLimits struct {
 }
 
 // StdinRateWindow is a single rate-limit window from the stdin JSON.
+// ResetsAt is a Unix epoch timestamp in seconds (not an ISO 8601 string).
 type StdinRateWindow struct {
 	UsedPercentage *float64 `json:"used_percentage"`
-	ResetsAt       *string  `json:"resets_at"`
+	ResetsAt       *float64 `json:"resets_at"` // Unix epoch seconds
 }
 
 // PluginDir returns the directory used for plugin state files:

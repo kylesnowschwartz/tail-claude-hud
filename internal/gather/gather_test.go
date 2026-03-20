@@ -224,8 +224,8 @@ func TestGather_TerminalWidthFallsBackTo120WhenEnvUnset(t *testing.T) {
 func TestUsageFromStdin_PopulatesBothWindows(t *testing.T) {
 	fiveHourPct := 45.2
 	sevenDayPct := 62.8
-	fiveHourReset := "2026-03-20T18:30:00Z"
-	sevenDayReset := "2026-03-27T00:00:00Z"
+	fiveHourReset := 1774259400.0 // 2026-03-20T18:30:00Z
+	sevenDayReset := 1774828800.0 // 2026-03-27T00:00:00Z
 
 	input := minimalInput()
 	input.RateLimits = &model.StdinRateLimits{
