@@ -408,6 +408,54 @@ func TestMergeSubagents_SameNameMatchesFirstUnmatched(t *testing.T) {
 	}
 }
 
+// TestMergeSubagents_MatchesByDescription verifies that a filesystem agent whose
+// Name is the description string merges into a transcript agent that has a
+// different Name (subagent_type) but matching Description. This is the case
+// when e.g. the transcript names an agent "claude-code-guide" but the FS
+// names it "Research Claude Code SDK/headless".
+func TestMergeSubagents_MatchesByDescription(t *testing.T) {
+	td := &model.TranscriptData{
+		Agents: []model.AgentEntry{
+			{
+				Name:        "claude-code-guide",
+				Description: "Research Claude Code SDK/headless",
+				Status:      "running",
+				Model:       "sonnet",
+			},
+		},
+	}
+	fsAgents := []model.AgentEntry{
+		{
+			ID:         "addcbaae399bfe4b8",
+			Name:       "Research Claude Code SDK/headless",
+			Status:     "completed",
+			DurationMs: 5000,
+		},
+	}
+
+	mergeSubagents(td, fsAgents)
+
+	if len(td.Agents) != 1 {
+		t.Fatalf("expected 1 agent (merged), got %d", len(td.Agents))
+	}
+	a := td.Agents[0]
+	if a.Name != "claude-code-guide" {
+		t.Errorf("expected Name preserved as 'claude-code-guide', got %q", a.Name)
+	}
+	if a.Model != "sonnet" {
+		t.Errorf("expected Model 'sonnet' preserved, got %q", a.Model)
+	}
+	if a.Status != "completed" {
+		t.Errorf("expected Status 'completed' from FS, got %q", a.Status)
+	}
+	if a.DurationMs != 5000 {
+		t.Errorf("expected DurationMs 5000 from FS, got %d", a.DurationMs)
+	}
+	if a.ID != "addcbaae399bfe4b8" {
+		t.Errorf("expected ID from FS, got %q", a.ID)
+	}
+}
+
 func TestMergeSubagents_Empty(t *testing.T) {
 	td := &model.TranscriptData{
 		Agents: []model.AgentEntry{

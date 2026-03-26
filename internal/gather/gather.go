@@ -525,18 +525,38 @@ func mergeSubagents(td *model.TranscriptData, fsAgents []model.AgentEntry) {
 
 	// Build a name → list-of-indices map so same-name agents can be matched
 	// one-for-one without a second matching stealing the same slot.
+	//
+	// Also build a description → list-of-indices map as a fallback. The
+	// transcript extractor names agents by subagent_type (e.g. "claude-code-guide")
+	// while filesystem discovery names them by description (e.g. "Research Claude
+	// Code SDK/headless"). Without the fallback, the same agent appears twice.
 	byName := make(map[string][]int, len(td.Agents))
+	byDesc := make(map[string][]int, len(td.Agents))
 	for i, a := range td.Agents {
 		byName[a.Name] = append(byName[a.Name], i)
+		if a.Description != "" {
+			byDesc[a.Description] = append(byDesc[a.Description], i)
+		}
 	}
 
 	matched := make(map[int]bool)
 	for _, fa := range fsAgents {
 		bestIdx := -1
+		// Primary: match by Name.
 		for _, idx := range byName[fa.Name] {
 			if !matched[idx] {
 				bestIdx = idx
 				break
+			}
+		}
+		// Fallback: the filesystem agent's Name is the description string,
+		// so try matching it against transcript agents' Description field.
+		if bestIdx < 0 {
+			for _, idx := range byDesc[fa.Name] {
+				if !matched[idx] {
+					bestIdx = idx
+					break
+				}
 			}
 		}
 		if bestIdx >= 0 {
