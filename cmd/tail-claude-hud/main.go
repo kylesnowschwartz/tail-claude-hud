@@ -7,6 +7,7 @@ import (
 	"image/color"
 	"io"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"strings"
@@ -21,28 +22,31 @@ import (
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/preset"
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/render"
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/stdin"
+	"github.com/kylesnowschwartz/tail-claude-hud/internal/version"
 	"github.com/lucasb-eyer/go-colorful"
 )
 
+// installPath is the go install target for the update command.
+const installPath = "github.com/kylesnowschwartz/tail-claude-hud/cmd/tail-claude-hud@latest"
+
 func main() {
-	// Hook subcommand: "tail-claude-hud hook <event>"
-	// Dispatched before flag.Parse() so hooks don't interfere with flags.
-	// Always exits 0 — a hook failure must not block Claude Code.
-	if len(os.Args) >= 3 && os.Args[1] == "hook" {
-		var err error
-		switch os.Args[2] {
-		case "permission-request":
-			err = hook.HandlePermissionRequest(os.Stdin)
-		case "cleanup":
-			err = hook.HandleCleanup(os.Stdin)
+	// Subcommands are dispatched before flag.Parse() so they don't interfere
+	// with flags. Each exits directly when handled.
+	if len(os.Args) >= 2 {
+		switch os.Args[1] {
+		case "hook":
+			runHook()
+			return
+		case "version", "--version", "-version", "-v":
+			fmt.Println(version.String())
+			return
+		case "update":
+			runUpdate()
+			return
 		}
-		if err != nil {
-			// Log to debug file if available, but never fail.
-			_ = err
-		}
-		return
 	}
 
+	flag.Usage = usage
 	dumpCurrent := flag.Bool("dump-current", false, "render the statusline from a transcript file instead of stdin")
 	dumpRaw := flag.Bool("dump-raw", false, "like --dump-current but print ANSI escape sequences as visible text for debugging")
 	initConfig := flag.Bool("init", false, "generate a default config file at ~/.config/tail-claude-hud/config.toml")
@@ -442,4 +446,69 @@ func hasPowerlineLines(cfg *config.Config) bool {
 		}
 	}
 	return false
+}
+
+// runHook dispatches hook subcommands. Always exits 0 — a hook failure
+// must not block Claude Code.
+func runHook() {
+	if len(os.Args) < 3 {
+		return
+	}
+	var err error
+	switch os.Args[2] {
+	case "permission-request":
+		err = hook.HandlePermissionRequest(os.Stdin)
+	case "cleanup":
+		err = hook.HandleCleanup(os.Stdin)
+	}
+	if err != nil {
+		_ = err // log to debug file if available, but never fail
+	}
+}
+
+// runUpdate installs the latest version via go install.
+func runUpdate() {
+	current := version.String()
+	fmt.Printf("Current version: %s\n", current)
+	fmt.Printf("Installing latest from %s...\n", installPath)
+
+	cmd := exec.Command("go", "install", installPath)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "Update failed: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Run the newly installed binary to get its version.
+	out, err := exec.Command("tail-claude-hud", "version").Output()
+	if err != nil {
+		fmt.Println("Updated successfully.")
+		return
+	}
+	newVersion := strings.TrimSpace(string(out))
+	if newVersion == current {
+		fmt.Printf("Already up to date (%s).\n", current)
+	} else {
+		fmt.Printf("Updated %s -> %s\n", current, newVersion)
+	}
+}
+
+// usage prints help with -- prefixed flags (Go's flag package defaults to single -).
+func usage() {
+	fmt.Fprintf(os.Stderr, "Usage: tail-claude-hud [command] [flags]\n\n")
+	fmt.Fprintf(os.Stderr, "Commands:\n")
+	fmt.Fprintf(os.Stderr, "  hook <event>    handle a Claude Code hook event\n")
+	fmt.Fprintf(os.Stderr, "  update          install the latest version via go install\n")
+	fmt.Fprintf(os.Stderr, "  version         print the current version\n")
+	fmt.Fprintf(os.Stderr, "\nFlags:\n")
+	flag.VisitAll(func(f *flag.Flag) {
+		name := f.Name
+		typeName, usage := flag.UnquoteUsage(f)
+		if typeName != "" {
+			fmt.Fprintf(os.Stderr, "  --%s %s\n    \t%s\n", name, typeName, usage)
+		} else {
+			fmt.Fprintf(os.Stderr, "  --%s\n    \t%s\n", name, usage)
+		}
+	})
 }

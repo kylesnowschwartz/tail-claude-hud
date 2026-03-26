@@ -64,7 +64,8 @@ bump level:
 
     echo "Bumping $v → $new"
     echo "$new" > VERSION
-    git add VERSION
+    echo "$new" > internal/version/VERSION
+    git add VERSION internal/version/VERSION
     echo "Version bumped to $new. Run 'just release' to commit, tag, and push."
 
 # Commit, tag, push, and create a GitHub release. Pass a notes file for custom release notes.
