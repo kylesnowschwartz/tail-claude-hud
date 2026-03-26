@@ -12,7 +12,10 @@ Requires Go 1.25+.
 go install github.com/kylesnowschwartz/tail-claude-hud/cmd/tail-claude-hud@latest
 ```
 
-To update, run the same command. To build from source:
+To update, run the same command. Note that if you're new to the `go` command, it will likely put the `tail-claude-hud` command
+in `~/go/bin` which you might need to add to your path in your own `.bashrc` / `.zshrc` or similar.
+
+To build from source:
 
 ```bash
 git clone git@github.com:kylesnowschwartz/tail-claude-hud.git
@@ -22,11 +25,12 @@ just build
 
 ## Setup
 
-Add to `~/.claude/settings.json`:
+Add to `~/.claude/settings.json` (if there's already stuff there, just add the statusLine key and block to the end):
 
 ```json
 {
-  "statusline": {
+  "statusLine": {
+    "type": "command",
     "command": "tail-claude-hud"
   }
 }
