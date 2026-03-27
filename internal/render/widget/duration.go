@@ -40,7 +40,7 @@ func Duration(ctx *model.RenderContext, cfg *config.Config) WidgetResult {
 	}
 
 	icons := IconsFor(cfg.Style.Icons)
-	plain := fmt.Sprintf("%s%s", icons.Clock, display)
+	plain := fmt.Sprintf("%s %s", icons.Clock, display)
 	return WidgetResult{
 		Text:      durationStyle.Render(plain),
 		PlainText: plain,
