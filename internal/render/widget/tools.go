@@ -46,16 +46,20 @@ func Tools(ctx *model.RenderContext, cfg *config.Config) WidgetResult {
 		reversed[len(tools)-1-i] = t
 	}
 
-	visible := reversed
-	if len(visible) > maxVisibleTools {
-		visible = visible[:maxVisibleTools]
+	// Group consecutive entries with the same name so that e.g.
+	// "Bash | Bash | Bash" becomes "Bash ×3". Each group counts as
+	// one slot toward maxVisibleTools, letting more unique tool types
+	// remain visible.
+	groups := groupConsecutive(reversed)
+	if len(groups) > maxVisibleTools {
+		groups = groups[:maxVisibleTools]
 	}
 
 	var parts []string
 	var plainParts []string
-	for _, t := range visible {
-		parts = append(parts, renderToolEntry(icons, t))
-		plainParts = append(plainParts, renderToolEntryPlain(icons, t))
+	for _, g := range groups {
+		parts = append(parts, renderToolGroup(icons, g))
+		plainParts = append(plainParts, renderToolGroupPlain(icons, g))
 	}
 
 	// Compute the highlighted separator position using wrapping ticker logic.
@@ -189,6 +193,91 @@ func renderToolEntry(icons Icons, t model.ToolEntry) string {
 	default: // tier 2 / recent: green icon + dim name
 		icon := greenStyle.Render(catIcon)
 		name := DimStyle.Render(t.Name)
+		return fmt.Sprintf("%s %s %s", icon, name, dur)
+	}
+}
+
+// toolGroup represents one or more consecutive tool entries with the same name.
+// The representative entry (the first / most recent) is used for styling.
+type toolGroup struct {
+	Entry model.ToolEntry // most recent entry in the group (for styling)
+	Count int             // number of consecutive entries collapsed
+}
+
+// groupConsecutive collapses runs of consecutive entries with the same name
+// into toolGroup values. A single entry becomes a group with Count=1.
+func groupConsecutive(entries []model.ToolEntry) []toolGroup {
+	if len(entries) == 0 {
+		return nil
+	}
+	groups := []toolGroup{{Entry: entries[0], Count: 1}}
+	for _, e := range entries[1:] {
+		last := &groups[len(groups)-1]
+		if e.Name == last.Entry.Name {
+			last.Count++
+		} else {
+			groups = append(groups, toolGroup{Entry: e, Count: 1})
+		}
+	}
+	return groups
+}
+
+// renderToolGroup renders a toolGroup. When Count > 1 a "×N" multiplier is
+// appended to the tool name.
+func renderToolGroup(icons Icons, g toolGroup) string {
+	if g.Count == 1 {
+		return renderToolEntry(icons, g.Entry)
+	}
+	return renderToolEntryWithMultiplier(icons, g.Entry, g.Count)
+}
+
+// renderToolGroupPlain renders a toolGroup as unstyled text.
+func renderToolGroupPlain(icons Icons, g toolGroup) string {
+	if g.Count == 1 {
+		return renderToolEntryPlain(icons, g.Entry)
+	}
+	label := toolLabel(CategoryIcon(icons, g.Entry.Category), g.Entry.Name)
+	mult := fmt.Sprintf(" ×%d", g.Count)
+	if !g.Entry.Completed {
+		return label + mult
+	}
+	return label + mult + " " + formatDuration(g.Entry.DurationMs)
+}
+
+// renderToolEntryWithMultiplier renders a tool entry with an "×N" multiplier
+// appended after the name, using the same styling tiers as renderToolEntry.
+func renderToolEntryWithMultiplier(icons Icons, t model.ToolEntry, count int) string {
+	catIcon := CategoryIcon(icons, t.Category)
+	mult := fmt.Sprintf(" ×%d", count)
+
+	if !t.Completed {
+		if t.Category == "Thinking" {
+			return fmt.Sprintf("%s %s%s", yellowStyle.Render(catIcon), DimStyle.Render(t.Name), DimStyle.Render(mult))
+		}
+		return yellowStyle.Bold(true).Render(toolLabel(catIcon, t.Name)+mult)
+	}
+
+	if t.HasError {
+		label := redStyle.Render(toolLabel(catIcon, t.Name) + mult)
+		dur := redStyle.Render(formatDuration(t.DurationMs))
+		return fmt.Sprintf("%s %s", label, dur)
+	}
+
+	tier := recencyTier(t)
+	dur := DimStyle.Render(formatDuration(t.DurationMs))
+
+	switch tier {
+	case 1:
+		icon := greenStyle.Render(catIcon)
+		name := SecondaryStyle.Render(t.Name + mult)
+		return fmt.Sprintf("%s %s %s", icon, name, dur)
+	case 3:
+		icon := DimStyle.Render(catIcon)
+		name := DimStyle.Render(t.Name + mult)
+		return fmt.Sprintf("%s %s %s", icon, name, dur)
+	default:
+		icon := greenStyle.Render(catIcon)
+		name := DimStyle.Render(t.Name + mult)
 		return fmt.Sprintf("%s %s %s", icon, name, dur)
 	}
 }

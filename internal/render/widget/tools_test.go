@@ -537,3 +537,87 @@ func TestRecencyTier_ZeroStartTime(t *testing.T) {
 		t.Errorf("zero-start-time tool should be tier 2 (recent fallback), got %d", tier)
 	}
 }
+
+// --- Consecutive grouping tests ---
+
+// TestTools_ConsecutiveGrouping verifies that consecutive tools with the same
+// name are collapsed into "Name ×N" instead of being listed individually.
+func TestTools_ConsecutiveGrouping(t *testing.T) {
+	tools := []model.ToolEntry{
+		{Name: "Bash", Completed: true, DurationMs: 100, Category: "Bash"},
+		{Name: "Bash", Completed: true, DurationMs: 200, Category: "Bash"},
+		{Name: "Edit", Completed: true, DurationMs: 50, Category: "Edit"},
+		{Name: "Bash", Completed: true, DurationMs: 300, Category: "Bash"},
+		{Name: "Bash", Completed: true, DurationMs: 400, Category: "Bash"},
+		{Name: "Bash", Completed: true, DurationMs: 500, Category: "Bash"},
+	}
+	ctx := toolsCtx(tools)
+	cfg := defaultCfg()
+
+	got := Tools(ctx, cfg).PlainText
+
+	// After reversal (newest-first): Bash, Bash, Bash, Edit, Bash, Bash
+	// Groups: [Bash ×3] [Edit] [Bash ×2]
+	if !strings.Contains(got, "×3") {
+		t.Errorf("expected ×3 for 3 consecutive Bash, got %q", got)
+	}
+	if !strings.Contains(got, "×2") {
+		t.Errorf("expected ×2 for 2 consecutive Bash, got %q", got)
+	}
+	// Should have 3 groups = 2 separators
+	separators := strings.Count(got, " | ")
+	if separators != 2 {
+		t.Errorf("expected 2 separators (3 groups), got %d in %q", separators, got)
+	}
+}
+
+// TestTools_SingleEntriesNotGrouped verifies that non-consecutive same-name
+// tools are NOT grouped (only consecutive runs are collapsed).
+func TestTools_SingleEntriesNotGrouped(t *testing.T) {
+	tools := []model.ToolEntry{
+		{Name: "Bash", Completed: true, DurationMs: 100, Category: "Bash"},
+		{Name: "Edit", Completed: true, DurationMs: 200, Category: "Edit"},
+		{Name: "Bash", Completed: true, DurationMs: 300, Category: "Bash"},
+	}
+	ctx := toolsCtx(tools)
+	cfg := defaultCfg()
+
+	got := Tools(ctx, cfg).PlainText
+
+	// After reversal: Bash, Edit, Bash — no consecutive duplicates
+	if strings.Contains(got, "×") {
+		t.Errorf("non-consecutive same-name tools should not be grouped, got %q", got)
+	}
+}
+
+// TestTools_GroupingReducesSlotCount verifies that grouping allows more unique
+// tool types to be visible within maxVisibleTools.
+func TestTools_GroupingReducesSlotCount(t *testing.T) {
+	// 8 tools: 5 Bash then Read, Grep, Edit (oldest-first)
+	// Without grouping, only 5 would show (all Bash from newest end).
+	// With grouping, reversed = Edit, Grep, Read, Bash×5 → 4 groups, all visible.
+	tools := []model.ToolEntry{
+		{Name: "Bash", Completed: true, DurationMs: 100, Category: "Bash"},
+		{Name: "Bash", Completed: true, DurationMs: 100, Category: "Bash"},
+		{Name: "Bash", Completed: true, DurationMs: 100, Category: "Bash"},
+		{Name: "Bash", Completed: true, DurationMs: 100, Category: "Bash"},
+		{Name: "Bash", Completed: true, DurationMs: 100, Category: "Bash"},
+		{Name: "Read", Completed: true, DurationMs: 200, Category: "Read"},
+		{Name: "Grep", Completed: true, DurationMs: 150, Category: "Grep"},
+		{Name: "Edit", Completed: true, DurationMs: 50, Category: "Edit"},
+	}
+	ctx := toolsCtx(tools)
+	cfg := defaultCfg()
+
+	got := Tools(ctx, cfg).PlainText
+
+	// All 4 unique groups should be visible.
+	for _, name := range []string{"Edit", "Grep", "Read", "Bash"} {
+		if !strings.Contains(got, name) {
+			t.Errorf("expected %q to be visible after grouping, got %q", name, got)
+		}
+	}
+	if !strings.Contains(got, "×5") {
+		t.Errorf("expected ×5 for 5 consecutive Bash, got %q", got)
+	}
+}
