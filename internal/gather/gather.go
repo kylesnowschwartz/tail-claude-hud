@@ -65,6 +65,9 @@ func Gather(input *model.StdinData, cfg *config.Config) *model.RenderContext {
 	if input.OutputStyle != nil {
 		ctx.OutputStyle = input.OutputStyle.Name
 	}
+	if input.Worktree != nil {
+		ctx.WorktreeName = input.Worktree.Name
+	}
 
 	// Determine which widget names are active across all configured lines.
 	active := activeWidgets(cfg)

@@ -30,12 +30,11 @@ func TestDefaultsWhenNoFile(t *testing.T) {
 	}
 
 	// Default layout from config.DefaultLines.
-	if len(cfg.Lines) != 3 {
-		t.Fatalf("expected 3 lines, got %d", len(cfg.Lines))
+	if len(cfg.Lines) != 2 {
+		t.Fatalf("expected 2 lines, got %d", len(cfg.Lines))
 	}
-	assertWidgets(t, cfg.Lines[0].Widgets, []string{"model", "context", "project", "todos", "duration", "permission"})
+	assertWidgets(t, cfg.Lines[0].Widgets, []string{"model", "context", "project", "worktree", "todos", "duration", "permission"})
 	assertWidgets(t, cfg.Lines[1].Widgets, []string{"agents"})
-	assertWidgets(t, cfg.Lines[2].Widgets, []string{"tools"})
 
 	// Spec 4: default Icons
 	if cfg.Style.Icons != "nerdfont" {
@@ -256,8 +255,8 @@ func TestInvalidTOMLFallsBackToDefaults(t *testing.T) {
 	if cfg.Style.Icons != "nerdfont" {
 		t.Errorf("Icons: got %q, want default %q", cfg.Style.Icons, "nerdfont")
 	}
-	if len(cfg.Lines) != 3 {
-		t.Errorf("Lines: got %d, want default 3", len(cfg.Lines))
+	if len(cfg.Lines) != 2 {
+		t.Errorf("Lines: got %d, want default 2", len(cfg.Lines))
 	}
 }
 
@@ -272,9 +271,9 @@ func TestDefaultsNeverReturnsNil(t *testing.T) {
 	}
 }
 
-// TestDefaultLayoutIsThreeLines verifies the layout from config.DefaultLines:
-// Line 1 = identity+health, Line 2 = tools (ephemeral), Line 3 = agents (ephemeral).
-func TestDefaultLayoutIsThreeLines(t *testing.T) {
+// TestDefaultLayoutIsTwoLines verifies the layout from config.DefaultLines:
+// Line 1 = identity+health+worktree, Line 2 = agents (ephemeral).
+func TestDefaultLayoutIsTwoLines(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("HOME", tmp)
 
@@ -283,13 +282,12 @@ func TestDefaultLayoutIsThreeLines(t *testing.T) {
 		t.Fatal("LoadHud returned nil")
 	}
 
-	if len(cfg.Lines) != 3 {
-		t.Fatalf("default layout: want 3 lines, got %d", len(cfg.Lines))
+	if len(cfg.Lines) != 2 {
+		t.Fatalf("default layout: want 2 lines, got %d", len(cfg.Lines))
 	}
 
-	assertWidgets(t, cfg.Lines[0].Widgets, []string{"model", "context", "project", "todos", "duration", "permission"})
+	assertWidgets(t, cfg.Lines[0].Widgets, []string{"model", "context", "project", "worktree", "todos", "duration", "permission"})
 	assertWidgets(t, cfg.Lines[1].Widgets, []string{"agents"})
-	assertWidgets(t, cfg.Lines[2].Widgets, []string{"tools"})
 }
 
 // TestDefaultEnvWidgetAbsent verifies that "env" is not present in the default layout

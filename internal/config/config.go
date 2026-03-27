@@ -118,9 +118,8 @@ type Config struct {
 // TOML decode) cannot mutate the canonical definition.
 func DefaultLines() []Line {
 	return []Line{
-		{Widgets: []string{"model", "context", "project", "todos", "duration", "permission"}},
+		{Widgets: []string{"model", "context", "project", "worktree", "todos", "duration", "permission"}},
 		{Widgets: []string{"agents"}},
-		{Widgets: []string{"tools"}},
 	}
 }
 

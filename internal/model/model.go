@@ -40,6 +40,10 @@ type RenderContext struct {
 	// Empty string when not provided by Claude Code.
 	OutputStyle string
 
+	// WorktreeName is the name of the current worktree, if any.
+	// Empty when not running inside a worktree.
+	WorktreeName string
+
 	// ExtraOutput is the label returned by the user's extra command.
 	// Empty when no extra command is configured or the command fails/times out.
 	ExtraOutput string
@@ -219,8 +223,20 @@ type StdinData struct {
 	// avoiding the need for OAuth API calls.
 	RateLimits *StdinRateLimits `json:"rate_limits"`
 
+	// Worktree is nil when not running inside a worktree.
+	Worktree *Worktree `json:"worktree"`
+
 	// ContextPercent is computed by the stdin package — not decoded from JSON.
 	ContextPercent int `json:"-"`
+}
+
+// Worktree holds metadata about the current worktree, if any.
+type Worktree struct {
+	Name           string `json:"name"`
+	Path           string `json:"path"`
+	Branch         string `json:"branch"`
+	OriginalCwd    string `json:"original_cwd"`
+	OriginalBranch string `json:"original_branch"`
 }
 
 // StdinRateLimits holds rate-limit windows provided by Claude Code via stdin.

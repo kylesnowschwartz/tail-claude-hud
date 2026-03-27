@@ -225,8 +225,8 @@ func TestLoadHudWithPresetEmptyName(t *testing.T) {
 	if cfg == nil {
 		t.Fatal("LoadHudWithPreset returned nil")
 	}
-	if len(cfg.Lines) != 3 {
-		t.Errorf("Lines: got %d, want 3 (default)", len(cfg.Lines))
+	if len(cfg.Lines) != 2 {
+		t.Errorf("Lines: got %d, want 2 (default)", len(cfg.Lines))
 	}
 }
 
@@ -240,8 +240,8 @@ func TestLoadHudWithPresetUnknownName(t *testing.T) {
 	if cfg == nil {
 		t.Fatal("LoadHudWithPreset returned nil")
 	}
-	if len(cfg.Lines) != 3 {
-		t.Errorf("Lines: got %d, want 3 (default)", len(cfg.Lines))
+	if len(cfg.Lines) != 2 {
+		t.Errorf("Lines: got %d, want 2 (default)", len(cfg.Lines))
 	}
 }
 
