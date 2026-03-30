@@ -18,6 +18,7 @@ import (
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/config"
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/extracmd"
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/git"
+	"github.com/kylesnowschwartz/tail-claude-hud/internal/heartbeat"
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/model"
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/transcript"
 )
@@ -116,6 +117,25 @@ func Gather(input *model.StdinData, cfg *config.Config) *model.RenderContext {
 	// Usage: populated from stdin rate_limits (zero-cost, no network).
 	if active["usage"] {
 		ctx.Usage = usageFromStdin(input)
+	}
+
+	// Sessions goroutine: scans heartbeat files to discover other running
+	// Claude Code sessions. Only runs when the widget is active.
+	if active["sessions"] {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			found := heartbeat.FindOthers(input.SessionID)
+			sessions := make([]model.SessionInfo, len(found))
+			for i, s := range found {
+				sessions[i] = model.SessionInfo{
+					SessionID: s.SessionID,
+					Project:   s.Project,
+					Running:   s.Running,
+				}
+			}
+			ctx.Sessions = sessions
+		}()
 	}
 
 	// Permission detection goroutine: scans breadcrumb files written by

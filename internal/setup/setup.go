@@ -24,8 +24,10 @@ type hookSpec struct {
 
 var hooks = []hookSpec{
 	{Event: "PermissionRequest", Subcommand: "permission-request"},
+	{Event: "PreToolUse", Subcommand: "heartbeat"},
 	{Event: "PostToolUse", Subcommand: "cleanup"},
-	{Event: "Stop", Subcommand: "cleanup"},
+	{Event: "PostToolUse", Subcommand: "heartbeat"},
+	{Event: "Stop", Subcommand: "stop-cleanup"},
 }
 
 // RegisterHooks patches ~/.claude/settings.json to register the permission

@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/breadcrumb"
+	"github.com/kylesnowschwartz/tail-claude-hud/internal/heartbeat"
 )
 
 // payload is the common subset of fields from Claude Code's hook stdin JSON.
@@ -45,8 +46,8 @@ func HandlePermissionRequest(r io.Reader) error {
 }
 
 // HandleCleanup reads the hook payload and removes any breadcrumb for the
-// session. Called by both PostToolUse and Stop hooks. Removing a breadcrumb
-// that doesn't exist is a no-op.
+// session. Called by PostToolUse. Removing a breadcrumb that doesn't exist
+// is a no-op.
 func HandleCleanup(r io.Reader) error {
 	var p payload
 	if err := json.NewDecoder(r).Decode(&p); err != nil {
@@ -56,4 +57,45 @@ func HandleCleanup(r io.Reader) error {
 		return nil
 	}
 	return breadcrumb.Remove(p.SessionID)
+}
+
+// HandleHeartbeat reads the hook payload and writes a heartbeat file for the
+// session. Called by PreToolUse and PostToolUse hooks to keep the session
+// heartbeat fresh.
+func HandleHeartbeat(r io.Reader) error {
+	var p payload
+	if err := json.NewDecoder(r).Decode(&p); err != nil {
+		return err
+	}
+	if p.SessionID == "" {
+		return nil
+	}
+
+	project := filepath.Base(p.CWD)
+	if project == "." || project == "/" {
+		project = ""
+	}
+
+	return heartbeat.Write(heartbeat.Heartbeat{
+		SessionID: p.SessionID,
+		Project:   project,
+	})
+}
+
+// HandleStopCleanup reads the hook payload and removes both the breadcrumb
+// and heartbeat for the session. Called by the Stop hook to clean up all
+// session markers on exit.
+func HandleStopCleanup(r io.Reader) error {
+	var p payload
+	if err := json.NewDecoder(r).Decode(&p); err != nil {
+		return err
+	}
+	if p.SessionID == "" {
+		return nil
+	}
+
+	// Remove both markers. Each removal is idempotent.
+	breadcrumb.Remove(p.SessionID)
+	heartbeat.Remove(p.SessionID)
+	return nil
 }

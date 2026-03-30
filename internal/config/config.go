@@ -81,6 +81,13 @@ type Config struct {
 		Overrides map[string]theme.WidgetColors `toml:"overrides"`
 	} `toml:"theme"`
 
+	// Sessions controls the sessions widget.
+	Sessions struct {
+		// ShowProject displays the project name next to each session dot.
+		// When false, only dots are shown. Default: true.
+		ShowProject bool `toml:"show_project"`
+	} `toml:"sessions"`
+
 	// Permission controls the permission-waiting widget.
 	Permission struct {
 		// ShowProject displays the project name of the waiting session next to the icon.
@@ -145,6 +152,8 @@ func defaults() *Config {
 	cfg.Git.Dirty = true
 	cfg.Git.AheadBehind = true
 	cfg.Git.FileStats = false
+
+	cfg.Sessions.ShowProject = true
 
 	cfg.Permission.ShowProject = true
 

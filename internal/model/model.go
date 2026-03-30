@@ -53,6 +53,11 @@ type RenderContext struct {
 	// permission approval. Empty when no session needs attention.
 	PermissionProject string
 
+	// Sessions holds other discovered Claude Code sessions (excluding the
+	// current one). Populated from heartbeat files when the "sessions" widget
+	// is active. Empty slice when no other sessions are found.
+	Sessions []SessionInfo
+
 	// Pointer fields — all may be nil when the corresponding data is unavailable.
 	Transcript *TranscriptData
 	EnvCounts  *EnvCounts
@@ -149,6 +154,14 @@ type TodoItem struct {
 	ID      string
 	Content string
 	Done    bool
+}
+
+// SessionInfo represents another discovered Claude Code session.
+// Defined in the model package to avoid a model→heartbeat import cycle.
+type SessionInfo struct {
+	SessionID string
+	Project   string
+	Running   bool // true = active (heartbeat < 30s old); false = idle
 }
 
 // EnvCounts holds counts of active Claude Code environment config items,
