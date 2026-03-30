@@ -22,9 +22,11 @@ const binaryName = "tail-claude-hud"
 // invokes, in exec form (command + args) to avoid shell interpolation.
 var hookCommands = []settings.HookCommand{
 	{Event: "PermissionRequest", Command: binaryName, Args: []string{"hook", "permission-request"}},
+	{Event: "PreToolUse", Command: binaryName, Args: []string{"hook", "heartbeat"}},
 	{Event: "PostToolUse", Command: binaryName, Args: []string{"hook", "cleanup"}},
+	{Event: "PostToolUse", Command: binaryName, Args: []string{"hook", "heartbeat"}},
 	{Event: "PostToolUseFailure", Command: binaryName, Args: []string{"hook", "cleanup"}},
-	{Event: "Stop", Command: binaryName, Args: []string{"hook", "cleanup"}},
+	{Event: "Stop", Command: binaryName, Args: []string{"hook", "stop-cleanup"}},
 	{Event: "SessionStart", Command: binaryName, Args: []string{"hook", "session-start"}},
 }
 

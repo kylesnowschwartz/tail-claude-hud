@@ -17,6 +17,7 @@ import (
 	"github.com/kylesnowschwartz/agent-ouija/claude/hooks"
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/breadcrumb"
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/git"
+	"github.com/kylesnowschwartz/tail-claude-hud/internal/heartbeat"
 )
 
 // HandlePermissionRequest reads the hook payload and writes a breadcrumb
@@ -110,4 +111,41 @@ func projectName(cwd string) string {
 		return ""
 	}
 	return project
+}
+
+// HandleHeartbeat reads the hook payload and writes a heartbeat file for the
+// session. Called by PreToolUse and PostToolUse hooks to keep the session
+// heartbeat fresh.
+func HandleHeartbeat(r io.Reader) error {
+	p, err := hooks.Decode(r)
+	if err != nil {
+		return err
+	}
+	sid := p.EffectiveSessionID()
+	if sid == "" {
+		return nil
+	}
+	return heartbeat.Write(heartbeat.Heartbeat{
+		SessionID: sid,
+		Project:   projectName(p.CWD),
+	})
+}
+
+// HandleStopCleanup reads the hook payload and removes both the breadcrumb
+// and heartbeat for the session. Called by the Stop hook to clean up all
+// session markers on exit.
+func HandleStopCleanup(r io.Reader) error {
+	p, err := hooks.Decode(r)
+	if err != nil {
+		return err
+	}
+	sid := p.EffectiveSessionID()
+	if sid == "" {
+		return nil
+	}
+
+	// Remove both markers. Each removal is idempotent.
+	breadcrumb.Remove(sid)
+	heartbeat.Remove(sid)
+	return nil
 }

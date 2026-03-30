@@ -58,6 +58,7 @@ var Registry = map[string]RenderFunc{
 	"permission":  Permission,
 	"usage":       Usage,
 	"worktree":    Worktree,
+	"sessions":    Sessions,
 	"effort":      Effort,
 }
 

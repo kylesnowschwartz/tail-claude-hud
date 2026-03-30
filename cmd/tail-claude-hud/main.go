@@ -443,6 +443,10 @@ func runHook() {
 		err = hook.HandleSessionStart(os.Stdin, os.Stdout, config.LoadHud().Notify.SessionTitle)
 	case "cleanup":
 		err = hook.HandleCleanup(os.Stdin)
+	case "heartbeat":
+		err = hook.HandleHeartbeat(os.Stdin)
+	case "stop-cleanup":
+		err = hook.HandleStopCleanup(os.Stdin)
 	}
 	if err != nil {
 		_ = err // log to debug file if available, but never fail
