@@ -35,7 +35,18 @@ Add to `~/.claude/settings.json`:
 }
 ```
 
-Works out of the box with the `default` preset. To customize, run `tail-claude-hud --init` to generate a config at `~/.config/tail-claude-hud/config.toml`.
+Works out of the box with the `default` preset.
+
+### Optional: `--init`
+
+```bash
+tail-claude-hud --init
+```
+
+This does two things:
+
+1. **Generates a config** at `~/.config/tail-claude-hud/config.toml` with the default layout, which you can then customize.
+2. **Registers hooks** in `~/.claude/settings.json` for `PermissionRequest`, `PostToolUse`, and `Stop`. These hooks let the permission widget detect when other Claude Code sessions are waiting for approval. Without them, the permission widget has nothing to display.
 
 ## Presets
 
