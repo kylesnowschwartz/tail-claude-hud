@@ -15,6 +15,7 @@ import (
 
 	"github.com/charmbracelet/x/term"
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/breadcrumb"
+	"github.com/kylesnowschwartz/tail-claude-hud/internal/cachestate"
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/config"
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/extracmd"
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/git"
@@ -128,6 +129,18 @@ func Gather(input *model.StdinData, cfg *config.Config) *model.RenderContext {
 				ctx.PermissionProject = b.Project
 			}
 		}()
+	}
+
+	// Cache persistence: load, append if changed, save, and populate ctx.
+	if active["cache"] {
+		cs := cachestate.Load()
+		cs.AppendIfChanged(model.CacheSample{
+			CacheRead:     ctx.CacheRead,
+			CacheCreation: ctx.CacheCreation,
+			InputTokens:   ctx.InputTokens,
+		})
+		_ = cs.Save()
+		ctx.CacheSamples = cs.Samples
 	}
 
 	wg.Wait()

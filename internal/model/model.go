@@ -62,6 +62,11 @@ type RenderContext struct {
 	// Nil when rate_limits is absent from stdin (older Claude Code or API users)
 	// or when the usage widget is not configured.
 	Usage *UsageInfo
+
+	// CacheSamples holds historical cache hit-rate samples for rolling averages.
+	// Populated by the cachestate package during the gather stage.
+	// Nil when the cache widget is not configured or no samples exist.
+	CacheSamples []CacheSample
 }
 
 // UsageInfo holds rate-limit utilization data from stdin for rendering.
@@ -78,6 +83,18 @@ type UsageInfo struct {
 type TokenSample struct {
 	Timestamp time.Time
 	Tokens    int // total tokens (input + output) from a single assistant message
+}
+
+// CacheSample records a cache hit-rate observation at a point in time.
+// It is used by the cache widget to compute rolling averages over time windows.
+// CacheRate is the computed cache hit percentage (0–100) from the most recent
+// API call: cacheRead / (cacheRead + cacheCreation) * 100.
+type CacheSample struct {
+	Timestamp     time.Time `json:"ts"`
+	CacheRead     int       `json:"cr"`
+	CacheCreation int       `json:"cc"`
+	InputTokens   int       `json:"in"`
+	CacheRate     int       `json:"pct"`
 }
 
 // TranscriptData holds parsed information from the Claude Code transcript.
