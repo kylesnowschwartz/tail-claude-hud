@@ -1,6 +1,7 @@
 package widget
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -97,7 +98,7 @@ func TestCache_RollingAverages(t *testing.T) {
 	got := result.PlainText
 	expectedParts := []string{"cache:40%", "5min:50%", "1h:65%"}
 	for _, part := range expectedParts {
-		if !contains(got, part) {
+		if !strings.Contains(got, part) {
 			t.Errorf("PlainText = %q, want it to contain %q", got, part)
 		}
 	}
@@ -140,15 +141,3 @@ func TestCache_SamplesOutsideWindow(t *testing.T) {
 	}
 }
 
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(s) > 0 && search(s, substr))
-}
-
-func search(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
-}

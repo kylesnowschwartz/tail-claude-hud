@@ -2,6 +2,7 @@ package widget
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -1590,9 +1591,14 @@ func TestDirectoryWidget_StyleFull(t *testing.T) {
 
 func TestDirectoryWidget_StyleFish(t *testing.T) {
 	// Fish style abbreviates intermediate segments to first char.
-	// Home dir (/Users/kyle) is replaced with ~ first, so the path becomes
+	// Home dir is replaced with ~ first, so the path becomes
 	// ~/Code/my-projects/tail-claude-hud, then fish gives ~/C/m/tail-claude-hud.
-	ctx := &model.RenderContext{Cwd: "/Users/kyle/Code/my-projects/tail-claude-hud"}
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		t.Skip("cannot determine home directory")
+	}
+	testPath := filepath.Join(home, "Code", "my-projects", "tail-claude-hud")
+	ctx := &model.RenderContext{Cwd: testPath}
 	cfg := defaultCfg()
 	cfg.Directory.Style = "fish"
 
@@ -1607,8 +1613,9 @@ func TestDirectoryWidget_StyleFish(t *testing.T) {
 	if strings.Contains(got, "my-projects") {
 		t.Errorf("fish style: 'my-projects' should be abbreviated to 'm', got %q", got)
 	}
-	if !strings.Contains(got, "~/C/m/tail-claude-hud") {
-		t.Errorf("fish style: expected '~/C/m/tail-claude-hud', got %q", got)
+	expected := "~/C/m/tail-claude-hud"
+	if !strings.Contains(got, expected) {
+		t.Errorf("fish style: expected %q, got %q", expected, got)
 	}
 }
 

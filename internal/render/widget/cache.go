@@ -2,9 +2,11 @@ package widget
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"charm.land/lipgloss/v2"
+	"github.com/kylesnowschwartz/tail-claude-hud/internal/cachestate"
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/config"
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/model"
 )
@@ -26,20 +28,20 @@ func Cache(ctx *model.RenderContext, cfg *config.Config) WidgetResult {
 		return WidgetResult{}
 	}
 
-	currentRate := cacheRate(ctx.CacheRead, ctx.CacheCreation)
+	currentRate := cachestate.CacheHitRate(ctx.CacheRead, ctx.CacheCreation)
 
 	parts := []string{fmt.Sprintf("cache:%d%%", currentRate)}
 
 	if len(ctx.CacheSamples) > 0 {
-		if rate5m := rollingCacheRate(ctx.CacheSamples, 5*time.Minute); rate5m >= 0 {
+		if rate5m := cachestate.RollingAverage(ctx.CacheSamples, 5*time.Minute); rate5m >= 0 {
 			parts = append(parts, fmt.Sprintf("5min:%d%%", rate5m))
 		}
-		if rate1h := rollingCacheRate(ctx.CacheSamples, 1*time.Hour); rate1h >= 0 {
+		if rate1h := cachestate.RollingAverage(ctx.CacheSamples, 1*time.Hour); rate1h >= 0 {
 			parts = append(parts, fmt.Sprintf("1h:%d%%", rate1h))
 		}
 	}
 
-	plain := joinParts(parts)
+	plain := strings.Join(parts, " ")
 	fgColor := cacheRateColor(currentRate)
 
 	return WidgetResult{
@@ -47,50 +49,6 @@ func Cache(ctx *model.RenderContext, cfg *config.Config) WidgetResult {
 		PlainText: plain,
 		FgColor:   fgColor,
 	}
-}
-
-// cacheRate computes the cache hit rate percentage.
-// Returns 0 when there are no cacheable tokens.
-func cacheRate(cacheRead, cacheCreation int) int {
-	cacheable := cacheRead + cacheCreation
-	if cacheable <= 0 {
-		return 0
-	}
-	return (cacheRead * 100) / cacheable
-}
-
-// rollingCacheRate computes the average cache hit rate over the given window.
-// Returns -1 when no samples fall within the window.
-func rollingCacheRate(samples []model.CacheSample, window time.Duration) int {
-	cutoff := time.Now().Add(-window)
-	var windowed []model.CacheSample
-	for _, s := range samples {
-		if !s.Timestamp.Before(cutoff) {
-			windowed = append(windowed, s)
-		}
-	}
-
-	if len(windowed) == 0 {
-		return -1
-	}
-
-	total := 0
-	for _, s := range windowed {
-		total += s.CacheRate
-	}
-	return total / len(windowed)
-}
-
-// joinParts joins cache display parts with a space separator.
-func joinParts(parts []string) string {
-	out := ""
-	for i, p := range parts {
-		if i > 0 {
-			out += " "
-		}
-		out += p
-	}
-	return out
 }
 
 // cacheRateColor returns the ANSI color string for a cache hit rate.

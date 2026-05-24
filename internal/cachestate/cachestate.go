@@ -58,6 +58,16 @@ func Load() *State {
 	return s
 }
 
+// CacheHitRate computes the cache hit rate percentage: cacheRead / (cacheRead + cacheCreation) * 100.
+// Returns 0 when there are no cacheable tokens. Uses int64 to avoid overflow.
+func CacheHitRate(cacheRead, cacheCreation int) int {
+	cacheable := int64(cacheRead) + int64(cacheCreation)
+	if cacheable <= 0 {
+		return 0
+	}
+	return int((int64(cacheRead) * 100) / cacheable)
+}
+
 // AppendIfChanged adds a new sample only when the cache values differ from the
 // last recorded sample or when the last sample is older than addThreshold.
 // Samples with zero cacheable tokens (cacheRead+cacheCreation == 0) are skipped.
@@ -79,44 +89,32 @@ func (s *State) AppendIfChanged(sample model.CacheSample) {
 		}
 	}
 
-	// Compute cache hit rate.
-	cacheable := sample.CacheRead + sample.CacheCreation
-	if cacheable > 0 {
-		sample.CacheRate = (sample.CacheRead * 100) / cacheable
-	}
+	sample.CacheRate = CacheHitRate(sample.CacheRead, sample.CacheCreation)
 
 	s.Samples = append(s.Samples, sample)
 	if len(s.Samples) > maxSamples {
 		s.Samples = s.Samples[len(s.Samples)-maxSamples:]
 	}
-
-	_ = s.save()
-}
-
-// SamplesSince returns samples whose timestamps are on or after cutoff.
-func (s *State) SamplesSince(cutoff time.Time) []model.CacheSample {
-	var out []model.CacheSample
-	for _, samp := range s.Samples {
-		if !samp.Timestamp.Before(cutoff) {
-			out = append(out, samp)
-		}
-	}
-	return out
 }
 
 // RollingAverage computes the average cache hit rate over the given window.
 // Returns -1 when no samples fall within the window.
-func (s *State) RollingAverage(window time.Duration) int {
+func RollingAverage(samples []model.CacheSample, window time.Duration) int {
 	cutoff := time.Now().Add(-window)
-	samples := s.SamplesSince(cutoff)
-	if len(samples) == 0 {
+	var windowed []model.CacheSample
+	for _, s := range samples {
+		if !s.Timestamp.Before(cutoff) {
+			windowed = append(windowed, s)
+		}
+	}
+	if len(windowed) == 0 {
 		return -1
 	}
 	total := 0
-	for _, samp := range samples {
-		total += samp.CacheRate
+	for _, s := range windowed {
+		total += s.CacheRate
 	}
-	return total / len(samples)
+	return total / len(windowed)
 }
 
 // Save persists samples to disk.

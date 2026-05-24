@@ -70,17 +70,6 @@ func Gather(input *model.StdinData, cfg *config.Config) *model.RenderContext {
 		ctx.WorktreeName = input.Worktree.Name
 	}
 
-	// Persist cache sample from the current stdin data so the cache widget
-	// can compute rolling averages across invocations. This runs on every
-	// tick but AppendIfChanged deduplicates identical consecutive samples.
-	cs := cachestate.Load()
-	cs.AppendIfChanged(model.CacheSample{
-		CacheRead:     ctx.CacheRead,
-		CacheCreation: ctx.CacheCreation,
-		InputTokens:   ctx.InputTokens,
-	})
-	_ = cs.Save()
-
 	// Determine which widget names are active across all configured lines.
 	active := activeWidgets(cfg)
 
@@ -142,11 +131,17 @@ func Gather(input *model.StdinData, cfg *config.Config) *model.RenderContext {
 		}()
 	}
 
-		// Cache samples: load historical cache hit-rate data for rolling averages.
-		if active["cache"] {
-			ctx.CacheSamples = cs.Samples
-		}
-
+	// Cache persistence: load, append if changed, save, and populate ctx.
+	if active["cache"] {
+		cs := cachestate.Load()
+		cs.AppendIfChanged(model.CacheSample{
+			CacheRead:     ctx.CacheRead,
+			CacheCreation: ctx.CacheCreation,
+			InputTokens:   ctx.InputTokens,
+		})
+		_ = cs.Save()
+		ctx.CacheSamples = cs.Samples
+	}
 
 	wg.Wait()
 
