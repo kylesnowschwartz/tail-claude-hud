@@ -44,6 +44,8 @@ const DefaultTemplate = `# tail-claude-hud configuration
 #   speed       — rolling tokens/sec average (requires transcript)
 #   permission  — red alert when another Claude session is waiting for permission
 #   usage       — Anthropic rate-limit utilization (5-hour and 7-day windows)
+#   worktree    — current git worktree name and branch
+#   effort      — current reasoning effort (low/medium/high/xhigh/max), color by intensity
 #
 # Each [[line]] can optionally override the global style.mode:
 #   mode = "powerline"  — use powerline arrows for this line only
@@ -179,6 +181,23 @@ five_hour_threshold = 0
 seven_day_threshold = 80
 # Cache TTL in seconds for successful API responses.
 cache_ttl_seconds = 180
+
+# Worktree widget — shows the current git worktree name and branch.
+[worktree]
+# Append the worktree's branch name after the name (e.g. "wt:fix-bug feat/cache").
+# The branch is omitted when it is identical to the worktree name.
+show_branch = true
+
+# Notify — opt-in attention signals emitted via terminal escape sequences from
+# the registered hooks. Both default to false; enable to be alerted when the
+# statusline itself is not visible (e.g. an unfocused terminal tab).
+# Requires hooks registered via 'tail-claude-hud --init'.
+[notify]
+# Emit a desktop notification + terminal bell when this session blocks waiting
+# for permission approval (OSC 9; supported by iTerm2, Konsole, Ghostty).
+permission_bell = false
+# Set the terminal session title to "project · branch" on startup and resume.
+session_title = false
 
 [extra]
 # Uncomment to run a shell command and append its output to the statusline.

@@ -44,6 +44,18 @@ type RenderContext struct {
 	// Empty when not running inside a worktree.
 	WorktreeName string
 
+	// WorktreeBranch is the branch checked out in the current worktree.
+	// Empty when not in a worktree or when the branch is unavailable.
+	WorktreeBranch string
+
+	// EffortLevel is the current reasoning effort ("low", "medium", "high",
+	// "xhigh", "max"). Empty when Claude Code does not report it.
+	EffortLevel string
+
+	// Exceeds200k is true when the last API response's combined tokens crossed
+	// the 200k boundary. Used by the context widget to flag the threshold.
+	Exceeds200k bool
+
 	// ExtraOutput is the label returned by the user's extra command.
 	// Empty when no extra command is configured or the command fails/times out.
 	ExtraOutput string
@@ -225,6 +237,17 @@ type StdinData struct {
 
 	// Worktree is nil when not running inside a worktree.
 	Worktree *Worktree `json:"worktree"`
+
+	// Effort holds the current reasoning effort level. Nil on Claude Code
+	// versions that do not report effort in the statusline payload; the gather
+	// stage falls back to the CLAUDE_EFFORT environment variable.
+	Effort *struct {
+		Level string `json:"level"`
+	} `json:"effort"`
+
+	// Exceeds200kTokens is true when the combined tokens from the last API
+	// response exceeded 200k. Absent (false) on older Claude Code.
+	Exceeds200kTokens bool `json:"exceeds_200k_tokens"`
 
 	// ContextPercent is computed by the stdin package — not decoded from JSON.
 	ContextPercent int `json:"-"`

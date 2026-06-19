@@ -100,6 +100,25 @@ type Config struct {
 		CacheTTLSeconds int `toml:"cache_ttl_seconds"`
 	} `toml:"usage"`
 
+	// Worktree controls the worktree widget.
+	Worktree struct {
+		// ShowBranch appends the worktree's branch name after the name
+		// (e.g. "wt:fix-bug feat/cache"). Default: true.
+		ShowBranch bool `toml:"show_branch"`
+	} `toml:"worktree"`
+
+	// Notify controls opt-in attention signals emitted by the hook handler via
+	// terminal escape sequences. Both default to false — the tool stays silent
+	// unless explicitly enabled, since notifications can be noisy.
+	Notify struct {
+		// PermissionBell emits a desktop notification and terminal bell when
+		// this session blocks waiting for permission approval. Default: false.
+		PermissionBell bool `toml:"permission_bell"`
+		// SessionTitle sets the terminal session title (project · branch) on
+		// session start and resume. Default: false.
+		SessionTitle bool `toml:"session_title"`
+	} `toml:"notify"`
+
 	// Extra holds user-configured extra command settings. When Command is set,
 	// the gather stage runs it and stores the result in RenderContext.ExtraOutput.
 	Extra struct {
@@ -147,6 +166,8 @@ func defaults() *Config {
 	cfg.Git.FileStats = false
 
 	cfg.Permission.ShowProject = true
+
+	cfg.Worktree.ShowBranch = true
 
 	cfg.Usage.FiveHourThreshold = 0
 	cfg.Usage.SevenDayThreshold = 80
