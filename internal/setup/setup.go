@@ -25,7 +25,9 @@ type hookSpec struct {
 var hooks = []hookSpec{
 	{Event: "PermissionRequest", Subcommand: "permission-request"},
 	{Event: "PostToolUse", Subcommand: "cleanup"},
+	{Event: "PostToolUseFailure", Subcommand: "cleanup"},
 	{Event: "Stop", Subcommand: "cleanup"},
+	{Event: "SessionStart", Subcommand: "session-start"},
 }
 
 // RegisterHooks patches ~/.claude/settings.json to register the permission
@@ -47,11 +49,10 @@ func RegisterHooks() ([]string, error) {
 
 	var added []string
 	for _, h := range hooks {
-		command := fmt.Sprintf("%s hook %s", binaryName, h.Subcommand)
-		if hasHookCommand(hooksMap, h.Event, command) {
+		if hasHookCommand(hooksMap, h.Event, h.Subcommand) {
 			continue
 		}
-		appendHook(hooksMap, h.Event, command)
+		appendHook(hooksMap, h.Event, h.Subcommand)
 		added = append(added, h.Event)
 	}
 
@@ -100,11 +101,15 @@ func ensureHooksMap(settings map[string]any) map[string]any {
 	return m
 }
 
-// hasHookCommand checks whether the hooks map already contains a matching
-// command for the given event. The Claude Code hooks schema is:
+// hasHookCommand checks whether the hooks map already contains a matching hook
+// for the given event and subcommand. The Claude Code hooks schema is:
 //
-//	"EventName": [{"hooks": [{"type": "command", "command": "..."}]}]
-func hasHookCommand(hooksMap map[string]any, event, command string) bool {
+//	"EventName": [{"hooks": [{"type": "command", "command": "...", "args": [...]}]}]
+//
+// Both the legacy shell-string form ("tail-claude-hud hook <subcommand>") and the
+// exec form (command "tail-claude-hud" with args ["hook", "<subcommand>"]) count
+// as a match, so re-running --init after an upgrade does not duplicate hooks.
+func hasHookCommand(hooksMap map[string]any, event, subcommand string) bool {
 	arr, ok := hooksMap[event]
 	if !ok {
 		return false
@@ -113,6 +118,7 @@ func hasHookCommand(hooksMap map[string]any, event, command string) bool {
 	if !ok {
 		return false
 	}
+	legacy := fmt.Sprintf("%s hook %s", binaryName, subcommand)
 	for _, entry := range entries {
 		em, ok := entry.(map[string]any)
 		if !ok {
@@ -131,21 +137,38 @@ func hasHookCommand(hooksMap map[string]any, event, command string) bool {
 			if !ok {
 				continue
 			}
-			if cmd, ok := hm["command"].(string); ok && cmd == command {
-				return true
+			cmd, _ := hm["command"].(string)
+			if cmd == legacy {
+				return true // legacy shell-string form
+			}
+			if cmd == binaryName && argsMatch(hm["args"], subcommand) {
+				return true // exec form
 			}
 		}
 	}
 	return false
 }
 
-// appendHook adds a new hook entry for the given event.
-func appendHook(hooksMap map[string]any, event, command string) {
+// argsMatch reports whether a decoded JSON args value equals ["hook", subcommand].
+func argsMatch(v any, subcommand string) bool {
+	arr, ok := v.([]any)
+	if !ok || len(arr) != 2 {
+		return false
+	}
+	first, _ := arr[0].(string)
+	second, _ := arr[1].(string)
+	return first == "hook" && second == subcommand
+}
+
+// appendHook adds a new exec-form hook entry for the given event. Exec form
+// (command + args array) avoids shell interpolation of the subcommand.
+func appendHook(hooksMap map[string]any, event, subcommand string) {
 	entry := map[string]any{
 		"hooks": []any{
 			map[string]any{
 				"type":    "command",
-				"command": command,
+				"command": binaryName,
+				"args":    []any{"hook", subcommand},
 			},
 		},
 	}

@@ -457,7 +457,9 @@ func runHook() {
 	var err error
 	switch os.Args[2] {
 	case "permission-request":
-		err = hook.HandlePermissionRequest(os.Stdin)
+		err = hook.HandlePermissionRequest(os.Stdin, os.Stdout, config.LoadHud().Notify.PermissionBell)
+	case "session-start":
+		err = hook.HandleSessionStart(os.Stdin, os.Stdout, config.LoadHud().Notify.SessionTitle)
 	case "cleanup":
 		err = hook.HandleCleanup(os.Stdin)
 	}
