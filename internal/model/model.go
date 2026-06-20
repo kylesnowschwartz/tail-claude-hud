@@ -52,10 +52,6 @@ type RenderContext struct {
 	// "xhigh", "max"). Empty when Claude Code does not report it.
 	EffortLevel string
 
-	// Exceeds200k is true when the last API response's combined tokens crossed
-	// the 200k boundary. Used by the context widget to flag the threshold.
-	Exceeds200k bool
-
 	// ExtraOutput is the label returned by the user's extra command.
 	// Empty when no extra command is configured or the command fails/times out.
 	ExtraOutput string
@@ -244,10 +240,6 @@ type StdinData struct {
 	Effort *struct {
 		Level string `json:"level"`
 	} `json:"effort"`
-
-	// Exceeds200kTokens is true when the combined tokens from the last API
-	// response exceeded 200k. Absent (false) on older Claude Code.
-	Exceeds200kTokens bool `json:"exceeds_200k_tokens"`
 
 	// ContextPercent is computed by the stdin package — not decoded from JSON.
 	ContextPercent int `json:"-"`

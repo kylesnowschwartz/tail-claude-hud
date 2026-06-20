@@ -217,15 +217,6 @@ func Context(ctx *model.RenderContext, cfg *config.Config) WidgetResult {
 		plainText += breakdown
 	}
 
-	// Flag when the last API response crossed the 200k-token boundary. This is
-	// independent of the usage percentage (a 1M-context session can exceed 200k
-	// while still well under its window), so it warrants its own critical marker.
-	if ctx.Exceeds200k {
-		const marker = " >200k"
-		text += colors.critical.Bold(true).Render(marker)
-		plainText += marker
-	}
-
 	fgColor := thresholdFgColor(pct, warnAt, critAt,
 		cfg.Style.Colors.Context, cfg.Style.Colors.Warning, cfg.Style.Colors.Critical)
 

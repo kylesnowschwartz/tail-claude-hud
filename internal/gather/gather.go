@@ -69,7 +69,6 @@ func Gather(input *model.StdinData, cfg *config.Config) *model.RenderContext {
 		ctx.WorktreeName = input.Worktree.Name
 		ctx.WorktreeBranch = input.Worktree.Branch
 	}
-	ctx.Exceeds200k = input.Exceeds200kTokens
 
 	// Reasoning effort comes from stdin when available, falling back to the
 	// CLAUDE_EFFORT environment variable that Claude Code sets for the process.

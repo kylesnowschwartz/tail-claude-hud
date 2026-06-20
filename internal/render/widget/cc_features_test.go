@@ -66,21 +66,3 @@ func TestWorktreeWidget_OmitsRedundantBranch(t *testing.T) {
 		t.Errorf("expected branch not duplicated, got %q", got.PlainText)
 	}
 }
-
-func TestContextWidget_Exceeds200kMarker(t *testing.T) {
-	cfg := defaultCfg()
-	ctx := &model.RenderContext{ContextPercent: 30, ContextWindowSize: 1000000, Exceeds200k: true}
-	got := Context(ctx, cfg)
-	if !strings.Contains(got.PlainText, ">200k") {
-		t.Errorf("expected >200k marker, got %q", got.PlainText)
-	}
-}
-
-func TestContextWidget_NoMarkerWhenUnder200k(t *testing.T) {
-	cfg := defaultCfg()
-	ctx := &model.RenderContext{ContextPercent: 30, ContextWindowSize: 1000000, Exceeds200k: false}
-	got := Context(ctx, cfg)
-	if strings.Contains(got.PlainText, ">200k") {
-		t.Errorf("expected no marker, got %q", got.PlainText)
-	}
-}
