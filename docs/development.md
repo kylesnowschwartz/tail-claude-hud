@@ -18,7 +18,7 @@ just run-sample   # pipe testdata through the binary
 ## Running a single test
 
 ```bash
-go test ./internal/transcript/ -run TestExtractContentBlocks -count=1
+go test ./internal/extract/ -run TestProcessEntry -count=1
 ```
 
 ## Releasing

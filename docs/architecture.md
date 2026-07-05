@@ -15,11 +15,11 @@ stdin -> gather -> render -> stdout
 
 ## Transcript processing
 
-Three layers in `internal/transcript/`:
+Three layers, two from the shared [agent-ouija](https://github.com/kylesnowschwartz/agent-ouija) library and one app-side:
 
-- **transcript.go** -- Parses JSONL entries and classifies content blocks (tool_use, tool_result, thinking, text). Filters sidechain sub-agent messages.
-- **extractor.go** -- Stateful processor that accumulates tools, agents, and todos across entries. Handles agent lifecycle, todo mutations, and the scrolling divider counter.
-- **state.go** -- Byte-offset persistence for incremental reads. Embeds the extraction snapshot so state survives across ticks.
+- **`claude/transcript`** (library) -- Parses JSONL entries and classifies content blocks (tool_use, tool_result, thinking, text). The HUD uses the lenient parse path, which accepts uuid-less entries.
+- **`internal/extract`** (app) -- Stateful processor that accumulates tools, agents, and todos across entries. Handles agent lifecycle, todo mutations, and the scrolling divider counter. Owns the snapshot `SchemaVersion`.
+- **`offsetstore`** (library) -- Byte-offset persistence for incremental reads. Embeds the extraction snapshot so state survives across ticks. Always defers an unterminated final line to the next tick.
 
 Reads are incremental (O(delta) not O(n)) by tracking byte offsets per file.
 
