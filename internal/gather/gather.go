@@ -5,21 +5,21 @@
 package gather
 
 import (
-	"encoding/json"
 	"os"
-	"path/filepath"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/charmbracelet/x/term"
+	"github.com/kylesnowschwartz/agent-ouija/claude/agents"
+	"github.com/kylesnowschwartz/agent-ouija/claude/transcript"
+	"github.com/kylesnowschwartz/agent-ouija/offsetstore"
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/breadcrumb"
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/config"
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/extracmd"
+	"github.com/kylesnowschwartz/tail-claude-hud/internal/extract"
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/git"
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/model"
-	"github.com/kylesnowschwartz/tail-claude-hud/internal/transcript"
 )
 
 // transcriptWidgets are the widget names that require transcript data.
@@ -40,7 +40,7 @@ var transcriptWidgets = map[string]bool{
 // mutex is needed for the distinct field writes.
 func Gather(input *model.StdinData, cfg *config.Config) *model.RenderContext {
 	ctx := &model.RenderContext{
-		Cwd:            input.Cwd,
+		Cwd:            input.CWD,
 		ContextPercent: input.ContextPercent,
 	}
 	if input.Model != nil {
@@ -57,8 +57,8 @@ func Gather(input *model.StdinData, cfg *config.Config) *model.RenderContext {
 	}
 	if input.Cost != nil {
 		ctx.SessionCostUSD = input.Cost.TotalCostUSD
-		ctx.TotalDurationMs = input.Cost.TotalDurationMs
-		ctx.APIDurationMs = input.Cost.TotalAPIDurationMs
+		ctx.TotalDurationMs = int(input.Cost.TotalDurationMs)
+		ctx.APIDurationMs = int(input.Cost.TotalAPIDurationMs)
 		ctx.LinesAdded = input.Cost.TotalLinesAdded
 		ctx.LinesRemoved = input.Cost.TotalLinesRemoved
 	}
@@ -99,7 +99,7 @@ func Gather(input *model.StdinData, cfg *config.Config) *model.RenderContext {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			ctx.EnvCounts = config.CountEnv(input.Cwd)
+			ctx.EnvCounts = config.CountEnv(input.CWD)
 		}()
 	}
 
@@ -110,7 +110,7 @@ func Gather(input *model.StdinData, cfg *config.Config) *model.RenderContext {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			ctx.Git = git.GetStatus(input.Cwd)
+			ctx.Git = git.GetStatus(input.CWD)
 		}()
 	}
 
@@ -186,13 +186,13 @@ func needsTranscript(active map[string]bool) bool {
 // restore snapshot → incremental read → parse → extract → save snapshot → return TranscriptData.
 // Returns nil on any error so callers treat missing data gracefully.
 func gatherTranscript(path string) *model.TranscriptData {
-	sm := transcript.NewStateManager(model.PluginDir())
+	sm := offsetstore.New(model.PluginDir(), extract.SchemaVersion)
 	lines, err := sm.ReadIncremental(path)
 	if err != nil {
 		return nil
 	}
 
-	es := transcript.NewExtractionState()
+	es := extract.NewExtractionState()
 	// Restore previous display state so completed tools/agents remain visible
 	// across invocations. The snapshot is nil on first run or after a reset.
 	if snap := sm.LoadSnapshot(); snap != nil {
@@ -200,8 +200,8 @@ func gatherTranscript(path string) *model.TranscriptData {
 	}
 
 	for _, line := range lines {
-		e, err := transcript.ParseEntry([]byte(line))
-		if err != nil {
+		e, ok := transcript.ParseEntryLenient([]byte(line))
+		if !ok {
 			continue
 		}
 		es.ProcessEntry(e)
@@ -223,7 +223,7 @@ func gatherTranscript(path string) *model.TranscriptData {
 	if snap, err := es.MarshalSnapshot(); err == nil {
 		sm.SetSnapshot(snap)
 	}
-	_ = sm.SaveState(path)
+	_ = sm.Save(path)
 	return td
 }
 
@@ -266,8 +266,8 @@ func sessionStart(td *model.TranscriptData, path string) string {
 		return ""
 	}
 
-	e, err := transcript.ParseEntry(line)
-	if err != nil {
+	e, ok := transcript.ParseEntryLenient(line)
+	if !ok {
 		return ""
 	}
 
@@ -311,161 +311,59 @@ func terminalWidth() int {
 const subagentStaleThreshold = 30 * time.Second
 
 // discoverSubagents scans the filesystem for subagent JSONL files associated
-// with the given transcript path. It derives the subagents directory from the
-// transcript path ({dir}/{session-uuid}/subagents/) and returns lightweight
-// AgentEntry values based on file metadata alone.
-//
-// The approach mirrors .cloned-sources/tail-claude/parser/subagent.go:DiscoverSubagents
-// but avoids full file parsing. Status is inferred from modtime: files modified
-// within subagentStaleThreshold are "running", others are "completed".
+// with the given transcript path via the library's metadata-only scan (never
+// the full-parse DiscoverSubagents — this runs on every ~300ms tick). Display
+// name policy, the modtime->status heuristic, and color assignment are
+// statusline presentation decisions, so they stay here.
 func discoverSubagents(transcriptPath string) []model.AgentEntry {
-	dir := filepath.Dir(transcriptPath)
-	base := strings.TrimSuffix(filepath.Base(transcriptPath), ".jsonl")
-	subagentsDir := filepath.Join(dir, base, "subagents")
-
-	entries, err := os.ReadDir(subagentsDir)
-	if err != nil {
+	metas := agents.ScanSubagentMeta(transcriptPath)
+	if len(metas) == 0 {
 		return nil
 	}
 
 	now := time.Now()
-	var agents []model.AgentEntry
-	colorIdx := 0
-
-	for _, de := range entries {
-		if de.IsDir() {
-			continue
-		}
-		name := de.Name()
-		if !strings.HasPrefix(name, "agent-") || !strings.HasSuffix(name, ".jsonl") {
-			continue
-		}
-
-		agentID := strings.TrimPrefix(name, "agent-")
-		agentID = strings.TrimSuffix(agentID, ".jsonl")
-
-		// Filter compact agents (context compaction artifacts).
-		if strings.HasPrefix(agentID, "acompact") {
-			continue
-		}
-
-		info, err := de.Info()
-		if err != nil || info.Size() == 0 {
-			continue
-		}
-
-		// Filter warmup agents and parse first-entry timestamp.
-		filePath := filepath.Join(subagentsDir, name)
-		first := parseFirstEntry(filePath)
-		if first.isWarmup {
-			continue
-		}
-
+	agentEntries := make([]model.AgentEntry, 0, len(metas))
+	for i, m := range metas {
 		status := "completed"
-		if now.Sub(info.ModTime()) < subagentStaleThreshold {
+		if now.Sub(m.ModTime) < subagentStaleThreshold {
 			status = "running"
 		}
 
 		// Compute duration for completed agents from first-entry timestamp to
 		// file modtime. This gives the real agent runtime instead of the
-		// tool_use→tool_result delta (which is only a few ms for background agents).
+		// tool_use->tool_result delta (which is only a few ms for background agents).
 		durationMs := 0
-		if status == "completed" && !first.timestamp.IsZero() {
-			durationMs = int(info.ModTime().Sub(first.timestamp).Milliseconds())
+		if status == "completed" && !m.FirstTime.IsZero() {
+			durationMs = int(m.ModTime.Sub(m.FirstTime).Milliseconds())
 		}
 
 		// Use first-entry timestamp as StartTime so running agents compute
 		// elapsed time correctly. Falls back to modtime when unparseable.
-		startTime := first.timestamp
+		startTime := m.FirstTime
 		if startTime.IsZero() {
-			startTime = info.ModTime()
+			startTime = m.ModTime
 		}
 
-		// Read .meta.json sidecar to determine the display name.
-		// Prefer description (human task name), fall back to agentType ("rb-worker"),
-		// then the raw hex UUID as last resort.
-		meta := readAgentMeta(filepath.Join(subagentsDir, "agent-"+agentID+".meta.json"))
-		displayName := agentID // fallback: raw hex UUID
-		if meta.description != "" {
-			displayName = meta.description // best: "Add regression tests"
-		} else if meta.agentType != "" {
-			displayName = meta.agentType // ok: "Explore", "Plan"
+		// Prefer description (human task name), fall back to agentType
+		// ("rb-worker"), then the raw hex UUID as last resort.
+		displayName := m.ID
+		if m.Description != "" {
+			displayName = m.Description
+		} else if m.AgentType != "" {
+			displayName = m.AgentType
 		}
 
-		agents = append(agents, model.AgentEntry{
-			ID:         agentID,
+		agentEntries = append(agentEntries, model.AgentEntry{
+			ID:         m.ID,
 			Name:       displayName,
 			Status:     status,
 			StartTime:  startTime,
 			DurationMs: durationMs,
-			ColorIndex: colorIdx % 8,
+			ColorIndex: i % 8,
 		})
-		colorIdx++
 	}
 
-	return agents
-}
-
-// firstEntryInfo holds the parsed results from a subagent JSONL's first line.
-type firstEntryInfo struct {
-	isWarmup  bool
-	timestamp time.Time
-}
-
-// parseFirstEntry reads only the first line of a subagent JSONL file and
-// returns the warmup status and RFC3339 timestamp. Returns a zero-value
-// firstEntryInfo on any read or parse error.
-func parseFirstEntry(path string) firstEntryInfo {
-	line := readFirstLine(path)
-	if line == nil {
-		return firstEntryInfo{}
-	}
-
-	var entry struct {
-		Timestamp string `json:"timestamp"`
-		Message   struct {
-			Content json.RawMessage `json:"content"`
-		} `json:"message"`
-	}
-	if err := json.Unmarshal(line, &entry); err != nil {
-		return firstEntryInfo{}
-	}
-
-	var content string
-	isWarmup := false
-	if err := json.Unmarshal(entry.Message.Content, &content); err == nil {
-		isWarmup = content == "Warmup"
-	}
-
-	ts, _ := time.Parse(time.RFC3339, entry.Timestamp)
-	return firstEntryInfo{
-		isWarmup:  isWarmup,
-		timestamp: ts,
-	}
-}
-
-// agentMeta holds the parsed fields from a .meta.json sidecar file.
-type agentMeta struct {
-	agentType   string
-	description string
-}
-
-// readAgentMeta reads a .meta.json sidecar file and returns both the agentType
-// and description fields. Returns a zero agentMeta when the file is missing,
-// empty, or unparseable.
-func readAgentMeta(path string) agentMeta {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return agentMeta{}
-	}
-	var meta struct {
-		AgentType   string `json:"agentType"`
-		Description string `json:"description"`
-	}
-	if json.Unmarshal(data, &meta) != nil {
-		return agentMeta{}
-	}
-	return agentMeta{agentType: meta.AgentType, description: meta.Description}
+	return agentEntries
 }
 
 // usageFromStdin converts stdin rate_limits into a UsageInfo when present.
@@ -483,11 +381,11 @@ func usageFromStdin(input *model.StdinData) *model.UsageInfo {
 	}
 
 	if rl.FiveHour != nil {
-		info.FiveHourPercent = parseStdinPercent(rl.FiveHour.UsedPercentage)
+		info.FiveHourPercent = parseStdinPercent(rl.FiveHour.UsedPercent)
 		info.FiveHourResetAt = parseStdinTime(rl.FiveHour.ResetsAt)
 	}
 	if rl.SevenDay != nil {
-		info.SevenDayPercent = parseStdinPercent(rl.SevenDay.UsedPercentage)
+		info.SevenDayPercent = parseStdinPercent(rl.SevenDay.UsedPercent)
 		info.SevenDayResetAt = parseStdinTime(rl.SevenDay.ResetsAt)
 	}
 

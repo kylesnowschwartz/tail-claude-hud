@@ -6,34 +6,23 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/kylesnowschwartz/agent-ouija/claude/statusline"
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/config"
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/model"
 )
 
 // minimalInput returns a StdinData with required scalar fields set.
 func minimalInput() *model.StdinData {
-	return &model.StdinData{
-		Cwd:            "/tmp/test-project",
-		ContextPercent: 42,
-		Model: &struct {
-			ID          string `json:"id"`
-			DisplayName string `json:"display_name"`
-		}{
-			ID:          "claude-opus-4",
-			DisplayName: "Claude Opus 4",
-		},
-		ContextWindow: &struct {
-			Size         int      `json:"context_window_size"`
-			UsedPercent  *float64 `json:"used_percentage"`
-			CurrentUsage *struct {
-				InputTokens              int `json:"input_tokens"`
-				CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
-				CacheReadInputTokens     int `json:"cache_read_input_tokens"`
-			} `json:"current_usage"`
-		}{
-			Size: 200000,
-		},
+	input := &model.StdinData{ContextPercent: 42}
+	input.CWD = "/tmp/test-project"
+	input.Model = &statusline.Model{
+		ID:          "claude-opus-4",
+		DisplayName: "Claude Opus 4",
 	}
+	input.ContextWindow = &statusline.ContextWindow{
+		Size: 200000,
+	}
+	return input
 }
 
 // cfgWithWidgets builds a minimal Config that activates the given widget names.
@@ -51,8 +40,8 @@ func TestGather_StdinScalarsCopied(t *testing.T) {
 
 	ctx := Gather(input, cfg)
 
-	if ctx.Cwd != input.Cwd {
-		t.Errorf("Cwd: got %q, want %q", ctx.Cwd, input.Cwd)
+	if ctx.Cwd != input.CWD {
+		t.Errorf("Cwd: got %q, want %q", ctx.Cwd, input.CWD)
 	}
 	if ctx.ContextPercent != input.ContextPercent {
 		t.Errorf("ContextPercent: got %d, want %d", ctx.ContextPercent, input.ContextPercent)
@@ -228,14 +217,14 @@ func TestUsageFromStdin_PopulatesBothWindows(t *testing.T) {
 	sevenDayReset := 1774828800.0 // 2026-03-27T00:00:00Z
 
 	input := minimalInput()
-	input.RateLimits = &model.StdinRateLimits{
-		FiveHour: &model.StdinRateWindow{
-			UsedPercentage: &fiveHourPct,
-			ResetsAt:       &fiveHourReset,
+	input.RateLimits = &statusline.RateLimits{
+		FiveHour: &statusline.RateWindow{
+			UsedPercent: &fiveHourPct,
+			ResetsAt:    &fiveHourReset,
 		},
-		SevenDay: &model.StdinRateWindow{
-			UsedPercentage: &sevenDayPct,
-			ResetsAt:       &sevenDayReset,
+		SevenDay: &statusline.RateWindow{
+			UsedPercent: &sevenDayPct,
+			ResetsAt:    &sevenDayReset,
 		},
 	}
 
@@ -267,9 +256,9 @@ func TestUsageFromStdin_NilWhenAbsent(t *testing.T) {
 func TestUsageFromStdin_PartialWindows(t *testing.T) {
 	pct := 80.0
 	input := minimalInput()
-	input.RateLimits = &model.StdinRateLimits{
-		FiveHour: &model.StdinRateWindow{
-			UsedPercentage: &pct,
+	input.RateLimits = &statusline.RateLimits{
+		FiveHour: &statusline.RateWindow{
+			UsedPercent: &pct,
 		},
 		// SevenDay absent
 	}
@@ -289,8 +278,8 @@ func TestUsageFromStdin_PartialWindows(t *testing.T) {
 func TestGather_UsageFromStdinPreferred(t *testing.T) {
 	pct := 55.0
 	input := minimalInput()
-	input.RateLimits = &model.StdinRateLimits{
-		FiveHour: &model.StdinRateWindow{UsedPercentage: &pct},
+	input.RateLimits = &statusline.RateLimits{
+		FiveHour: &statusline.RateWindow{UsedPercent: &pct},
 	}
 	cfg := cfgWithWidgets("usage")
 
@@ -429,7 +418,7 @@ func TestGather_GitSpawnedForProjectWidget(t *testing.T) {
 	// the cwd is inside a real git repository.
 	input := minimalInput()
 	// Use a real directory that is inside a git repo so git.GetStatus returns data.
-	input.Cwd = "/Users/kyle/Code/my-projects/tail-claude-hud"
+	input.CWD = "/Users/kyle/Code/my-projects/tail-claude-hud"
 	cfg := cfgWithWidgets("project") // "git" widget NOT listed
 
 	ctx := Gather(input, cfg)
@@ -479,12 +468,10 @@ func TestGather_ExtraOutputEmptyWhenCommandFails(t *testing.T) {
 
 func TestGather_NilModelAndContextWindow(t *testing.T) {
 	// Ensure Gather doesn't panic when optional StdinData fields are nil.
-	input := &model.StdinData{
-		Cwd:            "/tmp",
-		ContextPercent: 0,
-		Model:          nil,
-		ContextWindow:  nil,
-	}
+	input := &model.StdinData{ContextPercent: 0}
+	input.CWD = "/tmp"
+	input.Model = nil
+	input.ContextWindow = nil
 	cfg := cfgWithWidgets("model")
 
 	ctx := Gather(input, cfg)

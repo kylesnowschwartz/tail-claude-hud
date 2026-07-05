@@ -12,48 +12,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"os"
 	"path/filepath"
 
+	"github.com/kylesnowschwartz/agent-ouija/claude/hooks"
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/breadcrumb"
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/git"
 )
-
-// payload is the common subset of fields from Claude Code's hook stdin JSON.
-type payload struct {
-	SessionID string `json:"session_id"`
-	CWD       string `json:"cwd"`
-	ToolName  string `json:"tool_name"`
-	Source    string `json:"source"` // SessionStart: startup|resume|clear|compact
-}
-
-// sessionID returns the payload's session_id, falling back to the
-// CLAUDE_CODE_SESSION_ID environment variable when the payload omits it.
-// Without this fallback, hook invocations with an empty session_id silently
-// no-op instead of writing or removing a breadcrumb.
-func (p payload) sessionID() string {
-	if p.SessionID != "" {
-		return p.SessionID
-	}
-	return os.Getenv("CLAUDE_CODE_SESSION_ID")
-}
-
-// permissionOutput is the hook-output JSON shape used to emit a terminal escape
-// sequence. terminalSequence is a top-level hook-output field (CC 2.1.141) that
-// Claude Code writes directly to the terminal.
-type permissionOutput struct {
-	TerminalSequence string `json:"terminalSequence"`
-}
-
-// sessionStartOutput is the SessionStart hook-output JSON shape. sessionTitle
-// (CC 2.1.152) sets the terminal session title; it is honored only when the
-// session source is "startup" or "resume".
-type sessionStartOutput struct {
-	HookSpecificOutput struct {
-		HookEventName string `json:"hookEventName"`
-		SessionTitle  string `json:"sessionTitle"`
-	} `json:"hookSpecificOutput"`
-}
 
 // HandlePermissionRequest reads the hook payload and writes a breadcrumb
 // indicating this session is waiting for permission approval. When notifyBell is
@@ -61,11 +25,11 @@ type sessionStartOutput struct {
 // desktop-notification + bell escape sequence so the user is alerted even when
 // the statusline is not visible.
 func HandlePermissionRequest(r io.Reader, w io.Writer, notifyBell bool) error {
-	var p payload
-	if err := json.NewDecoder(r).Decode(&p); err != nil {
+	p, err := hooks.Decode(r)
+	if err != nil {
 		return err
 	}
-	sid := p.sessionID()
+	sid := p.EffectiveSessionID()
 	if sid == "" {
 		return nil // no session ID — can't write a meaningful breadcrumb
 	}
@@ -92,7 +56,7 @@ func HandlePermissionRequest(r io.Reader, w io.Writer, notifyBell bool) error {
 		msg = fmt.Sprintf("Claude Code: permission needed for %s", p.ToolName)
 	}
 	seq := fmt.Sprintf("\x1b]9;%s\a\a", msg)
-	return json.NewEncoder(w).Encode(permissionOutput{TerminalSequence: seq})
+	return json.NewEncoder(w).Encode(hooks.TerminalSequenceOutput{TerminalSequence: seq})
 }
 
 // HandleSessionStart reads the SessionStart payload and, when enabled is true,
@@ -100,8 +64,8 @@ func HandlePermissionRequest(r io.Reader, w io.Writer, notifyBell bool) error {
 // only honored by Claude Code on "startup" and "resume" sources, so other
 // sources are skipped. Always succeeds.
 func HandleSessionStart(r io.Reader, w io.Writer, enabled bool) error {
-	var p payload
-	if err := json.NewDecoder(r).Decode(&p); err != nil {
+	p, err := hooks.Decode(r)
+	if err != nil {
 		return err
 	}
 
@@ -120,21 +84,18 @@ func HandleSessionStart(r io.Reader, w io.Writer, enabled bool) error {
 		title += " · " + st.Branch
 	}
 
-	var out sessionStartOutput
-	out.HookSpecificOutput.HookEventName = "SessionStart"
-	out.HookSpecificOutput.SessionTitle = title
-	return json.NewEncoder(w).Encode(out)
+	return json.NewEncoder(w).Encode(hooks.NewSessionStartOutput(title))
 }
 
 // HandleCleanup reads the hook payload and removes any breadcrumb for the
 // session. Called by PostToolUse, PostToolUseFailure, and Stop hooks. Removing a
 // breadcrumb that doesn't exist is a no-op.
 func HandleCleanup(r io.Reader) error {
-	var p payload
-	if err := json.NewDecoder(r).Decode(&p); err != nil {
+	p, err := hooks.Decode(r)
+	if err != nil {
 		return err
 	}
-	sid := p.sessionID()
+	sid := p.EffectiveSessionID()
 	if sid == "" {
 		return nil
 	}

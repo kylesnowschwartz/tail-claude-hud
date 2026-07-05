@@ -4,21 +4,12 @@
 package config
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
 
+	"github.com/kylesnowschwartz/agent-ouija/claude/settings"
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/model"
 )
-
-// settingsFile is a minimal struct for extracting Claude Code settings.json
-// and .mcp.json keys without caring about the full structure. The Hooks field
-// is only present in settings.json; json.Unmarshal silently ignores it when
-// decoding .mcp.json files.
-type settingsFile struct {
-	McpServers map[string]json.RawMessage `json:"mcpServers"`
-	Hooks      map[string]json.RawMessage `json:"hooks"`
-}
 
 // CountEnv counts the active Claude Code environment config items for the given
 // working directory and returns an EnvCounts. It never returns nil.
@@ -55,12 +46,12 @@ func countEnvWithHome(cwd, home string) *model.EnvCounts {
 	mcpNames := make(map[string]struct{})
 
 	if home != "" {
-		addMcpNamesFromSettings(filepath.Join(home, ".claude", "settings.json"), mcpNames)
+		addMcpNames(filepath.Join(home, ".claude", "settings.json"), mcpNames)
 	}
 	if cwd != "" {
-		addMcpNamesFromSettings(filepath.Join(cwd, ".claude", "settings.json"), mcpNames)
-		addMcpNamesFromSettings(filepath.Join(cwd, ".claude", "settings.local.json"), mcpNames)
-		addMcpNamesFromMcpFile(filepath.Join(cwd, ".mcp.json"), mcpNames)
+		addMcpNames(filepath.Join(cwd, ".claude", "settings.json"), mcpNames)
+		addMcpNames(filepath.Join(cwd, ".claude", "settings.local.json"), mcpNames)
+		addMcpNames(filepath.Join(cwd, ".mcp.json"), mcpNames)
 	}
 	counts.MCPServers = len(mcpNames)
 
@@ -81,11 +72,11 @@ func countEnvWithHome(cwd, home string) *model.EnvCounts {
 
 	// --- Hooks: count non-empty hook event arrays across settings files ---
 	if home != "" {
-		counts.Hooks += countNonEmptyHooks(filepath.Join(home, ".claude", "settings.json"))
+		counts.Hooks += settings.NonEmptyHookCount(filepath.Join(home, ".claude", "settings.json"))
 	}
 	if cwd != "" {
-		counts.Hooks += countNonEmptyHooks(filepath.Join(cwd, ".claude", "settings.json"))
-		counts.Hooks += countNonEmptyHooks(filepath.Join(cwd, ".claude", "settings.local.json"))
+		counts.Hooks += settings.NonEmptyHookCount(filepath.Join(cwd, ".claude", "settings.json"))
+		counts.Hooks += settings.NonEmptyHookCount(filepath.Join(cwd, ".claude", "settings.local.json"))
 	}
 
 	return counts
@@ -108,58 +99,12 @@ func claudeMdPaths(home, cwd string) []string {
 	return paths
 }
 
-// addMcpNamesFromSettings reads a Claude Code settings.json file and adds any
-// mcpServers key names to the provided set. Missing or invalid files are skipped.
-func addMcpNamesFromSettings(path string, names map[string]struct{}) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return
-	}
-	var sf settingsFile
-	if err := json.Unmarshal(data, &sf); err != nil {
-		return
-	}
-	for name := range sf.McpServers {
+// addMcpNames adds the mcpServers key names from a settings.json or
+// .mcp.json file to the provided set. Missing or invalid files are skipped.
+func addMcpNames(path string, names map[string]struct{}) {
+	for _, name := range settings.McpServerNames(path) {
 		names[name] = struct{}{}
 	}
-}
-
-// addMcpNamesFromMcpFile reads a .mcp.json file and adds any mcpServers key
-// names to the provided set. Missing or invalid files are skipped.
-func addMcpNamesFromMcpFile(path string, names map[string]struct{}) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return
-	}
-	var sf settingsFile
-	if err := json.Unmarshal(data, &sf); err != nil {
-		return
-	}
-	for name := range sf.McpServers {
-		names[name] = struct{}{}
-	}
-}
-
-// countNonEmptyHooks reads a settings.json and counts how many hook event keys
-// have a non-nil value. Missing or invalid files return 0.
-func countNonEmptyHooks(path string) int {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return 0
-	}
-	var sf settingsFile
-	if err := json.Unmarshal(data, &sf); err != nil {
-		return 0
-	}
-	count := 0
-	for _, v := range sf.Hooks {
-		// Count only keys whose value is non-null and non-empty array.
-		var arr []json.RawMessage
-		if err := json.Unmarshal(v, &arr); err == nil && len(arr) > 0 {
-			count++
-		}
-	}
-	return count
 }
 
 // countMdFilesRecursive returns the number of .md files under dir, recursing

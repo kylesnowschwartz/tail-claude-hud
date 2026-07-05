@@ -33,7 +33,7 @@ func TestMockStdinData_TranscriptPath(t *testing.T) {
 
 func TestMockStdinData_CwdPopulated(t *testing.T) {
 	data := MockStdinData("")
-	if data.Cwd == "" {
+	if data.CWD == "" {
 		t.Error("Cwd must not be empty")
 	}
 }

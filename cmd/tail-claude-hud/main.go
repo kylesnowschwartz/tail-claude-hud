@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"charm.land/lipgloss/v2"
+	"github.com/kylesnowschwartz/agent-ouija/claude/claudedir"
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/config"
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/gather"
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/hook"
@@ -254,8 +255,8 @@ func readFromFile() (*model.StdinData, error) {
 	}
 
 	data.TranscriptPath = path
-	if data.Cwd == "" {
-		data.Cwd = mustCwd()
+	if data.CWD == "" {
+		data.CWD = mustCwd()
 	}
 
 	return data, nil
@@ -297,39 +298,19 @@ func findCurrentTranscript() (string, error) {
 	return newest, nil
 }
 
-// currentProjectDir returns ~/.claude/projects/<encoded-cwd>. Symlinks in the
-// cwd are resolved so the encoded path matches what Claude Code produces on
-// disk (e.g. macOS /tmp -> /private/tmp).
+// currentProjectDir returns ~/.claude/projects/<encoded-cwd>. Symlink
+// resolution and path encoding live in the library (ProjectDirFor), so the
+// encoded path matches what Claude Code produces on disk.
 func currentProjectDir() (string, error) {
+	root, err := claudedir.DefaultRoot()
+	if err != nil {
+		return "", err
+	}
 	cwd, err := os.Getwd()
 	if err != nil {
 		return "", err
 	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
-
-	// Resolve symlinks so the encoded path matches Claude Code's on-disk output.
-	if resolved, err := filepath.EvalSymlinks(cwd); err == nil {
-		cwd = resolved
-	}
-
-	encoded := encodePath(cwd)
-	return filepath.Join(home, ".claude", "projects", encoded), nil
-}
-
-// encodePath encodes an absolute filesystem path into a Claude Code project
-// directory name. Three characters are replaced with "-": path separators (/),
-// dots (.), and underscores (_). Ported from tail-claude's parser/session.go
-// and verified empirically across 273 project directories.
-func encodePath(absPath string) string {
-	r := strings.NewReplacer(
-		string(filepath.Separator), "-",
-		".", "-",
-		"_", "-",
-	)
-	return r.Replace(absPath)
+	return root.ProjectDirFor(cwd), nil
 }
 
 // mustCwd returns the current working directory, resolving symlinks to match
