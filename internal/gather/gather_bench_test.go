@@ -9,6 +9,7 @@ import (
 	"runtime/pprof"
 	"testing"
 
+	"github.com/kylesnowschwartz/agent-ouija/claude/statusline"
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/config"
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/model"
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/render"
@@ -43,28 +44,15 @@ func TestProfile_FullPipeline(t *testing.T) {
 		t.Fatalf("mkdir: %v", err)
 	}
 
-	input := &model.StdinData{
-		Cwd:            repoRoot,
-		ContextPercent: 55,
-		TranscriptPath: transcriptPath,
-		Model: &struct {
-			ID          string `json:"id"`
-			DisplayName string `json:"display_name"`
-		}{
-			ID:          "claude-sonnet-4-20250514",
-			DisplayName: "Claude Sonnet 4",
-		},
-		ContextWindow: &struct {
-			Size         int      `json:"context_window_size"`
-			UsedPercent  *float64 `json:"used_percentage"`
-			CurrentUsage *struct {
-				InputTokens              int `json:"input_tokens"`
-				CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
-				CacheReadInputTokens     int `json:"cache_read_input_tokens"`
-			} `json:"current_usage"`
-		}{
-			Size: 200000,
-		},
+	input := &model.StdinData{ContextPercent: 55}
+	input.CWD = repoRoot
+	input.TranscriptPath = transcriptPath
+	input.Model = &statusline.Model{
+		ID:          "claude-sonnet-4-20250514",
+		DisplayName: "Claude Sonnet 4",
+	}
+	input.ContextWindow = &statusline.ContextWindow{
+		Size: 200000,
 	}
 
 	cfg := config.LoadHud()
@@ -101,27 +89,14 @@ func TestProfile_FullPipeline(t *testing.T) {
 func BenchmarkGather_NoTranscript(b *testing.B) {
 	b.ReportAllocs()
 
-	input := &model.StdinData{
-		Cwd:            "/tmp/bench-project",
-		ContextPercent: 42,
-		Model: &struct {
-			ID          string `json:"id"`
-			DisplayName string `json:"display_name"`
-		}{
-			ID:          "claude-sonnet-4-20250514",
-			DisplayName: "Claude Sonnet 4",
-		},
-		ContextWindow: &struct {
-			Size         int      `json:"context_window_size"`
-			UsedPercent  *float64 `json:"used_percentage"`
-			CurrentUsage *struct {
-				InputTokens              int `json:"input_tokens"`
-				CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
-				CacheReadInputTokens     int `json:"cache_read_input_tokens"`
-			} `json:"current_usage"`
-		}{
-			Size: 200000,
-		},
+	input := &model.StdinData{ContextPercent: 42}
+	input.CWD = "/tmp/bench-project"
+	input.Model = &statusline.Model{
+		ID:          "claude-sonnet-4-20250514",
+		DisplayName: "Claude Sonnet 4",
+	}
+	input.ContextWindow = &statusline.ContextWindow{
+		Size: 200000,
 	}
 
 	// Only non-transcript, non-I/O widgets: model, context, directory.
@@ -148,28 +123,15 @@ func BenchmarkGather_WithTranscript(b *testing.B) {
 		b.Fatalf("write synthetic transcript: %v", err)
 	}
 
-	input := &model.StdinData{
-		Cwd:            "/tmp/bench-project",
-		ContextPercent: 42,
-		TranscriptPath: transcriptPath,
-		Model: &struct {
-			ID          string `json:"id"`
-			DisplayName string `json:"display_name"`
-		}{
-			ID:          "claude-sonnet-4-20250514",
-			DisplayName: "Claude Sonnet 4",
-		},
-		ContextWindow: &struct {
-			Size         int      `json:"context_window_size"`
-			UsedPercent  *float64 `json:"used_percentage"`
-			CurrentUsage *struct {
-				InputTokens              int `json:"input_tokens"`
-				CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
-				CacheReadInputTokens     int `json:"cache_read_input_tokens"`
-			} `json:"current_usage"`
-		}{
-			Size: 200000,
-		},
+	input := &model.StdinData{ContextPercent: 42}
+	input.CWD = "/tmp/bench-project"
+	input.TranscriptPath = transcriptPath
+	input.Model = &statusline.Model{
+		ID:          "claude-sonnet-4-20250514",
+		DisplayName: "Claude Sonnet 4",
+	}
+	input.ContextWindow = &statusline.ContextWindow{
+		Size: 200000,
 	}
 
 	cfg := &config.Config{}
@@ -273,36 +235,19 @@ func BenchmarkFullPipeline_WithTranscript(b *testing.B) {
 		b.Fatalf("mkdir: %v", err)
 	}
 
-	input := &model.StdinData{
-		Cwd:            repoRoot,
-		ContextPercent: 55,
-		TranscriptPath: transcriptPath,
-		Model: &struct {
-			ID          string `json:"id"`
-			DisplayName string `json:"display_name"`
-		}{
-			ID:          "claude-sonnet-4-20250514",
-			DisplayName: "Claude Sonnet 4",
-		},
-		ContextWindow: &struct {
-			Size         int      `json:"context_window_size"`
-			UsedPercent  *float64 `json:"used_percentage"`
-			CurrentUsage *struct {
-				InputTokens              int `json:"input_tokens"`
-				CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
-				CacheReadInputTokens     int `json:"cache_read_input_tokens"`
-			} `json:"current_usage"`
-		}{
-			Size: 200000,
-			CurrentUsage: &struct {
-				InputTokens              int `json:"input_tokens"`
-				CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
-				CacheReadInputTokens     int `json:"cache_read_input_tokens"`
-			}{
-				InputTokens:              75000,
-				CacheCreationInputTokens: 20000,
-				CacheReadInputTokens:     15000,
-			},
+	input := &model.StdinData{ContextPercent: 55}
+	input.CWD = repoRoot
+	input.TranscriptPath = transcriptPath
+	input.Model = &statusline.Model{
+		ID:          "claude-sonnet-4-20250514",
+		DisplayName: "Claude Sonnet 4",
+	}
+	input.ContextWindow = &statusline.ContextWindow{
+		Size: 200000,
+		CurrentUsage: &statusline.Usage{
+			InputTokens:              75000,
+			CacheCreationInputTokens: 20000,
+			CacheReadInputTokens:     15000,
 		},
 	}
 

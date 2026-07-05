@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/kylesnowschwartz/agent-ouija/claude/statusline"
 )
 
 // RenderContext is the central struct passed from the gather stage to each render widget.
@@ -185,89 +187,15 @@ func (g *GitStatus) IsDirty() bool {
 	return g.Dirty || g.Modified > 0 || g.Staged > 0 || g.Untracked > 0
 }
 
-// Cost holds session-level cost and duration metrics from Claude Code's stdin JSON.
-// All fields are optional; zero values indicate the data was not provided.
-type Cost struct {
-	TotalCostUSD       float64 `json:"total_cost_usd"`
-	TotalDurationMs    int     `json:"total_duration_ms"`
-	TotalAPIDurationMs int     `json:"total_api_duration_ms"`
-	TotalLinesAdded    int     `json:"total_lines_added"`
-	TotalLinesRemoved  int     `json:"total_lines_removed"`
-}
-
-// OutputStyle holds the current output style configuration from Claude Code.
-type OutputStyle struct {
-	Name string `json:"name"`
-}
-
-// StdinData is the raw decoded form of the JSON blob Claude Code pipes to stdin.
-// It is produced by the stdin package and then transformed into RenderContext fields.
+// StdinData is the statusline stdin document plus HUD-computed fields.
+// The wire schema (session, model, context window, cost, rate limits,
+// worktree, effort, ...) lives in the agent-ouija statusline package;
+// its fields promote through the embedding.
 type StdinData struct {
-	SessionID      string `json:"session_id"`
-	TranscriptPath string `json:"transcript_path"`
-	Cwd            string `json:"cwd"`
-	Model          *struct {
-		ID          string `json:"id"`
-		DisplayName string `json:"display_name"`
-	} `json:"model"`
-	ContextWindow *struct {
-		Size         int      `json:"context_window_size"`
-		UsedPercent  *float64 `json:"used_percentage"`
-		CurrentUsage *struct {
-			InputTokens              int `json:"input_tokens"`
-			CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
-			CacheReadInputTokens     int `json:"cache_read_input_tokens"`
-		} `json:"current_usage"`
-	} `json:"context_window"`
-
-	// Cost is nil when Claude Code does not include cost data in the stdin payload.
-	Cost *Cost `json:"cost"`
-
-	// OutputStyle is nil when Claude Code does not include output_style in the stdin payload.
-	OutputStyle *OutputStyle `json:"output_style"`
-
-	// RateLimits is nil on older Claude Code versions or for API users.
-	// When present, it provides rate-limit utilization directly from stdin,
-	// avoiding the need for OAuth API calls.
-	RateLimits *StdinRateLimits `json:"rate_limits"`
-
-	// Worktree is nil when not running inside a worktree.
-	Worktree *Worktree `json:"worktree"`
-
-	// Effort holds the current reasoning effort level. Nil on Claude Code
-	// versions that do not report effort in the statusline payload; the gather
-	// stage falls back to the CLAUDE_EFFORT environment variable.
-	Effort *struct {
-		Level string `json:"level"`
-	} `json:"effort"`
+	statusline.Payload
 
 	// ContextPercent is computed by the stdin package — not decoded from JSON.
 	ContextPercent int `json:"-"`
-}
-
-// Worktree holds metadata about the current worktree, if any.
-type Worktree struct {
-	Name           string `json:"name"`
-	Path           string `json:"path"`
-	Branch         string `json:"branch"`
-	OriginalCwd    string `json:"original_cwd"`
-	OriginalBranch string `json:"original_branch"`
-}
-
-// StdinRateLimits holds rate-limit windows provided by Claude Code via stdin.
-// Field names mirror the changelog description: used_percentage and resets_at
-// per window. The exact JSON shape is speculative until confirmed by a live
-// stdin snapshot — the struct uses flexible types to tolerate minor variations.
-type StdinRateLimits struct {
-	FiveHour *StdinRateWindow `json:"five_hour"`
-	SevenDay *StdinRateWindow `json:"seven_day"`
-}
-
-// StdinRateWindow is a single rate-limit window from the stdin JSON.
-// ResetsAt is a Unix epoch timestamp in seconds (not an ISO 8601 string).
-type StdinRateWindow struct {
-	UsedPercentage *float64 `json:"used_percentage"`
-	ResetsAt       *float64 `json:"resets_at"` // Unix epoch seconds
 }
 
 // PluginDir returns the directory used for plugin state files:

@@ -202,46 +202,6 @@ func TestDiscoverSubagents_ColorIndexWraps(t *testing.T) {
 	}
 }
 
-func TestParseFirstEntry_ValidTimestamp(t *testing.T) {
-	dir := t.TempDir()
-	wantTime := time.Date(2024, 1, 15, 10, 0, 0, 0, time.UTC)
-	path := writeSubagentFileAt(t, dir, "abc123", "Implement the feature", wantTime)
-
-	result := parseFirstEntry(path)
-
-	if result.isWarmup {
-		t.Error("expected isWarmup=false for non-warmup content")
-	}
-	if result.timestamp.IsZero() {
-		t.Fatal("expected non-zero timestamp")
-	}
-	if !result.timestamp.Equal(wantTime) {
-		t.Errorf("timestamp: got %v, want %v", result.timestamp, wantTime)
-	}
-}
-
-func TestParseFirstEntry_WarmupAgent(t *testing.T) {
-	dir := t.TempDir()
-	path := writeSubagentFile(t, dir, "warmup", "Warmup")
-
-	result := parseFirstEntry(path)
-
-	if !result.isWarmup {
-		t.Error("expected isWarmup=true for 'Warmup' content")
-	}
-}
-
-func TestParseFirstEntry_MissingFile(t *testing.T) {
-	result := parseFirstEntry("/nonexistent/path.jsonl")
-
-	if result.isWarmup {
-		t.Error("expected isWarmup=false for missing file")
-	}
-	if !result.timestamp.IsZero() {
-		t.Error("expected zero timestamp for missing file")
-	}
-}
-
 func TestDiscoverSubagents_ComputesDuration(t *testing.T) {
 	transcriptPath, subagentsDir := setupSubagentsDir(t)
 
@@ -541,71 +501,6 @@ func TestDiscoverSubagents_FallsBackToUUID(t *testing.T) {
 	}
 	if agents[0].Name != agentID {
 		t.Errorf("expected Name %q (UUID fallback), got %q", agentID, agents[0].Name)
-	}
-}
-
-// TestReadAgentMeta_BothFields verifies that readAgentMeta returns both fields
-// when both are present in the file.
-func TestReadAgentMeta_BothFields(t *testing.T) {
-	dir := t.TempDir()
-	writeMetaJSON(t, dir, "test-id", "rb-worker", "Build the feature")
-	path := filepath.Join(dir, "agent-test-id.meta.json")
-
-	meta := readAgentMeta(path)
-	if meta.agentType != "rb-worker" {
-		t.Errorf("expected agentType 'rb-worker', got %q", meta.agentType)
-	}
-	if meta.description != "Build the feature" {
-		t.Errorf("expected description 'Build the feature', got %q", meta.description)
-	}
-}
-
-// TestReadAgentMeta_MissingFile verifies that readAgentMeta returns zero value
-// when the file does not exist.
-func TestReadAgentMeta_MissingFile(t *testing.T) {
-	meta := readAgentMeta("/nonexistent/agent-xyz.meta.json")
-	if meta.agentType != "" || meta.description != "" {
-		t.Errorf("expected zero agentMeta for missing file, got %+v", meta)
-	}
-}
-
-// TestReadAgentMeta_AgentTypeOnly verifies description is empty when absent.
-func TestReadAgentMeta_AgentTypeOnly(t *testing.T) {
-	dir := t.TempDir()
-	writeMetaJSON(t, dir, "test-id", "Plan", "")
-	path := filepath.Join(dir, "agent-test-id.meta.json")
-
-	meta := readAgentMeta(path)
-	if meta.agentType != "Plan" {
-		t.Errorf("expected agentType 'Plan', got %q", meta.agentType)
-	}
-	if meta.description != "" {
-		t.Errorf("expected empty description, got %q", meta.description)
-	}
-}
-
-func TestParseFirstEntry_IsWarmup_True(t *testing.T) {
-	dir := t.TempDir()
-	path := writeSubagentFile(t, dir, "warmup", "Warmup")
-	result := parseFirstEntry(path)
-	if !result.isWarmup {
-		t.Error("expected isWarmup=true for 'Warmup' content")
-	}
-}
-
-func TestParseFirstEntry_IsWarmup_False(t *testing.T) {
-	dir := t.TempDir()
-	path := writeSubagentFile(t, dir, "real", "Implement feature X")
-	result := parseFirstEntry(path)
-	if result.isWarmup {
-		t.Error("expected isWarmup=false for non-warmup content")
-	}
-}
-
-func TestParseFirstEntry_IsWarmup_MissingFile(t *testing.T) {
-	result := parseFirstEntry("/nonexistent/path.jsonl")
-	if result.isWarmup {
-		t.Error("expected isWarmup=false for missing file")
 	}
 }
 

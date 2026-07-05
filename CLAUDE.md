@@ -25,7 +25,7 @@ just run-sample   # pipe testdata/sample-stdin.json through the binary
 
 Run a single test:
 ```sh
-go test ./internal/transcript/ -run TestExtractContentBlocks -count=1
+go test ./internal/extract/ -run TestProcessEntry -count=1
 ```
 
 ## Architecture: The Four-Stage Pipeline
@@ -48,7 +48,7 @@ stdin → gather → render → stdout
 
 **Fail-open config**: `config.LoadHud()` never returns nil or an error. Missing or corrupt TOML yields defaults. The statusline must always render something.
 
-**Incremental transcript reads**: `transcript.StateManager` tracks byte offsets per transcript path (keyed by SHA-256 hash). Each tick reads only new bytes (O(delta) not O(n)). Extraction state is snapshotted to disk so the full tool/agent/todo history survives process restarts.
+**Incremental transcript reads**: the agent-ouija `offsetstore` package tracks byte offsets per transcript path (keyed by SHA-256 hash). Each tick reads only new bytes (O(delta) not O(n)). Extraction state is snapshotted to disk (versioned by `extract.SchemaVersion`) so the full tool/agent/todo history survives process restarts. The store ALWAYS defers an unterminated final line to the next tick — the HUD is a fresh process per ~300ms tick, so waiting is free and it never renders a half-written line.
 
 **Never write to stderr**: Claude Code owns the terminal. Any stderr output corrupts the display. Debug logging goes to `~/.claude/plugins/tail-claude-hud/debug.log` and is gated behind `TAIL_CLAUDE_HUD_DEBUG=1`.
 
@@ -58,11 +58,13 @@ stdin → gather → render → stdout
 
 ## Transcript Processing (Three Layers)
 
-The transcript package has three distinct responsibilities:
+Transcript handling is split between the shared library and this repo:
 
-- **transcript.go** — Parses individual JSONL entries and classifies content blocks (tool_use, tool_result, thinking, text). Handles sidechain filtering (sub-agent user messages are excluded).
-- **extractor.go** — Stateful processor that accumulates tools, agents, and todos across entries. Handles agent lifecycle (launch, async results, task notifications), todo mutations (TodoWrite replaces all, TaskCreate/TaskUpdate mutate), and the scrolling divider counter.
-- **state.go** — Byte-offset persistence for incremental reads. Embeds the extraction snapshot so state survives across ticks.
+- **agent-ouija `claude/transcript`** — Parses individual JSONL entries (`ParseEntryLenient` — the HUD accepts uuid-less entry types like custom-title) and classifies content blocks via `ExtractContentBlocks` (tool_use, tool_result, thinking, text). Sidechain filtering happens in the extractor.
+- **`internal/extract`** (app-side) — Stateful processor that accumulates tools, agents, and todos across entries. Handles agent lifecycle (launch, async results, task notifications), todo mutations (TodoWrite replaces all, TaskCreate/TaskUpdate mutate), and the scrolling divider counter. Owns `SchemaVersion` for the snapshot.
+- **agent-ouija `offsetstore`** — Byte-offset persistence for incremental reads. Embeds the extraction snapshot (opaque, caller-versioned) so state survives across ticks.
+
+Subagent discovery on the tick path uses the library's metadata-only `agents.ScanSubagentMeta`; never switch it to the full-parse `DiscoverSubagents`, which would parse every subagent JSONL through the chunk pipeline on every ~300ms tick. Display-name policy and the modtime→status heuristic stay in `internal/gather`.
 
 ## Config
 
@@ -109,3 +111,12 @@ Claude Code pipes this JSON to stdin on every tick. Canonical reference: https:/
 
 `.cloned-sources/claude-hud/` — Original TypeScript plugin. Reference for UI patterns, color choices, widget behavior.
 `.cloned-sources/tail-claude/` — Go predecessor. Reference for transcript entry schema, content block parsing, tool categorization.
+
+## Shared Library
+
+Parsing, path encoding, hook/statusline payload schemas, settings access, and
+offset persistence come from `github.com/kylesnowschwartz/agent-ouija`
+(repo: `~/Code/my-projects/agent-ouija`). The stdin wire schema is
+`statusline.Payload`, embedded in `model.StdinData`. During migration the
+worktree builds against a local checkout via a git-ignored `go.work`; the
+final release pins a tagged module version.

@@ -1,9 +1,10 @@
-// Package transcript — ExtractionState bridges parsed transcript entries into
+// Package extract bridges parsed transcript entries into
 // model.TranscriptData for statusline rendering.
 //
-// Call ProcessEntry for each parsed Entry in order. Call ToTranscriptData to
-// produce a snapshot suitable for passing to the render layer.
-package transcript
+// Call ProcessEntry for each parsed transcript.Entry in order. Call
+// ToTranscriptData to produce a snapshot suitable for passing to the render
+// layer.
+package extract
 
 import (
 	"bytes"
@@ -12,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kylesnowschwartz/agent-ouija/claude/transcript"
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/model"
 )
 
@@ -152,7 +154,7 @@ func (es *ExtractionState) IncrementSpinnerFrame() {
 // ProcessEntry classifies the content blocks in e and updates the extraction
 // state accordingly. Unknown entry types and malformed blocks are silently
 // ignored — the caller is responsible for feeding entries in order.
-func (es *ExtractionState) ProcessEntry(e Entry) {
+func (es *ExtractionState) ProcessEntry(e transcript.Entry) {
 	// Sidechain entries are internal agent activity — not part of the main
 	// conversation thread. Skip them to avoid double-counting tool calls and
 	// agent launches from sub-agent subprocesses.
@@ -168,7 +170,7 @@ func (es *ExtractionState) ProcessEntry(e Entry) {
 		es.sessionName = e.Slug
 	}
 
-	blocks := ExtractContentBlocks(e)
+	blocks := transcript.ExtractContentBlocks(e)
 	ts := e.ParsedTimestamp()
 
 	// Count conversational turns: user and assistant messages that are not
@@ -205,7 +207,10 @@ func (es *ExtractionState) ProcessEntry(e Entry) {
 
 	// Record token usage from assistant messages for the speed widget.
 	// Only sample non-sidechain assistant messages that have usage data.
-	if e.Message.Role == "assistant" && e.Message.Usage != nil {
+	// Usage is a value type on the library Entry; absent usage decodes to the
+	// zero value, which the total > 0 guard filters exactly like the old nil
+	// check did.
+	if e.Message.Role == "assistant" {
 		total := e.Message.Usage.InputTokens + e.Message.Usage.OutputTokens
 		if total > 0 {
 			es.tokenSamples = append(es.tokenSamples, model.TokenSample{
@@ -245,7 +250,7 @@ func (es *ExtractionState) ProcessEntry(e Entry) {
 }
 
 // processToolUse dispatches a tool_use block to the appropriate handler.
-func (es *ExtractionState) processToolUse(b ToolUseBlock, ts time.Time) {
+func (es *ExtractionState) processToolUse(b transcript.ToolUseBlock, ts time.Time) {
 	switch b.Name {
 	case "Task", "Agent":
 		es.handleAgentToolUse(b, ts)
@@ -265,7 +270,7 @@ func (es *ExtractionState) processToolUse(b ToolUseBlock, ts time.Time) {
 // extractSkillFromUserMessage parses a <command-name>/skill</command-name> tag
 // from a user message's raw content string. Claude Code records slash-command
 // invocations this way rather than as tool_use blocks.
-func (es *ExtractionState) extractSkillFromUserMessage(e Entry) {
+func (es *ExtractionState) extractSkillFromUserMessage(e transcript.Entry) {
 	// User message content is either a JSON string or an array. Skill
 	// invocations arrive as plain strings, so skip arrays early.
 	if len(e.Message.Content) == 0 || e.Message.Content[0] == '[' {
@@ -312,7 +317,7 @@ func (es *ExtractionState) extractSkillFromUserMessage(e Entry) {
 // handleSkillToolUse records a skill invocation from an assistant-side Skill
 // tool_use block (input.skill contains the skill name). Also registers as a
 // regular tool so the entry appears in the tools activity feed.
-func (es *ExtractionState) handleSkillToolUse(b ToolUseBlock, ts time.Time) {
+func (es *ExtractionState) handleSkillToolUse(b transcript.ToolUseBlock, ts time.Time) {
 	var input struct {
 		Skill string `json:"skill"`
 	}
@@ -333,7 +338,7 @@ func (es *ExtractionState) recordSkill(name string) {
 
 // handleRegularToolUse records a running tool entry and appends it to the
 // display slice, pruning the oldest if the limit is exceeded.
-func (es *ExtractionState) handleRegularToolUse(b ToolUseBlock, ts time.Time) {
+func (es *ExtractionState) handleRegularToolUse(b transcript.ToolUseBlock, ts time.Time) {
 	t := &internalTool{
 		id:        b.ID,
 		name:      b.Name,
@@ -402,7 +407,7 @@ func (es *ExtractionState) handleThinkingEnd(ts time.Time) {
 }
 
 // handleAgentToolUse records a running agent entry.
-func (es *ExtractionState) handleAgentToolUse(b ToolUseBlock, ts time.Time) {
+func (es *ExtractionState) handleAgentToolUse(b transcript.ToolUseBlock, ts time.Time) {
 	var input struct {
 		SubagentType string `json:"subagent_type"`
 		Model        string `json:"model"`
@@ -433,7 +438,7 @@ func (es *ExtractionState) handleAgentToolUse(b ToolUseBlock, ts time.Time) {
 
 // handleTodoWrite replaces the entire todo list. The input JSON is expected to
 // have shape {"todos": [{...}, ...]}.
-func (es *ExtractionState) handleTodoWrite(b ToolUseBlock) {
+func (es *ExtractionState) handleTodoWrite(b transcript.ToolUseBlock) {
 	var input struct {
 		Todos []struct {
 			ID      string `json:"id"`
@@ -461,7 +466,7 @@ func (es *ExtractionState) handleTodoWrite(b ToolUseBlock) {
 }
 
 // handleTaskCreate appends a new todo item from a TaskCreate tool_use block.
-func (es *ExtractionState) handleTaskCreate(b ToolUseBlock) {
+func (es *ExtractionState) handleTaskCreate(b transcript.ToolUseBlock) {
 	var input struct {
 		TaskID      string `json:"taskId"`
 		Subject     string `json:"subject"`
@@ -500,7 +505,7 @@ func (es *ExtractionState) handleTaskCreate(b ToolUseBlock) {
 }
 
 // handleTaskUpdate mutates an existing todo item. Unknown task IDs are ignored.
-func (es *ExtractionState) handleTaskUpdate(b ToolUseBlock) {
+func (es *ExtractionState) handleTaskUpdate(b transcript.ToolUseBlock) {
 	var input struct {
 		TaskID      string `json:"taskId"`
 		Subject     string `json:"subject"`
@@ -531,7 +536,7 @@ func (es *ExtractionState) handleTaskUpdate(b ToolUseBlock) {
 
 // processToolResult marks the matching tool or agent as completed/error and
 // computes duration from the delta between result timestamp and start time.
-func (es *ExtractionState) processToolResult(b ToolResultBlock, ts time.Time) {
+func (es *ExtractionState) processToolResult(b transcript.ToolResultBlock, ts time.Time) {
 	if t, ok := es.toolMap[b.ToolUseID]; ok {
 		t.completed = true
 		t.hasError = b.IsError
@@ -968,3 +973,12 @@ func parseInt(s string) int {
 	}
 	return n
 }
+
+// SchemaVersion is the offset-store schema version for extraction snapshots.
+// Bump it whenever extraction semantics change in a way that would produce
+// different results from the same transcript data, so stale snapshots are
+// discarded and the transcript is re-read from byte 0.
+//
+// v2: skill detection from <command-name> tags.
+// v3: extraction re-typed over the agent-ouija library Entry.
+const SchemaVersion = 3

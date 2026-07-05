@@ -3,6 +3,7 @@ package stdin
 import (
 	"os"
 
+	"github.com/kylesnowschwartz/agent-ouija/claude/statusline"
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/model"
 )
 
@@ -12,7 +13,7 @@ import (
 // The context window is set to ~68% used (116k+12k+8k / 200k * 100),
 // which falls in the normal green range and exercises the context widget.
 //
-// transcriptPath is used verbatim for TranscriptPath; Cwd is os.Getwd()
+// transcriptPath is used verbatim for TranscriptPath; CWD is os.Getwd()
 // falling back to "/tmp" on error.
 func MockStdinData(transcriptPath string) *model.StdinData {
 	cwd, err := os.Getwd()
@@ -22,48 +23,32 @@ func MockStdinData(transcriptPath string) *model.StdinData {
 
 	usedPct := float64(68) // (116000+12000+8000) / 200000 * 100 = 68
 
-	return &model.StdinData{
-		SessionID:      "mock-preview-session",
-		TranscriptPath: transcriptPath,
-		Cwd:            cwd,
-		Model: &struct {
-			ID          string `json:"id"`
-			DisplayName string `json:"display_name"`
-		}{
-			ID:          "claude-sonnet-4-20250514",
-			DisplayName: "Sonnet",
-		},
-		ContextWindow: &struct {
-			Size         int      `json:"context_window_size"`
-			UsedPercent  *float64 `json:"used_percentage"`
-			CurrentUsage *struct {
-				InputTokens              int `json:"input_tokens"`
-				CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
-				CacheReadInputTokens     int `json:"cache_read_input_tokens"`
-			} `json:"current_usage"`
-		}{
-			Size:        200000,
-			UsedPercent: &usedPct,
-			CurrentUsage: &struct {
-				InputTokens              int `json:"input_tokens"`
-				CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
-				CacheReadInputTokens     int `json:"cache_read_input_tokens"`
-			}{
-				InputTokens:              116000,
-				CacheCreationInputTokens: 12000,
-				CacheReadInputTokens:     8000,
-			},
-		},
-		Cost: &model.Cost{
-			TotalCostUSD:       2.47,
-			TotalDurationMs:    425000,
-			TotalAPIDurationMs: 38000,
-			TotalLinesAdded:    187,
-			TotalLinesRemoved:  42,
-		},
-		OutputStyle: &model.OutputStyle{
-			Name: "concise",
-		},
-		ContextPercent: 68,
+	data := &model.StdinData{ContextPercent: 68}
+	data.SessionID = "mock-preview-session"
+	data.TranscriptPath = transcriptPath
+	data.CWD = cwd
+	data.Model = &statusline.Model{
+		ID:          "claude-sonnet-4-20250514",
+		DisplayName: "Sonnet",
 	}
+	data.ContextWindow = &statusline.ContextWindow{
+		Size:        200000,
+		UsedPercent: &usedPct,
+		CurrentUsage: &statusline.Usage{
+			InputTokens:              116000,
+			CacheCreationInputTokens: 12000,
+			CacheReadInputTokens:     8000,
+		},
+	}
+	data.Cost = &statusline.Cost{
+		TotalCostUSD:       2.47,
+		TotalDurationMs:    425000,
+		TotalAPIDurationMs: 38000,
+		TotalLinesAdded:    187,
+		TotalLinesRemoved:  42,
+	}
+	data.OutputStyle = &statusline.OutputStyle{
+		Name: "concise",
+	}
+	return data
 }

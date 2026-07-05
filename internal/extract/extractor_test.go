@@ -1,4 +1,4 @@
-package transcript
+package extract
 
 import (
 	"encoding/json"
@@ -7,10 +7,13 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/kylesnowschwartz/agent-ouija/claude/transcript"
+	"github.com/kylesnowschwartz/agent-ouija/offsetstore"
 )
 
-// makeToolUseEntry builds a minimal Entry containing a single tool_use block.
-func makeToolUseEntry(id, name string, input map[string]interface{}) Entry {
+// makeToolUseEntry builds a minimal transcript.Entry containing a single tool_use block.
+func makeToolUseEntry(id, name string, input map[string]interface{}) transcript.Entry {
 	inputJSON, _ := json.Marshal(input)
 	contentItem := map[string]interface{}{
 		"type":  "tool_use",
@@ -19,20 +22,20 @@ func makeToolUseEntry(id, name string, input map[string]interface{}) Entry {
 		"input": json.RawMessage(inputJSON),
 	}
 	content, _ := json.Marshal([]interface{}{contentItem})
-	var e Entry
+	var e transcript.Entry
 	e.Message.Content = content
 	e.Message.Role = "assistant"
 	e.Timestamp = time.Now().Format(time.RFC3339Nano)
 	return e
 }
 
-// makeToolResultEntry builds a minimal Entry containing a single tool_result block.
-func makeToolResultEntry(toolUseID string, isError bool) Entry {
+// makeToolResultEntry builds a minimal transcript.Entry containing a single tool_result block.
+func makeToolResultEntry(toolUseID string, isError bool) transcript.Entry {
 	return makeToolResultEntryAt(toolUseID, isError, time.Now())
 }
 
-// makeToolResultEntryAt builds a tool_result Entry with an explicit timestamp.
-func makeToolResultEntryAt(toolUseID string, isError bool, ts time.Time) Entry {
+// makeToolResultEntryAt builds a tool_result transcript.Entry with an explicit timestamp.
+func makeToolResultEntryAt(toolUseID string, isError bool, ts time.Time) transcript.Entry {
 	contentItem := map[string]interface{}{
 		"type":        "tool_result",
 		"tool_use_id": toolUseID,
@@ -40,15 +43,15 @@ func makeToolResultEntryAt(toolUseID string, isError bool, ts time.Time) Entry {
 		"content":     "ok",
 	}
 	content, _ := json.Marshal([]interface{}{contentItem})
-	var e Entry
+	var e transcript.Entry
 	e.Message.Content = content
 	e.Message.Role = "user"
 	e.Timestamp = ts.Format(time.RFC3339Nano)
 	return e
 }
 
-// makeToolUseEntryAt builds a tool_use Entry with an explicit timestamp.
-func makeToolUseEntryAt(id, name string, input map[string]interface{}, ts time.Time) Entry {
+// makeToolUseEntryAt builds a tool_use transcript.Entry with an explicit timestamp.
+func makeToolUseEntryAt(id, name string, input map[string]interface{}, ts time.Time) transcript.Entry {
 	e := makeToolUseEntry(id, name, input)
 	e.Timestamp = ts.Format(time.RFC3339Nano)
 	return e
@@ -647,7 +650,7 @@ func TestProcessEntry_TaskToolUse_NotInTools(t *testing.T) {
 
 func TestProcessEntry_CustomTitle_SetsSessionName(t *testing.T) {
 	es := NewExtractionState()
-	var e Entry
+	var e transcript.Entry
 	e.Type = "custom-title"
 	e.CustomTitle = "My Session Title"
 	es.ProcessEntry(e)
@@ -661,7 +664,7 @@ func TestProcessEntry_CustomTitle_SetsSessionName(t *testing.T) {
 func TestProcessEntry_CustomTitle_EmptyValue_NoChange(t *testing.T) {
 	// A custom-title entry with an empty CustomTitle should not set the session name.
 	es := NewExtractionState()
-	var e Entry
+	var e transcript.Entry
 	e.Type = "custom-title"
 	e.CustomTitle = ""
 	es.ProcessEntry(e)
@@ -675,7 +678,7 @@ func TestProcessEntry_CustomTitle_EmptyValue_NoChange(t *testing.T) {
 func TestProcessEntry_Slug_FallbackWhenNoCustomTitle(t *testing.T) {
 	// Slug is used as SessionName only when no custom-title has been seen.
 	es := NewExtractionState()
-	var e Entry
+	var e transcript.Entry
 	e.Type = "summary"
 	e.Slug = "slug-based-name"
 	es.ProcessEntry(e)
@@ -691,13 +694,13 @@ func TestProcessEntry_CustomTitle_TakesPriorityOverSlug(t *testing.T) {
 	es := NewExtractionState()
 
 	// First: a slug from an earlier entry.
-	var slugEntry Entry
+	var slugEntry transcript.Entry
 	slugEntry.Type = "summary"
 	slugEntry.Slug = "slug-name"
 	es.ProcessEntry(slugEntry)
 
 	// Then: a custom-title entry arrives.
-	var titleEntry Entry
+	var titleEntry transcript.Entry
 	titleEntry.Type = "custom-title"
 	titleEntry.CustomTitle = "Proper Title"
 	es.ProcessEntry(titleEntry)
@@ -713,12 +716,12 @@ func TestProcessEntry_Slug_NotOverridenByLaterSlug(t *testing.T) {
 	// (slug is first-seen wins when no custom-title is present).
 	es := NewExtractionState()
 
-	var e1 Entry
+	var e1 transcript.Entry
 	e1.Type = "summary"
 	e1.Slug = "first-slug"
 	es.ProcessEntry(e1)
 
-	var e2 Entry
+	var e2 transcript.Entry
 	e2.Type = "summary"
 	e2.Slug = "second-slug"
 	es.ProcessEntry(e2)
@@ -869,20 +872,20 @@ func TestAgentType_FallsBackToToolName(t *testing.T) {
 
 // ---- Thinking block detection (specs 5 & 6) --------------------------------
 
-// makeThinkingEntry builds an Entry with a thinking block only (no tool_use, no text).
-func makeThinkingEntry() Entry {
+// makeThinkingEntry builds an transcript.Entry with a thinking block only (no tool_use, no text).
+func makeThinkingEntry() transcript.Entry {
 	content, _ := json.Marshal([]interface{}{
 		map[string]interface{}{"type": "thinking", "thinking": "Let me consider this..."},
 	})
-	var e Entry
+	var e transcript.Entry
 	e.Message.Role = "assistant"
 	e.Message.Content = content
 	e.Timestamp = "2025-01-15T10:00:00Z"
 	return e
 }
 
-// makeThinkingThenToolUseEntry builds an Entry with a thinking block followed by a tool_use.
-func makeThinkingThenToolUseEntry(toolID, toolName string, input map[string]interface{}) Entry {
+// makeThinkingThenToolUseEntry builds an transcript.Entry with a thinking block followed by a tool_use.
+func makeThinkingThenToolUseEntry(toolID, toolName string, input map[string]interface{}) transcript.Entry {
 	inputJSON, _ := json.Marshal(input)
 	content, _ := json.Marshal([]interface{}{
 		map[string]interface{}{"type": "thinking", "thinking": "Let me use a tool"},
@@ -893,20 +896,20 @@ func makeThinkingThenToolUseEntry(toolID, toolName string, input map[string]inte
 			"input": json.RawMessage(inputJSON),
 		},
 	})
-	var e Entry
+	var e transcript.Entry
 	e.Message.Role = "assistant"
 	e.Message.Content = content
 	e.Timestamp = "2025-01-15T10:00:01Z"
 	return e
 }
 
-// makeThinkingThenTextEntry builds an Entry with a thinking block followed by a text block.
-func makeThinkingThenTextEntry() Entry {
+// makeThinkingThenTextEntry builds an transcript.Entry with a thinking block followed by a text block.
+func makeThinkingThenTextEntry() transcript.Entry {
 	content, _ := json.Marshal([]interface{}{
 		map[string]interface{}{"type": "thinking", "thinking": "Let me respond"},
 		map[string]interface{}{"type": "text", "text": "Here is my answer."},
 	})
-	var e Entry
+	var e transcript.Entry
 	e.Message.Role = "assistant"
 	e.Message.Content = content
 	e.Timestamp = "2025-01-15T10:00:02Z"
@@ -1150,7 +1153,7 @@ func TestMarshalUnmarshalSnapshot_TodosRoundTrip(t *testing.T) {
 
 func TestMarshalUnmarshalSnapshot_SessionNameAndThinking(t *testing.T) {
 	es1 := NewExtractionState()
-	var titleEntry Entry
+	var titleEntry transcript.Entry
 	titleEntry.Type = "custom-title"
 	titleEntry.CustomTitle = "My Session"
 	es1.ProcessEntry(titleEntry)
@@ -1201,14 +1204,14 @@ func TestUnmarshalSnapshot_MalformedData_ReturnsError(t *testing.T) {
 
 // ---- Snapshot: spec 1 — tool_use and tool_result in the same JSONL entry (zero-delta timing) ----
 
-// TestSnapshotSpec1_ToolUseAndResultSameEntry verifies that a single Entry containing
+// TestSnapshotSpec1_ToolUseAndResultSameEntry verifies that a single transcript.Entry containing
 // both a tool_use and a tool_result block (same-entry round-trip) is handled correctly:
 // the tool is recorded as completed with DurationMs=0 (zero delta) and survives a
 // marshal/unmarshal snapshot cycle without getting stuck as running.
 func TestSnapshotSpec1_ToolUseAndResultSameEntry(t *testing.T) {
 	ts := time.Date(2024, 6, 1, 12, 0, 0, 0, time.UTC)
 
-	// Build an Entry with both tool_use and tool_result blocks at the same timestamp.
+	// Build an transcript.Entry with both tool_use and tool_result blocks at the same timestamp.
 	inputJSON, _ := json.Marshal(map[string]string{"file_path": "main.go"})
 	toolUseItem := map[string]interface{}{
 		"type":  "tool_use",
@@ -1223,7 +1226,7 @@ func TestSnapshotSpec1_ToolUseAndResultSameEntry(t *testing.T) {
 		"content":     "file contents",
 	}
 	content, _ := json.Marshal([]interface{}{toolUseItem, toolResultItem})
-	var e Entry
+	var e transcript.Entry
 	e.Message.Role = "assistant"
 	e.Message.Content = content
 	e.Timestamp = ts.Format(time.RFC3339Nano)
@@ -1292,7 +1295,7 @@ func TestSnapshotSpec1_ZeroDeltaIsNotStuck(t *testing.T) {
 			"content":     "hi",
 		},
 	})
-	var e Entry
+	var e transcript.Entry
 	e.Message.Role = "assistant"
 	e.Message.Content = content
 	e.Timestamp = ts.Format(time.RFC3339Nano)
@@ -1524,7 +1527,7 @@ func TestSnapshotSpec4_TruncationResetsSnapshot(t *testing.T) {
 	stateDir := t.TempDir()
 	transcriptPath := filepath.Join(dir, "session.jsonl")
 
-	sm := NewStateManager(stateDir)
+	sm := offsetstore.New(stateDir, SchemaVersion)
 
 	// Write a line and save state so the offset advances past byte 0.
 	toolUseEntry := makeToolUseEntryAt("truncate-tool-1", "Read",
@@ -1547,15 +1550,15 @@ func TestSnapshotSpec4_TruncationResetsSnapshot(t *testing.T) {
 	// Save snapshot at the advanced offset.
 	es1 := NewExtractionState()
 	for _, l := range lines {
-		var e Entry
+		var e transcript.Entry
 		if err := json.Unmarshal([]byte(l), &e); err == nil {
 			es1.ProcessEntry(e)
 		}
 	}
 	snap1, _ := es1.MarshalSnapshot()
 	sm.SetSnapshot(snap1)
-	if err := sm.SaveState(transcriptPath); err != nil {
-		t.Fatalf("SaveState: %v", err)
+	if err := sm.Save(transcriptPath); err != nil {
+		t.Fatalf("Save: %v", err)
 	}
 
 	// Simulate truncation: write a new (shorter) file, resetting to before the saved offset.
@@ -1603,7 +1606,7 @@ func TestSnapshotSpec4_OffsetExactlyAtFileSizeIsNotReset(t *testing.T) {
 	stateDir := t.TempDir()
 	transcriptPath := filepath.Join(dir, "session.jsonl")
 
-	sm := NewStateManager(stateDir)
+	sm := offsetstore.New(stateDir, SchemaVersion)
 
 	content := []byte("{\"type\":\"summary\",\"slug\":\"my-session\"}\n")
 	if err := os.WriteFile(transcriptPath, content, 0o644); err != nil {
@@ -1615,8 +1618,8 @@ func TestSnapshotSpec4_OffsetExactlyAtFileSizeIsNotReset(t *testing.T) {
 	if err != nil {
 		t.Fatalf("first read: %v", err)
 	}
-	if err := sm.SaveState(transcriptPath); err != nil {
-		t.Fatalf("SaveState: %v", err)
+	if err := sm.Save(transcriptPath); err != nil {
+		t.Fatalf("Save: %v", err)
 	}
 
 	// Second read: file unchanged, offset == file size. Must return 0 lines (no new data),
@@ -2147,10 +2150,10 @@ func TestProcessEntry_NonSidechainStillProcessed(t *testing.T) {
 
 // ---- MessageCount -----------------------------------------------------------
 
-// makeTextEntry builds a minimal Entry with a text content block.
-func makeTextEntry(role, text string) Entry {
+// makeTextEntry builds a minimal transcript.Entry with a text content block.
+func makeTextEntry(role, text string) transcript.Entry {
 	content := fmt.Appendf(nil, `[{"type":"text","text":%q}]`, text)
-	var e Entry
+	var e transcript.Entry
 	e.Message.Role = role
 	e.Message.Content = content
 	e.Timestamp = "2024-01-01T00:00:00Z"
@@ -2244,9 +2247,9 @@ func TestMessageCount_PersistedInSnapshot(t *testing.T) {
 
 // makeSkillEntry creates a user message with the <command-name>/skill</command-name>
 // format that Claude Code uses for slash-command invocations.
-func makeSkillEntry(skill string) Entry {
+func makeSkillEntry(skill string) transcript.Entry {
 	content := fmt.Appendf(nil, `"<command-message>%s</command-message>\n<command-name>/%s</command-name>"`, skill, skill)
-	var e Entry
+	var e transcript.Entry
 	e.Message.Role = "user"
 	e.Message.Content = content
 	e.Timestamp = "2024-01-01T00:00:00Z"
@@ -2380,7 +2383,7 @@ func TestSkills_EmbeddedCommandNameTag_Ignored(t *testing.T) {
 	prose := `The tag format is <command-name>/...</command-name> for skills.`
 	// Build a raw JSON string entry (not an array).
 	content := fmt.Appendf(nil, `%q`, prose)
-	var e Entry
+	var e transcript.Entry
 	e.Message.Role = "user"
 	e.Message.Content = content
 	e.Timestamp = "2024-01-01T00:00:00Z"
@@ -2418,15 +2421,12 @@ func TestSkills_SnapshotRoundTrip_PreservesSkillNames(t *testing.T) {
 
 // ---- Token sample extraction -----------------------------------------------
 
-// makeAssistantEntryWithUsage builds an assistant Entry with a usage field.
-func makeAssistantEntryWithUsage(inputTokens, outputTokens int, ts time.Time) Entry {
-	var e Entry
+// makeAssistantEntryWithUsage builds an assistant transcript.Entry with a usage field.
+func makeAssistantEntryWithUsage(inputTokens, outputTokens int, ts time.Time) transcript.Entry {
+	var e transcript.Entry
 	e.Message.Role = "assistant"
 	e.Timestamp = ts.Format(time.RFC3339Nano)
-	e.Message.Usage = &struct {
-		InputTokens  int `json:"input_tokens"`
-		OutputTokens int `json:"output_tokens"`
-	}{
+	e.Message.Usage = transcript.EntryUsage{
 		InputTokens:  inputTokens,
 		OutputTokens: outputTokens,
 	}
