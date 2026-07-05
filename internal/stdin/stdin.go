@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/kylesnowschwartz/agent-ouija/claude/statusline"
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/model"
 )
 
@@ -45,16 +46,18 @@ func isTTY(f *os.File) bool {
 	return (stat.Mode() & os.ModeCharDevice) != 0
 }
 
-// decode reads exactly one JSON object from r and computes ContextPercent.
+// decode reads one statusline payload from r via the library decoder (which
+// also preserves the raw document for unmodeled fields) and computes
+// ContextPercent.
 func decode(r io.Reader) (*model.StdinData, error) {
-	var data model.StdinData
-	dec := json.NewDecoder(r)
-	if err := dec.Decode(&data); err != nil {
+	p, err := statusline.Decode(r)
+	if err != nil {
 		return nil, fmt.Errorf("stdin: decode JSON: %w", err)
 	}
 
-	data.ContextPercent = computeContextPercent(&data)
-	return &data, nil
+	data := &model.StdinData{Payload: *p}
+	data.ContextPercent = computeContextPercent(data)
+	return data, nil
 }
 
 // SaveSnapshot persists data as JSON to snapshotDir/last-stdin.json.
