@@ -10,9 +10,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/kylesnowschwartz/agent-ouija/claude/tools"
 	"github.com/kylesnowschwartz/agent-ouija/claude/transcript"
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/model"
 )
@@ -634,8 +636,7 @@ func (es *ExtractionState) resolveTaskIndex(taskID string) int {
 	}
 
 	// Numeric one-based fallback: "1" => index 0.
-	if isNumericString(taskID) {
-		n := parseInt(taskID)
+	if n, err := strconv.Atoi(taskID); err == nil {
 		if n >= 1 && n <= len(es.todos) {
 			return n - 1
 		}
@@ -644,37 +645,24 @@ func (es *ExtractionState) resolveTaskIndex(taskID string) int {
 	return -1
 }
 
-// toolCategory returns the display category for a tool name.
-// Each tool gets its own category so the renderer can assign distinct icons.
-// Categories match the tool's primary identity: Read, Edit, Write, Bash,
-// Grep, Glob, Web, Task, Skill, Thinking, or Other for unknown tools.
+// toolCategory returns the display category for a tool name: the library
+// taxonomy plus one HUD policy override — Skill keeps its own category
+// because the renderer has a dedicated Skill icon (the library folds Skill
+// into Task). Everything else delegates so new tool names (Workflow,
+// multi-agent aliases) categorize without a HUD release.
 func toolCategory(name string) string {
-	switch name {
-	case "Read":
-		return "Read"
-	case "Edit":
-		return "Edit"
-	case "Write", "NotebookEdit":
-		return "Write"
-	case "Bash":
-		return "Bash"
-	case "Grep":
-		return "Grep"
-	case "Glob":
-		return "Glob"
-	case "WebFetch", "WebSearch":
-		return "Web"
-	case "Agent", "Task":
-		return "Task"
-	case "Skill":
+	if name == "Skill" {
 		return "Skill"
-	default:
-		return "Other"
 	}
+	return string(tools.CategorizeToolName(name))
 }
 
 // extractTarget returns a short contextual string describing what a tool is
 // operating on. Ported from claude-hud transcript.ts:173-190.
+//
+// Deliberately NOT tools.ToolSummary: the summary is a formatted one-liner
+// (verb + shortened path), while the HUD renders bare targets next to
+// category icons. Different display intent, kept app-side.
 func extractTarget(toolName string, input json.RawMessage) string {
 	if len(input) == 0 {
 		return ""
@@ -700,16 +688,11 @@ func extractTarget(toolName string, input json.RawMessage) string {
 	return ""
 }
 
-// getStrField returns the string value of the first key found in fields.
-// Returns empty string when no key matches or the value is not a JSON string.
+// getStrField returns the string value of the first key found in fields
+// (a variadic-fallback wrapper over the library's tools.GetString).
 func getStrField(fields map[string]json.RawMessage, keys ...string) string {
 	for _, k := range keys {
-		raw, ok := fields[k]
-		if !ok {
-			continue
-		}
-		var s string
-		if err := json.Unmarshal(raw, &s); err == nil {
+		if s := tools.GetString(fields, k); s != "" {
 			return s
 		}
 	}
@@ -950,30 +933,6 @@ func truncateAgentDescription(s string) string {
 	return string(runes[:agentDescriptionMaxLen]) + "..."
 }
 
-// isNumericString reports whether s is a non-empty string of ASCII digits.
-func isNumericString(s string) bool {
-	if s == "" {
-		return false
-	}
-	for _, c := range s {
-		if c < '0' || c > '9' {
-			return false
-		}
-	}
-	return true
-}
-
-// parseInt parses a decimal integer string. Panics are not possible because
-// callers gate with isNumericString; overflow is theoretically possible but
-// irrelevant at todo-list scales.
-func parseInt(s string) int {
-	n := 0
-	for _, c := range s {
-		n = n*10 + int(c-'0')
-	}
-	return n
-}
-
 // SchemaVersion is the offset-store schema version for extraction snapshots.
 // Bump it whenever extraction semantics change in a way that would produce
 // different results from the same transcript data, so stale snapshots are
@@ -981,4 +940,7 @@ func parseInt(s string) int {
 //
 // v2: skill detection from <command-name> tags.
 // v3: extraction re-typed over the agent-ouija library Entry.
-const SchemaVersion = 3
+// v4: tool categories delegate to tools.CategorizeToolName (Skill override
+// kept app-side); Workflow and multi-agent tool names now categorize as
+// Task instead of Other, so stored categories change.
+const SchemaVersion = 4
