@@ -117,6 +117,25 @@ Claude Code pipes this JSON to stdin on every tick. Canonical reference: https:/
 Parsing, path encoding, hook/statusline payload schemas, settings access, and
 offset persistence come from `github.com/kylesnowschwartz/agent-ouija`
 (repo: `~/Code/my-projects/agent-ouija`). The stdin wire schema is
-`statusline.Payload`, embedded in `model.StdinData`. During migration the
-worktree builds against a local checkout via a git-ignored `go.work`; the
-final release pins a tagged module version.
+`statusline.Payload`, embedded in `model.StdinData`.
+
+**Staying current**: pin tagged versions only
+(`go get github.com/kylesnowschwartz/agent-ouija@vX.Y.Z && go mod tidy`,
+read its CHANGELOG first — breaking changes bump the library minor).
+After any bump: `just check`, `just test-race`, `just bench` (>20%
+regression on the per-tick path blocks), and a `just run-sample` /
+`--dump-current` eyeball. If a bump changes how transcripts decode, bump
+`extract.SchemaVersion` to force a clean snapshot re-read. For cross-repo
+dev use a git-ignored `go.work`; any commit finalizing a bump must pass
+`GOWORK=off go build ./... && go test ./...`.
+
+**The line (one-way dependency)**: agent-ouija reads Claude Code state and
+returns data; the HUD decides what it means and how it renders. Widget
+rendering, presets, agent color assignment (by slice position over
+`ScanSubagentMeta`'s documented ordering), status/duration heuristics,
+display names, `ContextPercent`, breadcrumbs, and `extract.SchemaVersion`
+stay here — never propose moving them into the library, and never add
+HUD-specific types or fields to the library. Format drift and parsing
+defects are ALWAYS fixed in agent-ouija (with a fixture), never worked
+around in this repo. Never call full-parse discovery (`DiscoverSubagents`)
+on the tick path — `ScanSubagentMeta` exists for exactly that reason.
