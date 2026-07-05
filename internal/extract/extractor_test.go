@@ -2668,3 +2668,42 @@ func TestThinking_MultipleThinkingEntries(t *testing.T) {
 		t.Errorf("tools[3]: want Read, got %q", data.Tools[3].Name)
 	}
 }
+
+// ---- Library seam contract (black-box through ParseEntryLenient) -----------
+
+// These decode raw JSONL through the library's lenient parse — the exact
+// seam gather.go feeds this extractor from — instead of constructing Entry
+// values in Go. They pin the seam semantics the HUD depends on (uuid-less
+// custom-title acceptance, slug fallback, value-type usage totals) so a
+// library contract drift fails this repo's suite, not only the library's.
+// Gearshifter's migration hit exactly such a drift mid-branch.
+
+func parseLine(t *testing.T, line string) transcript.Entry {
+	t.Helper()
+	e, ok := transcript.ParseEntryLenient([]byte(line))
+	if !ok {
+		t.Fatalf("ParseEntryLenient rejected fixture line: %s", line)
+	}
+	return e
+}
+
+func TestLibrarySeam_UuidlessCustomTitleNamesSession(t *testing.T) {
+	es := NewExtractionState()
+	es.ProcessEntry(parseLine(t, `{"type":"custom-title","customTitle":"Named Session"}`))
+	if got := es.ToTranscriptData().SessionName; got != "Named Session" {
+		t.Errorf("SessionName = %q, want Named Session (uuid-less custom-title must survive the lenient parse)", got)
+	}
+}
+
+func TestLibrarySeam_SlugFallbackAndUsageTotals(t *testing.T) {
+	es := NewExtractionState()
+	es.ProcessEntry(parseLine(t, `{"type":"assistant","uuid":"u1","timestamp":"2026-07-05T01:00:00Z","slug":"branchy-slug","message":{"role":"assistant","usage":{"input_tokens":100,"output_tokens":50}}}`))
+
+	data := es.ToTranscriptData()
+	if data.SessionName != "branchy-slug" {
+		t.Errorf("SessionName = %q, want branchy-slug (slug fallback)", data.SessionName)
+	}
+	if len(data.TokenSamples) != 1 || data.TokenSamples[0].Tokens != 150 {
+		t.Fatalf("TokenSamples = %+v, want one 150-token sample (value-type Usage, total > 0)", data.TokenSamples)
+	}
+}
