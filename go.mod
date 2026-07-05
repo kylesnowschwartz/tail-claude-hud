@@ -8,7 +8,7 @@ require (
 	github.com/charmbracelet/colorprofile v0.4.2
 	github.com/charmbracelet/x/ansi v0.11.6
 	github.com/charmbracelet/x/term v0.2.2
-	github.com/kylesnowschwartz/agent-ouija v0.0.0-20260705040940-e44a4e9fd26e
+	github.com/kylesnowschwartz/agent-ouija v0.0.0-20260705042329-11d049fc32c6
 	github.com/lucasb-eyer/go-colorful v1.3.0
 )
 

@@ -310,6 +310,10 @@ func terminalWidth() int {
 // considered still running.
 const subagentStaleThreshold = 30 * time.Second
 
+// agentColorCount is the size of the agents widget's color palette
+// (internal/render/widget agentColors); ColorIndex wraps at this count.
+const agentColorCount = 8
+
 // discoverSubagents scans the filesystem for subagent JSONL files associated
 // with the given transcript path via the library's metadata-only scan (never
 // the full-parse DiscoverSubagents — this runs on every ~300ms tick). Display
@@ -359,7 +363,7 @@ func discoverSubagents(transcriptPath string) []model.AgentEntry {
 			Status:     status,
 			StartTime:  startTime,
 			DurationMs: durationMs,
-			ColorIndex: i % 8,
+			ColorIndex: i % agentColorCount,
 		})
 	}
 
