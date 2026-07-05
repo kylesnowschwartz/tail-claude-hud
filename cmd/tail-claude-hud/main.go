@@ -263,37 +263,15 @@ func readFromFile() (*model.StdinData, error) {
 }
 
 // findCurrentTranscript auto-discovers the most recently modified .jsonl file
-// in ~/.claude/projects/<cwd-slug>/. The cwd-slug is computed from the current
-// working directory using Claude Code's path encoding scheme.
+// in ~/.claude/projects/<cwd-slug>/ via claudedir.NewestTranscript.
 func findCurrentTranscript() (string, error) {
 	projectDir, err := currentProjectDir()
 	if err != nil {
 		return "", fmt.Errorf("--dump-current: resolve project dir: %w", err)
 	}
-
-	entries, err := os.ReadDir(projectDir)
+	newest, err := claudedir.NewestTranscript(projectDir)
 	if err != nil {
-		return "", fmt.Errorf("--dump-current: no transcript found (could not read %s): %w", projectDir, err)
-	}
-
-	var newest string
-	var newestTime int64
-	for _, de := range entries {
-		if de.IsDir() || !strings.HasSuffix(de.Name(), ".jsonl") {
-			continue
-		}
-		info, err := de.Info()
-		if err != nil {
-			continue
-		}
-		if mt := info.ModTime().UnixNano(); mt > newestTime {
-			newestTime = mt
-			newest = filepath.Join(projectDir, de.Name())
-		}
-	}
-
-	if newest == "" {
-		return "", fmt.Errorf("--dump-current: no .jsonl transcript found in %s", projectDir)
+		return "", fmt.Errorf("--dump-current: no .jsonl transcript found in %s: %w", projectDir, err)
 	}
 	return newest, nil
 }
