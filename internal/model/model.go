@@ -63,6 +63,11 @@ type RenderContext struct {
 	// permission approval. Empty when no session needs attention.
 	PermissionProject string
 
+	// PeerCount is the number of other live interactive Claude Code sessions
+	// read from the native session registry (~/.claude/sessions). Zero when
+	// none, or when the peers widget is not configured.
+	PeerCount int
+
 	// Pointer fields — all may be nil when the corresponding data is unavailable.
 	Transcript *TranscriptData
 	EnvCounts  *EnvCounts

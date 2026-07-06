@@ -12,6 +12,8 @@ import (
 
 	"github.com/charmbracelet/x/term"
 	"github.com/kylesnowschwartz/agent-ouija/claude/agents"
+	"github.com/kylesnowschwartz/agent-ouija/claude/claudedir"
+	"github.com/kylesnowschwartz/agent-ouija/claude/registry"
 	"github.com/kylesnowschwartz/agent-ouija/claude/transcript"
 	"github.com/kylesnowschwartz/agent-ouija/offsetstore"
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/breadcrumb"
@@ -137,6 +139,19 @@ func Gather(input *model.StdinData, cfg *config.Config) *model.RenderContext {
 			if b := breadcrumb.FindWaiting(input.SessionID); b != nil {
 				ctx.PermissionProject = b.Project
 			}
+		}()
+	}
+
+	// Peers detection goroutine: counts other live sessions from Claude
+	// Code's native session registry (~/.claude/sessions/*.json). Registry
+	// files linger after exit, so each entry is liveness-checked. Only
+	// interactive sessions count — sdk-cli entries are background agents,
+	// not terminals the user has open.
+	if active["peers"] {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			ctx.PeerCount = countPeers(input.SessionID)
 		}()
 	}
 
@@ -368,6 +383,36 @@ func discoverSubagents(transcriptPath string) []model.AgentEntry {
 	}
 
 	return agentEntries
+}
+
+// peersSessionsDir returns Claude Code's live-session registry directory.
+// It is a variable so tests can redirect to a temp directory.
+var peersSessionsDir = func() string {
+	root, err := claudedir.DefaultRoot()
+	if err != nil {
+		return ""
+	}
+	return root.SessionsDir()
+}
+
+// countPeers counts other live interactive Claude Code sessions from the
+// native session registry, excluding ownSessionID. Dead entries (files
+// linger after exit) and non-interactive kinds are skipped.
+func countPeers(ownSessionID string) int {
+	dir := peersSessionsDir()
+	if dir == "" {
+		return 0
+	}
+	count := 0
+	for _, e := range registry.Read(dir) {
+		if e.SessionID == ownSessionID || e.Kind != "interactive" {
+			continue
+		}
+		if e.Alive() {
+			count++
+		}
+	}
+	return count
 }
 
 // usageFromStdin converts stdin rate_limits into a UsageInfo when present.
