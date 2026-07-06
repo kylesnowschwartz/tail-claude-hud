@@ -28,6 +28,42 @@ const maxAgents = 10
 // maxSkills is the maximum number of skill names kept in the display slice.
 const maxSkills = 20
 
+// nativeCommandNames lists Claude Code's built-in slash commands (and their
+// documented aliases) that are coded into the CLI rather than being skills.
+// Both route through the same <command-name> user-message tag (see
+// extractSkillFromUserMessage), so native commands must be filtered out here
+// or the skills widget would show things like "/model" or "/clear" as if
+// they were invoked skills. Source of truth: https://code.claude.com/docs/en/commands
+// (everything NOT tagged [Skill] or [Workflow] in that table).
+var nativeCommandNames = map[string]bool{
+	"add-dir": true, "advisor": true, "agents": true, "autofix-pr": true,
+	"background": true, "bg": true, "branch": true, "btw": true, "cd": true,
+	"chrome": true, "clear": true, "reset": true, "new": true, "color": true,
+	"compact": true, "config": true, "settings": true, "context": true,
+	"copy": true, "cost": true, "design-login": true, "desktop": true,
+	"app": true, "diff": true, "doctor": true, "effort": true, "exit": true,
+	"quit": true, "export": true, "fast": true, "feedback": true, "bug": true,
+	"share": true, "focus": true, "fork": true, "goal": true, "heapdump": true,
+	"help": true, "hooks": true, "ide": true, "init": true, "insights": true,
+	"install-github-app": true, "install-slack-app": true, "keybindings": true,
+	"login": true, "logout": true, "mcp": true, "memory": true, "mobile": true,
+	"ios": true, "android": true, "model": true, "passes": true,
+	"permissions": true, "allowed-tools": true, "plan": true, "plugin": true,
+	"powerup": true, "pr-comments": true, "privacy-settings": true,
+	"radio": true, "recap": true, "release-notes": true, "reload-plugins": true,
+	"reload-skills": true, "remote-control": true, "rc": true,
+	"remote-env": true, "rename": true, "resume": true, "continue": true,
+	"review": true, "rewind": true, "checkpoint": true, "undo": true,
+	"sandbox": true, "schedule": true, "routines": true, "scroll-speed": true,
+	"security-review": true, "setup-bedrock": true, "setup-vertex": true,
+	"skills": true, "stats": true, "status": true, "statusline": true,
+	"stickers": true, "stop": true, "tasks": true, "bashes": true,
+	"team-onboarding": true, "teleport": true, "tp": true,
+	"terminal-setup": true, "theme": true, "tui": true, "ultraplan": true,
+	"ultrareview": true, "upgrade": true, "usage": true, "usage-credits": true,
+	"vim": true, "voice": true, "web-setup": true, "workflows": true,
+}
+
 // bashTargetMaxLen is the number of characters kept from a Bash command for
 // the target field (matches claude-hud's 40-char truncation convention; the
 // TS source uses 30 but the card spec says 40).
@@ -309,7 +345,7 @@ func (es *ExtractionState) extractSkillFromUserMessage(e transcript.Entry) {
 		return
 	}
 	name := content[start : start+end]
-	if name == "" {
+	if name == "" || nativeCommandNames[name] {
 		return
 	}
 
@@ -943,4 +979,6 @@ func truncateAgentDescription(s string) string {
 // v4: tool categories delegate to tools.CategorizeToolName (Skill override
 // kept app-side); Workflow and multi-agent tool names now categorize as
 // Task instead of Other, so stored categories change.
-const SchemaVersion = 4
+// v5: native CLI commands (e.g. /model, /clear) are excluded from skill
+// detection, so SkillNames no longer contains built-in command names.
+const SchemaVersion = 5

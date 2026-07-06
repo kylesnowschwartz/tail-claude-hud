@@ -2331,6 +2331,24 @@ func TestSkills_MultipleSkills_RecordsAllInOrder(t *testing.T) {
 	}
 }
 
+func TestSkills_NativeCommand_NotRecorded(t *testing.T) {
+	// Built-in CLI commands like /model use the same <command-name> tag as
+	// real skill invocations but are not skills; the widget should not show
+	// them as "skills invoked this session".
+	es := NewExtractionState()
+	es.ProcessEntry(makeSkillEntry("model"))
+	es.ProcessEntry(makeSkillEntry("clear"))
+	es.ProcessEntry(makeSkillEntry("commit"))
+
+	data := es.ToTranscriptData()
+	if len(data.SkillNames) != 1 {
+		t.Fatalf("expected 1 skill name (native commands filtered), got %v", data.SkillNames)
+	}
+	if data.SkillNames[0] != "commit" {
+		t.Errorf("expected 'commit', got %q", data.SkillNames[0])
+	}
+}
+
 func TestSkills_NamespacedSkill_FullNamePreserved(t *testing.T) {
 	// Skills use a "namespace:skill-name" format; the full string should be
 	// stored without modification.
