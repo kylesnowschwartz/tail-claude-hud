@@ -46,6 +46,7 @@ const DefaultTemplate = `# tail-claude-hud configuration
 #   usage       — Anthropic rate-limit utilization (5-hour and 7-day windows)
 #   worktree    — current git worktree name and branch
 #   effort      — current reasoning effort (low/medium/high/xhigh/max), color by intensity
+#   peers       — count of other concurrently running Claude Code sessions ("×2")
 #
 # Each [[line]] can optionally override the global style.mode:
 #   mode = "powerline"  — use powerline arrows for this line only
@@ -181,6 +182,11 @@ five_hour_threshold = 0
 seven_day_threshold = 80
 # Cache TTL in seconds for successful API responses.
 cache_ttl_seconds = 180
+# Display mode: "text" (icon/percent + reset countdown) or "bar" (block bar,
+# labeled "5h"/"7d" since a bar alone can't tell the windows apart).
+display = "text"
+# Bar width in cells when display = "bar".
+bar_width = 8
 
 # Worktree widget — shows the current git worktree name and branch.
 [worktree]
