@@ -6,32 +6,45 @@ import (
 
 	"charm.land/lipgloss/v2"
 
+	"github.com/kylesnowschwartz/tail-claude-hud/internal/color"
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/config"
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/model"
 )
 
 var gitBranchStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("14"))
 
-// Git renders branch name, dirty indicator, and optionally ahead/behind counts.
-// Branch name is rendered in cyan. Dirty state uses the nerdfont dirty icon when
-// cfg.Git.Dirty is true. Ahead/behind counts appear when cfg.Git.AheadBehind is true.
-// Returns an empty WidgetResult when ctx.Git is nil.
-// FgColor is left empty because the widget composes multiple styles internally;
-// the renderer passes the pre-styled Text through as-is.
+// Git renders branch name, dirty indicator, and optionally ahead/behind
+// counts. Returns an empty WidgetResult when ctx.Git is nil.
+//
+// FgColor is empty per the composite-widget contract: the widget mixes
+// semantic colors (green/yellow file stats, dim decorators) that a theme fg
+// override would flatten. The theme's git fg is honored here instead,
+// applied to the branch portion only.
 func Git(ctx *model.RenderContext, cfg *config.Config) WidgetResult {
 	if ctx.Git == nil {
 		return WidgetResult{}
 	}
 
+	text, plain := renderGitState(ctx.Git, cfg, themeFgStyle(cfg, "git", gitBranchStyle))
+	return WidgetResult{
+		Text:      text,
+		PlainText: plain,
+	}
+}
+
+// renderGitState renders the git segment body: branch (in branchStyle),
+// dirty indicator, ahead/behind, and file stats. It is shared by the git
+// widget and the project widget, which differ only in the base style
+// applied to the branch.
+func renderGitState(g *model.GitStatus, cfg *config.Config, branchStyle lipgloss.Style) (text, plain string) {
 	icons := IconsFor(cfg.Style.Icons)
-	g := ctx.Git
 
 	var parts []string
 	var plainParts []string
 
-	// Branch icon + name in cyan.
+	// Branch icon + name in the caller's base style.
 	branchStr := fmt.Sprintf("%s %s", icons.Branch, g.Branch)
-	parts = append(parts, gitBranchStyle.Render(branchStr))
+	parts = append(parts, branchStyle.Render(branchStr))
 	plainParts = append(plainParts, branchStr)
 
 	// Dirty indicator (modified, staged, or untracked files).
@@ -79,9 +92,18 @@ func Git(ctx *model.RenderContext, cfg *config.Config) WidgetResult {
 		}
 	}
 
-	return WidgetResult{
-		Text:      strings.Join(parts, ""),
-		PlainText: strings.Join(plainParts, ""),
-		FgColor:   "14",
+	return strings.Join(parts, ""), strings.Join(plainParts, "")
+}
+
+// themeFgStyle returns a fg-only style from the resolved theme's entry for
+// widgetName, or fallback when the theme defines no fg. Composite widgets
+// (FgColor == "") use this to honor the theme's base color on their identity
+// text while keeping semantic colors on the rest.
+func themeFgStyle(cfg *config.Config, widgetName string, fallback lipgloss.Style) lipgloss.Style {
+	if cfg.ResolvedTheme != nil {
+		if colors, ok := cfg.ResolvedTheme[widgetName]; ok && colors.Fg != "" {
+			return lipgloss.NewStyle().Foreground(lipgloss.Color(color.ResolveColorName(colors.Fg)))
+		}
 	}
+	return fallback
 }

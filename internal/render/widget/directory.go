@@ -22,8 +22,8 @@ var dirStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("13")).Bold(true)
 //
 // The home directory is always substituted with "~" before applying the style.
 // Returns an empty WidgetResult when ctx.Cwd is empty.
-// FgColor is left empty because dirStyle uses both a foreground color and bold;
-// the renderer passes the pre-styled Text through as-is.
+// FgColor is set: the widget is single-color, so a theme fg override may
+// re-render PlainText (losing dirStyle's bold, which themes don't model).
 func Directory(ctx *model.RenderContext, cfg *config.Config) WidgetResult {
 	if ctx.Cwd == "" {
 		return WidgetResult{}

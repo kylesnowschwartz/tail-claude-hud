@@ -13,29 +13,32 @@ import (
 // When Git has no data, renders directory only.
 // When in a worktree, the git branch is hidden (the worktree widget shows
 // "wt:<branch>"), so only the project directory name is rendered.
-// FgColor is left empty because the sub-widgets compose multiple styles;
-// the renderer passes the pre-styled Text through as-is.
+//
+// FgColor is empty per the composite-widget contract: the git portion mixes
+// semantic colors (green/yellow file stats, dim decorators) that a theme fg
+// override would flatten. The theme's project fg is honored here instead,
+// applied uniformly to the directory and branch identity text.
 func Project(ctx *model.RenderContext, cfg *config.Config) WidgetResult {
 	dir := Directory(ctx, cfg)
-
-	// In a worktree the branch is shown by the worktree widget — just show
-	// the project directory so the user keeps their project identity.
-	if ctx.WorktreeName != "" {
-		return dir
-	}
-
 	if dir.IsEmpty() {
 		return WidgetResult{}
 	}
 
-	git := Git(ctx, cfg)
-	if git.IsEmpty() {
-		return dir
+	base := themeFgStyle(cfg, "project", dirStyle)
+	dirOnly := WidgetResult{
+		Text:      base.Render(dir.PlainText),
+		PlainText: dir.PlainText,
 	}
 
+	// In a worktree the branch is shown by the worktree widget — just show
+	// the project directory so the user keeps their project identity.
+	if ctx.WorktreeName != "" || ctx.Git == nil {
+		return dirOnly
+	}
+
+	gitText, gitPlain := renderGitState(ctx.Git, cfg, base)
 	return WidgetResult{
-		Text:      dir.Text + " " + git.Text,
-		PlainText: dir.PlainText + " " + git.PlainText,
-		FgColor:   "13", // inherit directory's dominant color
+		Text:      dirOnly.Text + " " + gitText,
+		PlainText: dirOnly.PlainText + " " + gitPlain,
 	}
 }
