@@ -184,6 +184,12 @@ type GitStatus struct {
 	Untracked int
 	Modified  int
 	Staged    int
+
+	// LinesAdded/LinesRemoved are the uncommitted line deltas vs HEAD
+	// (staged + unstaged; untracked files excluded). Populated only when
+	// the working tree is dirty.
+	LinesAdded   int
+	LinesRemoved int
 }
 
 // IsDirty reports whether the working tree has any uncommitted changes

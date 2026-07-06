@@ -44,6 +44,7 @@ type Config struct {
 		Dirty       bool `toml:"dirty"`
 		AheadBehind bool `toml:"ahead_behind"`
 		FileStats   bool `toml:"file_stats"`
+		LineStats   bool `toml:"line_stats"`
 	} `toml:"git"`
 	Style struct {
 		Separator  string `toml:"separator"`
@@ -170,6 +171,7 @@ func defaults() *Config {
 	cfg.Git.Dirty = true
 	cfg.Git.AheadBehind = true
 	cfg.Git.FileStats = false
+	cfg.Git.LineStats = false
 
 	cfg.Permission.ShowProject = true
 

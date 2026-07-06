@@ -66,7 +66,46 @@ func fetchStatus(cwd string) *model.GitStatus {
 		return nil
 	}
 
-	return parsePorcelainV2(string(out))
+	status := parsePorcelainV2(string(out))
+	if status != nil && status.IsDirty() {
+		status.LinesAdded, status.LinesRemoved = fetchLineStats(ctx, cwd)
+	}
+	return status
+}
+
+// fetchLineStats runs `git diff HEAD --numstat` and returns the summed
+// added/removed line counts of all uncommitted changes (staged + unstaged).
+// Returns zeros on any failure (e.g. an unborn HEAD in a fresh repo) —
+// line stats are decoration, never worth failing the whole status for.
+func fetchLineStats(ctx context.Context, cwd string) (added, removed int) {
+	cmd := exec.CommandContext(ctx, "git", "diff", "HEAD", "--numstat")
+	cmd.Dir = cwd
+	out, err := cmd.Output()
+	if err != nil {
+		logging.Debug("git: diff --numstat failed in %s: %v", cwd, err)
+		return 0, 0
+	}
+	return parseNumstat(string(out))
+}
+
+// parseNumstat sums the per-file added/removed counts from `git diff --numstat`
+// output. Each line is "<added>\t<removed>\t<path>"; binary files report "-"
+// in both count columns and are skipped.
+func parseNumstat(output string) (added, removed int) {
+	for _, line := range strings.Split(output, "\n") {
+		fields := strings.SplitN(line, "\t", 3)
+		if len(fields) < 3 {
+			continue
+		}
+		a, errA := strconv.Atoi(fields[0])
+		r, errR := strconv.Atoi(fields[1])
+		if errA != nil || errR != nil {
+			continue // binary file ("-") or malformed line
+		}
+		added += a
+		removed += r
+	}
+	return added, removed
 }
 
 // parsePorcelainV2 parses the output of `git status --branch --porcelain=v2`

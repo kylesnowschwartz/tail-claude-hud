@@ -272,3 +272,46 @@ func TestGetStatus_CacheExpiry(t *testing.T) {
 		t.Errorf("expected 1 untracked after cache expiry, got %d", second.Untracked)
 	}
 }
+
+// TestGetStatus_LineStats verifies that a dirty tree reports summed
+// added/removed line counts vs HEAD (staged + unstaged).
+func TestGetStatus_LineStats(t *testing.T) {
+	dir := t.TempDir()
+	initRepo(t, dir)
+	commitFile(t, dir, "file.txt", "a\nb\nc\n")
+
+	// Rewrite: keep "a", drop "b" and "c", add three new lines → +3 -2.
+	if err := os.WriteFile(filepath.Join(dir, "file.txt"), []byte("a\nx\ny\nz\n"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	status := git.GetStatus(dir)
+	if status == nil {
+		t.Fatal("expected non-nil status")
+	}
+	if !status.IsDirty() {
+		t.Fatal("expected dirty tree")
+	}
+	if status.LinesAdded != 3 {
+		t.Errorf("LinesAdded = %d, want 3", status.LinesAdded)
+	}
+	if status.LinesRemoved != 2 {
+		t.Errorf("LinesRemoved = %d, want 2", status.LinesRemoved)
+	}
+}
+
+// TestGetStatus_LineStats_CleanRepoZero verifies a clean tree reports zero
+// line deltas (the numstat subprocess is skipped entirely).
+func TestGetStatus_LineStats_CleanRepoZero(t *testing.T) {
+	dir := t.TempDir()
+	initRepo(t, dir)
+	commitFile(t, dir, "file.txt", "content\n")
+
+	status := git.GetStatus(dir)
+	if status == nil {
+		t.Fatal("expected non-nil status")
+	}
+	if status.LinesAdded != 0 || status.LinesRemoved != 0 {
+		t.Errorf("clean repo line stats = +%d -%d, want zeros", status.LinesAdded, status.LinesRemoved)
+	}
+}

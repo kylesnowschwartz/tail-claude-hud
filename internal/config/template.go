@@ -93,6 +93,8 @@ dirty = true
 ahead_behind = true
 # Show per-file change statistics.
 file_stats = false
+# Show uncommitted +added/-removed line counts vs HEAD when the tree is dirty.
+line_stats = false
 
 # Style — controls separators, icons, colour thresholds, and rendering mode.
 [style]

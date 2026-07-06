@@ -13,11 +13,11 @@ import (
 
 var gitBranchStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("14"))
 
-// Git renders branch name, dirty indicator, and optionally ahead/behind
-// counts. Returns an empty WidgetResult when ctx.Git is nil.
+// Git renders branch name, dirty indicator, and optionally ahead/behind counts
+// and uncommitted line deltas. Returns an empty WidgetResult when ctx.Git is nil.
 //
 // FgColor is empty per the composite-widget contract: the widget mixes
-// semantic colors (green/yellow file stats, dim decorators) that a theme fg
+// semantic colors (green/red line deltas, dim decorators) that a theme fg
 // override would flatten. The theme's git fg is honored here instead,
 // applied to the branch portion only.
 func Git(ctx *model.RenderContext, cfg *config.Config) WidgetResult {
@@ -33,9 +33,9 @@ func Git(ctx *model.RenderContext, cfg *config.Config) WidgetResult {
 }
 
 // renderGitState renders the git segment body: branch (in branchStyle),
-// dirty indicator, ahead/behind, and file stats. It is shared by the git
-// widget and the project widget, which differ only in the base style
-// applied to the branch.
+// dirty indicator, ahead/behind, line stats, and file stats. It is shared
+// by the git widget and the project widget, which differ only in the base
+// style applied to the branch.
 func renderGitState(g *model.GitStatus, cfg *config.Config, branchStyle lipgloss.Style) (text, plain string) {
 	icons := IconsFor(cfg.Style.Icons)
 
@@ -64,6 +64,21 @@ func renderGitState(g *model.GitStatus, cfg *config.Config, branchStyle lipgloss
 			ab := fmt.Sprintf("↓%d", g.BehindBy)
 			parts = append(parts, DimStyle.Render(ab))
 			plainParts = append(plainParts, ab)
+		}
+	}
+
+	// Line stats: uncommitted +added -removed line deltas vs HEAD.
+	// Styled to match the lines widget's "+N -M" convention.
+	if cfg.Git.LineStats {
+		if g.LinesAdded > 0 {
+			s := fmt.Sprintf("+%d", g.LinesAdded)
+			parts = append(parts, " "+linesAddedStyle.Render(s))
+			plainParts = append(plainParts, " "+s)
+		}
+		if g.LinesRemoved > 0 {
+			s := fmt.Sprintf("-%d", g.LinesRemoved)
+			parts = append(parts, " "+linesRemovedStyle.Render(s))
+			plainParts = append(plainParts, " "+s)
 		}
 	}
 
