@@ -30,10 +30,13 @@ Add to `~/.claude/settings.json`:
 {
   "statusLine": {
     "type": "command",
-    "command": "tail-claude-hud"
+    "command": "tail-claude-hud",
+    "refreshInterval": 1
   }
 }
 ```
+
+By default Claude Code only re-runs the statusline on conversation events, so dynamic widgets (duration, peers, usage windows, permission indicators) go stale while you're idle. `refreshInterval` (Claude Code >= 2.1.97, seconds, minimum 1) re-runs it on a timer as well -- the HUD's per-tick cost is single-digit milliseconds, so a 1-second interval is negligible.
 
 Works out of the box with the `default` preset. To customize, run `tail-claude-hud --init` to generate a config at `~/.config/tail-claude-hud/config.toml`.
 
