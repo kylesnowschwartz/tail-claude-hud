@@ -126,9 +126,15 @@ type ExtractionState struct {
 	// displayAgents holds the ordered list of agents for rendering (newest last).
 	displayAgents []*internalAgent
 
-	// tokenSamples accumulates timestamp+token pairs from assistant messages.
-	// Used by the speed widget to compute a rolling tokens/sec average.
+	// tokenSamples accumulates timestamp+output-token pairs from assistant
+	// messages. Used by the speed widget to compute a rolling tokens/sec average.
 	tokenSamples []model.TokenSample
+
+	// lastSampleUsage is the usage of the most recently recorded token sample.
+	// One API response spans several assistant entries (one per content block),
+	// each repeating the same message.usage object; matching this key drops the
+	// repeats so a response is counted once.
+	lastSampleUsage usageKey
 
 	// sessionName holds the display name for the current session. Set from a
 	// custom-title entry when present, otherwise falls back to the slug field.
@@ -243,17 +249,19 @@ func (es *ExtractionState) ProcessEntry(e transcript.Entry) {
 		es.processToolResult(b, ts)
 	}
 
-	// Record token usage from assistant messages for the speed widget.
-	// Only sample non-sidechain assistant messages that have usage data.
-	// Usage is a value type on the library Entry; absent usage decodes to the
-	// zero value, which the total > 0 guard filters exactly like the old nil
-	// check did.
+	// Record output tokens from assistant messages for the speed widget.
+	// Output only: input/cache tokens are processed, not generated, and would
+	// spike the rate. Usage is a value type on the library Entry; absent usage
+	// decodes to the zero value, which the OutputTokens > 0 guard filters.
+	// The transcript's message.id isn't modeled by the library, so identical
+	// usage vs the previous sample is the split-entry dedupe key.
 	if e.Message.Role == "assistant" {
-		total := e.Message.Usage.InputTokens + e.Message.Usage.OutputTokens
-		if total > 0 {
+		key := usageKeyOf(e.Message.Usage)
+		if e.Message.Usage.OutputTokens > 0 && key != es.lastSampleUsage {
+			es.lastSampleUsage = key
 			es.tokenSamples = append(es.tokenSamples, model.TokenSample{
 				Timestamp: ts,
-				Tokens:    total,
+				Tokens:    e.Message.Usage.OutputTokens,
 			})
 			// Prune oldest entries when the cap is exceeded.
 			if len(es.tokenSamples) > maxTokenSamples {
@@ -753,6 +761,27 @@ type snapshotTokenSample struct {
 	Tokens    int    `json:"n"`
 }
 
+// usageKey identifies one API response by its token counts, standing in for
+// the transcript's unmodeled message.id. Comparable so split entries that
+// repeat the same usage dedupe with ==; the zero value means "no sample yet"
+// (unreachable for a real sample, which requires OutputTokens > 0).
+type usageKey struct {
+	Input         int `json:"in"`
+	Output        int `json:"out"`
+	CacheRead     int `json:"cr"`
+	CacheCreation int `json:"cc"`
+}
+
+// usageKeyOf extracts the dedupe key from a library usage record.
+func usageKeyOf(u transcript.EntryUsage) usageKey {
+	return usageKey{
+		Input:         u.InputTokens,
+		Output:        u.OutputTokens,
+		CacheRead:     u.CacheReadInputTokens,
+		CacheCreation: u.CacheCreationInputTokens,
+	}
+}
+
 // extractionSnapshot is the serializable form of ExtractionState for persistence.
 // StartTime is intentionally excluded — it is only meaningful within a single
 // invocation for elapsed-time computation. Restored entries use DurationMs directly.
@@ -762,6 +791,7 @@ type extractionSnapshot struct {
 	Todos          []model.TodoItem      `json:"todos"`
 	SkillNames     []string              `json:"skill_names,omitempty"`
 	TokenSamples   []snapshotTokenSample `json:"token_samples,omitempty"`
+	LastSampleKey  usageKey              `json:"last_sample_usage"`
 	SessionName    string                `json:"session_name"`
 	ThinkingActive bool                  `json:"thinking_active"`
 	ThinkingCount  int                   `json:"thinking_count"`
@@ -848,6 +878,7 @@ func (es *ExtractionState) MarshalSnapshot() (json.RawMessage, error) {
 		Todos:          todos,
 		SkillNames:     skillNames,
 		TokenSamples:   tokenSamples,
+		LastSampleKey:  es.lastSampleUsage,
 		SessionName:    es.sessionName,
 		ThinkingActive: es.thinkingActive,
 		ThinkingCount:  es.thinkingCount,
@@ -946,6 +977,7 @@ func (es *ExtractionState) UnmarshalSnapshot(data json.RawMessage) error {
 		})
 	}
 
+	es.lastSampleUsage = snap.LastSampleKey
 	es.sessionName = snap.SessionName
 	es.thinkingActive = snap.ThinkingActive
 	es.thinkingCount = snap.ThinkingCount
@@ -981,4 +1013,7 @@ func truncateAgentDescription(s string) string {
 // Task instead of Other, so stored categories change.
 // v5: native CLI commands (e.g. /model, /clear) are excluded from skill
 // detection, so SkillNames no longer contains built-in command names.
-const SchemaVersion = 5
+// v6: token samples record output tokens only (input/cache excluded) and
+// dedupe split assistant entries that repeat one API response's usage, so
+// stored samples change meaning and count.
+const SchemaVersion = 6

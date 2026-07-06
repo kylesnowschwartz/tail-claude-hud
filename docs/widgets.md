@@ -14,7 +14,7 @@ From Claude Code's stdin JSON:
 | `tokens` | Token count and cache hit ratio | -- |
 | `duration` | Elapsed session time | -- |
 | `lines` | Lines added/removed (green +N, red -N) | -- |
-| `speed` | Rolling tokens/sec | `window_secs` (int, default: 30) |
+| `speed` | Output tokens/sec averaged over the window, with a ↑/↓ trend arrow when generation is ramping or slowing; hides when idle past the window | `window_secs` (int, default: 30; 0 = session average, no arrow) |
 | `messages` | Conversation turn count | -- |
 | `session` | Session name | -- |
 | `outputstyle` | Active output style name | -- |

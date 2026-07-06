@@ -41,7 +41,7 @@ const DefaultTemplate = `# tail-claude-hud configuration
 #   git         — full repository state (dirty, ahead/behind, file stats)
 #   directory   — current working directory path
 #   env         — environment variable counts (opt-in)
-#   speed       — rolling tokens/sec average (requires transcript)
+#   speed       — output tokens/sec with trend arrow (requires transcript)
 #   permission  — red alert when another Claude session is waiting for permission
 #   usage       — Anthropic rate-limit utilization (5-hour and 7-day windows)
 #   worktree    — current git worktree name and branch
@@ -121,10 +121,12 @@ warning = "yellow"
 # Colour when context usage passes the critical threshold.
 critical = "red"
 
-# Speed widget — shows rolling tokens/sec average.
+# Speed widget — shows output tokens/sec averaged over the rolling window,
+# with a ↑/↓ trend arrow when generation is ramping up or slowing down.
 [speed]
-# Rolling window in seconds. Only tokens from the last N seconds are counted.
-# Set to 0 to use the session average.
+# Rolling window in seconds. Output tokens from the last N seconds are averaged
+# over the whole window; the widget hides after N idle seconds.
+# Set to 0 to use the session average (no trend arrow).
 window_secs = 30
 
 # Thresholds — controls when widget colors shift from normal to warning to critical.

@@ -2464,11 +2464,68 @@ func TestProcessEntry_TokenSample_RecordedFromAssistantMessage(t *testing.T) {
 		t.Fatalf("expected 1 token sample, got %d", len(data.TokenSamples))
 	}
 	got := data.TokenSamples[0]
-	if got.Tokens != 1000 {
-		t.Errorf("expected Tokens=1000 (800+200), got %d", got.Tokens)
+	if got.Tokens != 200 {
+		t.Errorf("expected Tokens=200 (output only, input excluded), got %d", got.Tokens)
 	}
 	if got.Timestamp.IsZero() {
 		t.Errorf("expected non-zero timestamp in token sample")
+	}
+}
+
+// TestProcessEntry_TokenSample_InputOnlyUsageNotRecorded verifies that usage
+// with no output tokens produces no sample: input tokens are processed, not
+// generated, and must not register as generation speed.
+func TestProcessEntry_TokenSample_InputOnlyUsageNotRecorded(t *testing.T) {
+	es := NewExtractionState()
+	es.ProcessEntry(makeAssistantEntryWithUsage(9000, 0, time.Now()))
+
+	if data := es.ToTranscriptData(); len(data.TokenSamples) != 0 {
+		t.Errorf("expected no token samples for input-only usage, got %d", len(data.TokenSamples))
+	}
+}
+
+// TestProcessEntry_TokenSample_SplitEntriesDeduped verifies that assistant
+// entries repeating the same usage object (one API response written as one
+// entry per content block) are counted once, while a genuinely new usage
+// records a new sample.
+func TestProcessEntry_TokenSample_SplitEntriesDeduped(t *testing.T) {
+	es := NewExtractionState()
+	ts := time.Now()
+	for range 3 {
+		es.ProcessEntry(makeAssistantEntryWithUsage(122, 2456, ts))
+	}
+	es.ProcessEntry(makeAssistantEntryWithUsage(67, 307, ts.Add(2*time.Second)))
+
+	data := es.ToTranscriptData()
+	if len(data.TokenSamples) != 2 {
+		t.Fatalf("expected 2 token samples (3 split entries + 1 new response), got %d", len(data.TokenSamples))
+	}
+	if data.TokenSamples[0].Tokens != 2456 || data.TokenSamples[1].Tokens != 307 {
+		t.Errorf("expected samples [2456, 307], got [%d, %d]",
+			data.TokenSamples[0].Tokens, data.TokenSamples[1].Tokens)
+	}
+}
+
+// TestProcessEntry_TokenSample_DedupeKeySurvivesSnapshot verifies that the
+// split-entry dedupe key persists across a snapshot round-trip, since one API
+// response's entries can straddle two statusline ticks.
+func TestProcessEntry_TokenSample_DedupeKeySurvivesSnapshot(t *testing.T) {
+	es := NewExtractionState()
+	ts := time.Now()
+	es.ProcessEntry(makeAssistantEntryWithUsage(122, 2456, ts))
+
+	snap, err := es.MarshalSnapshot()
+	if err != nil {
+		t.Fatalf("MarshalSnapshot: %v", err)
+	}
+	restored := NewExtractionState()
+	if err := restored.UnmarshalSnapshot(snap); err != nil {
+		t.Fatalf("UnmarshalSnapshot: %v", err)
+	}
+	restored.ProcessEntry(makeAssistantEntryWithUsage(122, 2456, ts))
+
+	if data := restored.ToTranscriptData(); len(data.TokenSamples) != 1 {
+		t.Errorf("expected 1 token sample after cross-snapshot duplicate, got %d", len(data.TokenSamples))
 	}
 }
 
@@ -2512,15 +2569,15 @@ func TestProcessEntry_TokenSample_MultipleEntriesAccumulate(t *testing.T) {
 	if len(data.TokenSamples) != 3 {
 		t.Fatalf("expected 3 token samples, got %d", len(data.TokenSamples))
 	}
-	// Verify token totals.
-	if data.TokenSamples[0].Tokens != 600 {
-		t.Errorf("sample[0].Tokens = %d, want 600", data.TokenSamples[0].Tokens)
+	// Verify output-token counts.
+	if data.TokenSamples[0].Tokens != 100 {
+		t.Errorf("sample[0].Tokens = %d, want 100", data.TokenSamples[0].Tokens)
 	}
-	if data.TokenSamples[1].Tokens != 750 {
-		t.Errorf("sample[1].Tokens = %d, want 750", data.TokenSamples[1].Tokens)
+	if data.TokenSamples[1].Tokens != 150 {
+		t.Errorf("sample[1].Tokens = %d, want 150", data.TokenSamples[1].Tokens)
 	}
-	if data.TokenSamples[2].Tokens != 900 {
-		t.Errorf("sample[2].Tokens = %d, want 900", data.TokenSamples[2].Tokens)
+	if data.TokenSamples[2].Tokens != 200 {
+		t.Errorf("sample[2].Tokens = %d, want 200", data.TokenSamples[2].Tokens)
 	}
 }
 
@@ -2560,11 +2617,11 @@ func TestTokenSamples_PersistedThroughSnapshot(t *testing.T) {
 	if len(data.TokenSamples) != 2 {
 		t.Fatalf("expected 2 token samples after restore, got %d", len(data.TokenSamples))
 	}
-	if data.TokenSamples[0].Tokens != 500 {
-		t.Errorf("sample[0].Tokens = %d, want 500", data.TokenSamples[0].Tokens)
+	if data.TokenSamples[0].Tokens != 100 {
+		t.Errorf("sample[0].Tokens = %d, want 100", data.TokenSamples[0].Tokens)
 	}
-	if data.TokenSamples[1].Tokens != 800 {
-		t.Errorf("sample[1].Tokens = %d, want 800", data.TokenSamples[1].Tokens)
+	if data.TokenSamples[1].Tokens != 200 {
+		t.Errorf("sample[1].Tokens = %d, want 200", data.TokenSamples[1].Tokens)
 	}
 }
 
@@ -2721,7 +2778,7 @@ func TestLibrarySeam_SlugFallbackAndUsageTotals(t *testing.T) {
 	if data.SessionName != "branchy-slug" {
 		t.Errorf("SessionName = %q, want branchy-slug (slug fallback)", data.SessionName)
 	}
-	if len(data.TokenSamples) != 1 || data.TokenSamples[0].Tokens != 150 {
-		t.Fatalf("TokenSamples = %+v, want one 150-token sample (value-type Usage, total > 0)", data.TokenSamples)
+	if len(data.TokenSamples) != 1 || data.TokenSamples[0].Tokens != 50 {
+		t.Fatalf("TokenSamples = %+v, want one 50-token sample (value-type Usage, output tokens only)", data.TokenSamples)
 	}
 }
