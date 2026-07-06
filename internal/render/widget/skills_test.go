@@ -3,6 +3,7 @@ package widget
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/model"
 )
@@ -30,7 +31,7 @@ func TestSkillsWidget_NoSkills_ReturnsEmpty(t *testing.T) {
 func TestSkillsWidget_SingleSkill_DisplaysName(t *testing.T) {
 	ctx := &model.RenderContext{
 		Transcript: &model.TranscriptData{
-			SkillNames: []string{"commit"},
+			Skills: skillList("commit"),
 		},
 	}
 	cfg := defaultCfg()
@@ -48,7 +49,7 @@ func TestSkillsWidget_SingleSkill_DisplaysName(t *testing.T) {
 func TestSkillsWidget_MultipleSkills_ShowsNewestPlusCount(t *testing.T) {
 	ctx := &model.RenderContext{
 		Transcript: &model.TranscriptData{
-			SkillNames: []string{"commit", "review-pr", "lint"},
+			Skills: skillList("commit", "review-pr", "lint"),
 		},
 	}
 	cfg := defaultCfg()
@@ -68,7 +69,7 @@ func TestSkillsWidget_DuplicateSkills_DeduplicatesBeforeCounting(t *testing.T) {
 	// "commit" appears twice; after dedup there are 2 unique skills.
 	ctx := &model.RenderContext{
 		Transcript: &model.TranscriptData{
-			SkillNames: []string{"commit", "lint", "commit"},
+			Skills: skillList("commit", "lint", "commit"),
 		},
 	}
 	cfg := defaultCfg()
@@ -87,7 +88,7 @@ func TestSkillsWidget_DuplicateSkills_DeduplicatesBeforeCounting(t *testing.T) {
 func TestSkillsWidget_NamespacedSkill_StripsPrefix(t *testing.T) {
 	ctx := &model.RenderContext{
 		Transcript: &model.TranscriptData{
-			SkillNames: []string{"sc-skills:effective-go"},
+			Skills: skillList("sc-skills:effective-go"),
 		},
 	}
 	cfg := defaultCfg()
@@ -114,5 +115,65 @@ func TestShortSkillName(t *testing.T) {
 		if got := shortSkillName(tt.input); got != tt.want {
 			t.Errorf("shortSkillName(%q) = %q, want %q", tt.input, got, tt.want)
 		}
+	}
+}
+
+// skillList builds fresh (now-stamped) invocations from bare names, letting
+// the pre-timestamp assertions above stay written against name lists.
+func skillList(names ...string) []model.SkillInvocation {
+	skills := make([]model.SkillInvocation, 0, len(names))
+	for _, n := range names {
+		skills = append(skills, model.SkillInvocation{Name: n, Timestamp: time.Now()})
+	}
+	return skills
+}
+
+// TestSkillsWidget_MaxAge_HidesStaleInvocations pins the recency fade: with
+// max_age_mins set, invocations older than the cutoff are hidden, and the
+// widget goes empty once every skill is stale (the session log stays intact
+// upstream — this is display-only filtering).
+func TestSkillsWidget_MaxAge_HidesStaleInvocations(t *testing.T) {
+	now := time.Now()
+	ctx := &model.RenderContext{
+		Transcript: &model.TranscriptData{
+			Skills: []model.SkillInvocation{
+				{Name: "plugin-dev", Timestamp: now.Add(-2 * time.Hour)},
+				{Name: "commit", Timestamp: now.Add(-3 * time.Minute)},
+			},
+		},
+	}
+	cfg := defaultCfg()
+	cfg.Skills.MaxAgeMins = 15
+
+	got := Skills(ctx, cfg)
+	if !strings.Contains(got.PlainText, "commit") {
+		t.Errorf("expected fresh skill 'commit' in output, got %q", got.PlainText)
+	}
+	if strings.Contains(got.PlainText, "plugin-dev") || strings.Contains(got.PlainText, "more") {
+		t.Errorf("stale skill leaked into output: %q", got.PlainText)
+	}
+
+	// All stale → widget hides entirely.
+	ctx.Transcript.Skills = ctx.Transcript.Skills[:1]
+	if got := Skills(ctx, cfg); !got.IsEmpty() {
+		t.Errorf("expected empty when all skills are stale, got %q", got.PlainText)
+	}
+}
+
+// TestSkillsWidget_MaxAgeZero_ShowsFullSessionLog pins the default: 0 keeps
+// every invocation visible regardless of age.
+func TestSkillsWidget_MaxAgeZero_ShowsFullSessionLog(t *testing.T) {
+	ctx := &model.RenderContext{
+		Transcript: &model.TranscriptData{
+			Skills: []model.SkillInvocation{
+				{Name: "plugin-dev", Timestamp: time.Now().Add(-6 * time.Hour)},
+			},
+		},
+	}
+	cfg := defaultCfg()
+	cfg.Skills.MaxAgeMins = 0
+
+	if got := Skills(ctx, cfg); !strings.Contains(got.PlainText, "plugin-dev") {
+		t.Errorf("expected old skill shown with max_age_mins=0, got %q", got.PlainText)
 	}
 }

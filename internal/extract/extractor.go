@@ -172,11 +172,11 @@ type ExtractionState struct {
 	// messages, not conversational turns).
 	messageCount int
 
-	// skillNames is the ordered list of skill names invoked in the session
+	// skills is the ordered list of skill invocations in the session
 	// (newest last), capped at maxSkills. Detected from two sources:
 	// user-typed slash commands (<command-name> tags) and assistant-side
 	// Skill tool_use blocks.
-	skillNames []string
+	skills []model.SkillInvocation
 }
 
 // NewExtractionState returns an initialised, empty ExtractionState.
@@ -230,15 +230,15 @@ func (es *ExtractionState) ProcessEntry(e transcript.Entry) {
 			es.messageCount++
 		}
 	}
+	if ts.IsZero() {
+		ts = time.Now()
+	}
+
 	// Detect skill invocations from user messages. Claude Code records
 	// slash-command usage as user messages with the skill name wrapped in
 	// <command-name>/skill-name</command-name> XML tags in the raw content string.
 	if role == "user" {
-		es.extractSkillFromUserMessage(e)
-	}
-
-	if ts.IsZero() {
-		ts = time.Now()
+		es.extractSkillFromUserMessage(e, ts)
 	}
 
 	for _, b := range blocks.ToolUse {
@@ -316,7 +316,7 @@ func (es *ExtractionState) processToolUse(b transcript.ToolUseBlock, ts time.Tim
 // extractSkillFromUserMessage parses a <command-name>/skill</command-name> tag
 // from a user message's raw content string. Claude Code records slash-command
 // invocations this way rather than as tool_use blocks.
-func (es *ExtractionState) extractSkillFromUserMessage(e transcript.Entry) {
+func (es *ExtractionState) extractSkillFromUserMessage(e transcript.Entry, ts time.Time) {
 	// User message content is either a JSON string or an array. Skill
 	// invocations arrive as plain strings, so skip arrays early.
 	if len(e.Message.Content) == 0 || e.Message.Content[0] == '[' {
@@ -357,7 +357,7 @@ func (es *ExtractionState) extractSkillFromUserMessage(e transcript.Entry) {
 		return
 	}
 
-	es.recordSkill(name)
+	es.recordSkill(name, ts)
 }
 
 // handleSkillToolUse records a skill invocation from an assistant-side Skill
@@ -369,16 +369,16 @@ func (es *ExtractionState) handleSkillToolUse(b transcript.ToolUseBlock, ts time
 	}
 	_ = json.Unmarshal(b.Input, &input)
 	if input.Skill != "" {
-		es.recordSkill(input.Skill)
+		es.recordSkill(input.Skill, ts)
 	}
 	es.handleRegularToolUse(b, ts)
 }
 
-// recordSkill appends a skill name and enforces the cap.
-func (es *ExtractionState) recordSkill(name string) {
-	es.skillNames = append(es.skillNames, name)
-	if len(es.skillNames) > maxSkills {
-		es.skillNames = es.skillNames[1:]
+// recordSkill appends a skill invocation and enforces the cap.
+func (es *ExtractionState) recordSkill(name string, ts time.Time) {
+	es.skills = append(es.skills, model.SkillInvocation{Name: name, Timestamp: ts})
+	if len(es.skills) > maxSkills {
+		es.skills = es.skills[1:]
 	}
 }
 
@@ -646,8 +646,8 @@ func (es *ExtractionState) ToTranscriptData() *model.TranscriptData {
 	todos := make([]model.TodoItem, len(es.todos))
 	copy(todos, es.todos)
 
-	skillNames := make([]string, len(es.skillNames))
-	copy(skillNames, es.skillNames)
+	skills := make([]model.SkillInvocation, len(es.skills))
+	copy(skills, es.skills)
 
 	tokenSamples := make([]model.TokenSample, len(es.tokenSamples))
 	copy(tokenSamples, es.tokenSamples)
@@ -657,7 +657,7 @@ func (es *ExtractionState) ToTranscriptData() *model.TranscriptData {
 		Tools:          tools,
 		Agents:         agents,
 		Todos:          todos,
-		SkillNames:     skillNames,
+		Skills:         skills,
 		TokenSamples:   tokenSamples,
 		ThinkingActive: es.thinkingActive,
 		ThinkingCount:  es.thinkingCount,
@@ -761,6 +761,12 @@ type snapshotTokenSample struct {
 	Tokens    int    `json:"n"`
 }
 
+// snapshotSkill is the serializable form of model.SkillInvocation.
+type snapshotSkill struct {
+	Name      string `json:"name"`
+	Timestamp string `json:"ts"` // RFC3339Nano
+}
+
 // usageKey identifies one API response by its token counts, standing in for
 // the transcript's unmodeled message.id. Comparable so split entries that
 // repeat the same usage dedupe with ==; the zero value means "no sample yet"
@@ -789,7 +795,7 @@ type extractionSnapshot struct {
 	Tools          []snapshotTool        `json:"tools"`
 	Agents         []snapshotAgent       `json:"agents"`
 	Todos          []model.TodoItem      `json:"todos"`
-	SkillNames     []string              `json:"skill_names,omitempty"`
+	Skills         []snapshotSkill       `json:"skills,omitempty"`
 	TokenSamples   []snapshotTokenSample `json:"token_samples,omitempty"`
 	LastSampleKey  usageKey              `json:"last_sample_usage"`
 	SessionName    string                `json:"session_name"`
@@ -861,8 +867,13 @@ func (es *ExtractionState) MarshalSnapshot() (json.RawMessage, error) {
 	todos := make([]model.TodoItem, len(es.todos))
 	copy(todos, es.todos)
 
-	skillNames := make([]string, len(es.skillNames))
-	copy(skillNames, es.skillNames)
+	skills := make([]snapshotSkill, 0, len(es.skills))
+	for _, s := range es.skills {
+		skills = append(skills, snapshotSkill{
+			Name:      s.Name,
+			Timestamp: s.Timestamp.Format(time.RFC3339Nano),
+		})
+	}
 
 	tokenSamples := make([]snapshotTokenSample, 0, len(es.tokenSamples))
 	for _, s := range es.tokenSamples {
@@ -876,7 +887,7 @@ func (es *ExtractionState) MarshalSnapshot() (json.RawMessage, error) {
 		Tools:          tools,
 		Agents:         agents,
 		Todos:          todos,
-		SkillNames:     skillNames,
+		Skills:         skills,
 		TokenSamples:   tokenSamples,
 		LastSampleKey:  es.lastSampleUsage,
 		SessionName:    es.sessionName,
@@ -958,8 +969,16 @@ func (es *ExtractionState) UnmarshalSnapshot(data json.RawMessage) error {
 		}
 	}
 
-	if snap.SkillNames != nil {
-		es.skillNames = snap.SkillNames
+	es.skills = make([]model.SkillInvocation, 0, len(snap.Skills))
+	for _, s := range snap.Skills {
+		parsed, err := time.Parse(time.RFC3339Nano, s.Timestamp)
+		if err != nil {
+			parsed = time.Time{} // keep the name; a zero time reads as stale when fading is on
+		}
+		es.skills = append(es.skills, model.SkillInvocation{
+			Name:      s.Name,
+			Timestamp: parsed,
+		})
 	}
 
 	es.tokenSamples = make([]model.TokenSample, 0, len(snap.TokenSamples))
@@ -1015,5 +1034,6 @@ func truncateAgentDescription(s string) string {
 // detection, so SkillNames no longer contains built-in command names.
 // v6: token samples record output tokens only (input/cache excluded) and
 // dedupe split assistant entries that repeat one API response's usage, so
-// stored samples change meaning and count.
+// stored samples change meaning and count. Skill invocations gain
+// timestamps (skill_names []string → skills []{name, ts}).
 const SchemaVersion = 6

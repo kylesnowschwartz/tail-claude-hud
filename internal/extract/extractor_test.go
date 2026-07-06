@@ -10,6 +10,7 @@ import (
 
 	"github.com/kylesnowschwartz/agent-ouija/claude/transcript"
 	"github.com/kylesnowschwartz/agent-ouija/offsetstore"
+	"github.com/kylesnowschwartz/tail-claude-hud/internal/model"
 )
 
 // makeToolUseEntry builds a minimal transcript.Entry containing a single tool_use block.
@@ -2261,8 +2262,8 @@ func TestSkills_NoSkills_EmptySlice(t *testing.T) {
 	es.ProcessEntry(makeToolUseEntry("id-1", "Read", map[string]interface{}{"file_path": "main.go"}))
 
 	data := es.ToTranscriptData()
-	if len(data.SkillNames) != 0 {
-		t.Errorf("expected no skill names, got %v", data.SkillNames)
+	if len(skillNames(data)) != 0 {
+		t.Errorf("expected no skill names, got %v", skillNames(data))
 	}
 }
 
@@ -2271,11 +2272,11 @@ func TestSkills_SingleSkill_RecordsName(t *testing.T) {
 	es.ProcessEntry(makeSkillEntry("commit"))
 
 	data := es.ToTranscriptData()
-	if len(data.SkillNames) != 1 {
-		t.Fatalf("expected 1 skill name, got %d", len(data.SkillNames))
+	if len(skillNames(data)) != 1 {
+		t.Fatalf("expected 1 skill name, got %d", len(skillNames(data)))
 	}
-	if data.SkillNames[0] != "commit" {
-		t.Errorf("expected skill name 'commit', got %q", data.SkillNames[0])
+	if skillNames(data)[0] != "commit" {
+		t.Errorf("expected skill name 'commit', got %q", skillNames(data)[0])
 	}
 }
 
@@ -2288,11 +2289,11 @@ func TestSkills_AssistantSkillToolUse_RecordsName(t *testing.T) {
 	}))
 
 	data := es.ToTranscriptData()
-	if len(data.SkillNames) != 1 {
-		t.Fatalf("expected 1 skill name, got %d", len(data.SkillNames))
+	if len(skillNames(data)) != 1 {
+		t.Fatalf("expected 1 skill name, got %d", len(skillNames(data)))
 	}
-	if data.SkillNames[0] != "simplify" {
-		t.Errorf("expected skill name 'simplify', got %q", data.SkillNames[0])
+	if skillNames(data)[0] != "simplify" {
+		t.Errorf("expected skill name 'simplify', got %q", skillNames(data)[0])
 	}
 }
 
@@ -2305,11 +2306,11 @@ func TestSkills_BothPaths_RecordsBoth(t *testing.T) {
 	}))
 
 	data := es.ToTranscriptData()
-	if len(data.SkillNames) != 2 {
-		t.Fatalf("expected 2 skill names, got %d", len(data.SkillNames))
+	if len(skillNames(data)) != 2 {
+		t.Fatalf("expected 2 skill names, got %d", len(skillNames(data)))
 	}
-	if data.SkillNames[0] != "hud" || data.SkillNames[1] != "simplify" {
-		t.Errorf("unexpected skill names: %v", data.SkillNames)
+	if skillNames(data)[0] != "hud" || skillNames(data)[1] != "simplify" {
+		t.Errorf("unexpected skill names: %v", skillNames(data))
 	}
 }
 
@@ -2321,12 +2322,12 @@ func TestSkills_MultipleSkills_RecordsAllInOrder(t *testing.T) {
 	}
 
 	data := es.ToTranscriptData()
-	if len(data.SkillNames) != 3 {
-		t.Fatalf("expected 3 skill names, got %d", len(data.SkillNames))
+	if len(skillNames(data)) != 3 {
+		t.Fatalf("expected 3 skill names, got %d", len(skillNames(data)))
 	}
 	for i, want := range skills {
-		if data.SkillNames[i] != want {
-			t.Errorf("SkillNames[%d]: expected %q, got %q", i, want, data.SkillNames[i])
+		if skillNames(data)[i] != want {
+			t.Errorf("SkillNames[%d]: expected %q, got %q", i, want, skillNames(data)[i])
 		}
 	}
 }
@@ -2341,11 +2342,11 @@ func TestSkills_NativeCommand_NotRecorded(t *testing.T) {
 	es.ProcessEntry(makeSkillEntry("commit"))
 
 	data := es.ToTranscriptData()
-	if len(data.SkillNames) != 1 {
-		t.Fatalf("expected 1 skill name (native commands filtered), got %v", data.SkillNames)
+	if len(skillNames(data)) != 1 {
+		t.Fatalf("expected 1 skill name (native commands filtered), got %v", skillNames(data))
 	}
-	if data.SkillNames[0] != "commit" {
-		t.Errorf("expected 'commit', got %q", data.SkillNames[0])
+	if skillNames(data)[0] != "commit" {
+		t.Errorf("expected 'commit', got %q", skillNames(data)[0])
 	}
 }
 
@@ -2356,11 +2357,11 @@ func TestSkills_NamespacedSkill_FullNamePreserved(t *testing.T) {
 	es.ProcessEntry(makeSkillEntry("my-plugin:deploy"))
 
 	data := es.ToTranscriptData()
-	if len(data.SkillNames) != 1 {
-		t.Fatalf("expected 1 skill name, got %d", len(data.SkillNames))
+	if len(skillNames(data)) != 1 {
+		t.Fatalf("expected 1 skill name, got %d", len(skillNames(data)))
 	}
-	if data.SkillNames[0] != "my-plugin:deploy" {
-		t.Errorf("expected 'my-plugin:deploy', got %q", data.SkillNames[0])
+	if skillNames(data)[0] != "my-plugin:deploy" {
+		t.Errorf("expected 'my-plugin:deploy', got %q", skillNames(data)[0])
 	}
 }
 
@@ -2371,15 +2372,15 @@ func TestSkills_Cap_KeepsLast20(t *testing.T) {
 	}
 
 	data := es.ToTranscriptData()
-	if len(data.SkillNames) != 20 {
-		t.Fatalf("expected 20 skill names (cap), got %d", len(data.SkillNames))
+	if len(skillNames(data)) != 20 {
+		t.Fatalf("expected 20 skill names (cap), got %d", len(skillNames(data)))
 	}
 	// Should contain the last 20: skill-5 through skill-24.
-	if data.SkillNames[0] != "skill-5" {
-		t.Errorf("expected oldest kept skill to be 'skill-5', got %q", data.SkillNames[0])
+	if skillNames(data)[0] != "skill-5" {
+		t.Errorf("expected oldest kept skill to be 'skill-5', got %q", skillNames(data)[0])
 	}
-	if data.SkillNames[19] != "skill-24" {
-		t.Errorf("expected newest skill to be 'skill-24', got %q", data.SkillNames[19])
+	if skillNames(data)[19] != "skill-24" {
+		t.Errorf("expected newest skill to be 'skill-24', got %q", skillNames(data)[19])
 	}
 }
 
@@ -2389,8 +2390,8 @@ func TestSkills_NoCommandNameTag_Ignored(t *testing.T) {
 	es.ProcessEntry(makeTextEntry("user", "just a normal message"))
 
 	data := es.ToTranscriptData()
-	if len(data.SkillNames) != 0 {
-		t.Errorf("expected no skill names, got %v", data.SkillNames)
+	if len(skillNames(data)) != 0 {
+		t.Errorf("expected no skill names, got %v", skillNames(data))
 	}
 }
 
@@ -2408,8 +2409,8 @@ func TestSkills_EmbeddedCommandNameTag_Ignored(t *testing.T) {
 	es.ProcessEntry(e)
 
 	data := es.ToTranscriptData()
-	if len(data.SkillNames) != 0 {
-		t.Errorf("expected no skill names from embedded tag, got %v", data.SkillNames)
+	if len(skillNames(data)) != 0 {
+		t.Errorf("expected no skill names from embedded tag, got %v", skillNames(data))
 	}
 }
 
@@ -2429,11 +2430,11 @@ func TestSkills_SnapshotRoundTrip_PreservesSkillNames(t *testing.T) {
 	}
 
 	data := es2.ToTranscriptData()
-	if len(data.SkillNames) != 2 {
-		t.Fatalf("expected 2 skill names after round-trip, got %d", len(data.SkillNames))
+	if len(skillNames(data)) != 2 {
+		t.Fatalf("expected 2 skill names after round-trip, got %d", len(skillNames(data)))
 	}
-	if data.SkillNames[0] != "commit" || data.SkillNames[1] != "review-pr" {
-		t.Errorf("unexpected skill names after round-trip: %v", data.SkillNames)
+	if skillNames(data)[0] != "commit" || skillNames(data)[1] != "review-pr" {
+		t.Errorf("unexpected skill names after round-trip: %v", skillNames(data))
 	}
 }
 
@@ -2781,4 +2782,14 @@ func TestLibrarySeam_SlugFallbackAndUsageTotals(t *testing.T) {
 	if len(data.TokenSamples) != 1 || data.TokenSamples[0].Tokens != 50 {
 		t.Fatalf("TokenSamples = %+v, want one 50-token sample (value-type Usage, output tokens only)", data.TokenSamples)
 	}
+}
+
+// skillNames projects the invocation list to bare names, letting the
+// pre-timestamp assertions above stay written against []string.
+func skillNames(data *model.TranscriptData) []string {
+	names := make([]string, 0, len(data.Skills))
+	for _, s := range data.Skills {
+		names = append(names, s.Name)
+	}
+	return names
 }

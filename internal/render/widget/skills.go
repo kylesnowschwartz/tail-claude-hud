@@ -3,6 +3,7 @@ package widget
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/config"
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/model"
@@ -13,18 +14,37 @@ import (
 // (e.g. "sc-skills:") are stripped for display since the skill name alone
 // is what matters on the status line.
 //
+// When cfg.Skills.MaxAgeMins > 0, invocations older than that are hidden so
+// the widget reads as recent activity rather than a whole-session log; the
+// line disappears entirely once every skill has gone stale. 0 shows all.
+//
 // Returns an empty WidgetResult when ctx.Transcript is nil or no skills
-// have been invoked.
+// remain after the age filter.
 func Skills(ctx *model.RenderContext, cfg *config.Config) WidgetResult {
-	if ctx.Transcript == nil || len(ctx.Transcript.SkillNames) == 0 {
+	if ctx.Transcript == nil || len(ctx.Transcript.Skills) == 0 {
+		return WidgetResult{}
+	}
+
+	skills := ctx.Transcript.Skills
+	if cfg.Skills.MaxAgeMins > 0 {
+		cutoff := time.Now().Add(-time.Duration(cfg.Skills.MaxAgeMins) * time.Minute)
+		fresh := make([]model.SkillInvocation, 0, len(skills))
+		for _, s := range skills {
+			if !s.Timestamp.Before(cutoff) {
+				fresh = append(fresh, s)
+			}
+		}
+		skills = fresh
+	}
+	if len(skills) == 0 {
 		return WidgetResult{}
 	}
 
 	// Deduplicate while preserving most-recent-first order.
-	seen := make(map[string]bool, len(ctx.Transcript.SkillNames))
-	unique := make([]string, 0, len(ctx.Transcript.SkillNames))
-	for i := len(ctx.Transcript.SkillNames) - 1; i >= 0; i-- {
-		name := ctx.Transcript.SkillNames[i]
+	seen := make(map[string]bool, len(skills))
+	unique := make([]string, 0, len(skills))
+	for i := len(skills) - 1; i >= 0; i-- {
+		name := skills[i].Name
 		if !seen[name] {
 			seen[name] = true
 			unique = append(unique, name)

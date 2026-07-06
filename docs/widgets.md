@@ -29,7 +29,7 @@ Parsed incrementally from the JSONL transcript:
 | `agents` | Sub-agents with elapsed time (running) or duration (completed) | -- |
 | `todos` | Task completion count, color-coded | -- |
 | `thinking` | Thinking block indicator and count | -- |
-| `skills` | Skill names invoked during the session | -- |
+| `skills` | Skill names invoked during the session, newest first | `max_age_mins` (int, default: 0 = show all; >0 hides invocations older than N minutes) |
 
 ## Environment
 

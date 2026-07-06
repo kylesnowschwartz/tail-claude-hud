@@ -46,6 +46,11 @@ type Config struct {
 		FileStats   bool `toml:"file_stats"`
 		LineStats   bool `toml:"line_stats"`
 	} `toml:"git"`
+	Skills struct {
+		// MaxAgeMins hides skill invocations older than this many minutes.
+		// 0 keeps the full session log visible.
+		MaxAgeMins int `toml:"max_age_mins"`
+	} `toml:"skills"`
 	Style struct {
 		Separator  string `toml:"separator"`
 		Icons      string `toml:"icons"`
@@ -172,6 +177,8 @@ func defaults() *Config {
 	cfg.Git.AheadBehind = true
 	cfg.Git.FileStats = false
 	cfg.Git.LineStats = false
+
+	cfg.Skills.MaxAgeMins = 0
 
 	cfg.Permission.ShowProject = true
 

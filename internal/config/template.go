@@ -123,6 +123,12 @@ warning = "yellow"
 # Colour when context usage passes the critical threshold.
 critical = "red"
 
+# Skills widget — shows skills invoked this session, newest first.
+[skills]
+# Hide skill invocations older than N minutes (the line disappears when all
+# are stale). 0 shows the full session log.
+max_age_mins = 0
+
 # Speed widget — shows output tokens/sec averaged over the rolling window,
 # with a ↑/↓ trend arrow when generation is ramping up or slowing down.
 [speed]
