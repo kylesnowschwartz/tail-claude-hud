@@ -69,7 +69,6 @@ type usageSegment struct {
 // ---------------------------------------------------------------------------
 
 func usageWindow(label string, pct int, resetAt time.Time, cfg *config.Config) usageSegment {
-	_ = label // available for re-enabling usageLabel
 	if pct < 0 {
 		pct = 0
 	}
@@ -79,6 +78,13 @@ func usageWindow(label string, pct int, resetAt time.Time, cfg *config.Config) u
 	var styled, plain strings.Builder
 
 	append := func(s, p string) { appendPair(&styled, &plain, s, p) }
+
+	if cfg.Usage.Display == "bar" {
+		// A bar alone can't tell 5h from 7d apart, so the label leads.
+		append(usageLabel(label))
+		append(usageBar(pct, cfg.Usage.BarWidth, pctStyle))
+		return usageSegment{text: styled.String(), plainText: plain.String(), fgColor: fg}
+	}
 
 	// 1. Circle-fill icon (nerdfont) or percentage fallback
 	if cfg.Style.Icons == "nerdfont" {
@@ -111,6 +117,13 @@ func usageIcon(pct int, style lipgloss.Style) (string, string) {
 // usagePercent renders " NN%", colored by severity.
 func usagePercent(pct int, style lipgloss.Style) (string, string) {
 	s := fmt.Sprintf(" %d%%", pct)
+	return style.Render(s), s
+}
+
+// usageBar renders " " plus a block-character progress bar, colored by
+// severity. Reuses renderBar (context.go) rather than duplicating it.
+func usageBar(pct, width int, style lipgloss.Style) (string, string) {
+	s := " " + renderBar(pct, width)
 	return style.Render(s), s
 }
 

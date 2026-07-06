@@ -98,6 +98,12 @@ type Config struct {
 		SevenDayThreshold int `toml:"seven_day_threshold"`
 		// CacheTTLSeconds overrides the success cache TTL. Default: 180.
 		CacheTTLSeconds int `toml:"cache_ttl_seconds"`
+		// Display selects "text" (icon/percent + reset countdown, default) or
+		// "bar" (block-character bar, labeled "5h"/"7d" since a bar alone can't
+		// distinguish windows).
+		Display string `toml:"display"`
+		// BarWidth is the bar's cell count when Display is "bar". Default: 8.
+		BarWidth int `toml:"bar_width"`
 	} `toml:"usage"`
 
 	// Worktree controls the worktree widget.
@@ -172,6 +178,8 @@ func defaults() *Config {
 	cfg.Usage.FiveHourThreshold = 0
 	cfg.Usage.SevenDayThreshold = 80
 	cfg.Usage.CacheTTLSeconds = 180
+	cfg.Usage.Display = "text"
+	cfg.Usage.BarWidth = 8
 
 	cfg.Style.Separator = " | "
 	cfg.Style.Icons = "nerdfont"

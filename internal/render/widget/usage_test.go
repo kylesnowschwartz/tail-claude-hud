@@ -38,6 +38,41 @@ func TestUsage_LimitReached(t *testing.T) {
 	}
 }
 
+func TestUsage_BarModeShowsLabeledBars(t *testing.T) {
+	ctx := &model.RenderContext{
+		Usage: &model.UsageInfo{
+			FiveHourPercent: 62,
+			SevenDayPercent: 85,
+		},
+	}
+	cfg := defaultCfg()
+	cfg.Usage.Display = "bar"
+	cfg.Usage.BarWidth = 8
+
+	got := Usage(ctx, cfg)
+	if got.IsEmpty() {
+		t.Fatal("expected non-empty in bar mode")
+	}
+	// Labels distinguish the windows since a bar alone cannot.
+	if !strings.Contains(got.PlainText, "5h") || !strings.Contains(got.PlainText, "7d") {
+		t.Errorf("expected 5h and 7d labels, got %q", got.PlainText)
+	}
+	if !strings.Contains(got.PlainText, "█") {
+		t.Errorf("expected bar characters, got %q", got.PlainText)
+	}
+	// 62% of 8 cells = 4 filled; 85% = 6 filled.
+	if !strings.Contains(got.PlainText, "████░░░░") {
+		t.Errorf("expected 4/8 bar for 62%%, got %q", got.PlainText)
+	}
+	if !strings.Contains(got.PlainText, "██████░░") {
+		t.Errorf("expected 6/8 bar for 85%%, got %q", got.PlainText)
+	}
+	// Reset countdown is a text-mode element.
+	if strings.Contains(got.PlainText, "(") {
+		t.Errorf("expected no reset countdown in bar mode, got %q", got.PlainText)
+	}
+}
+
 func TestUsage_BelowThresholdHides(t *testing.T) {
 	ctx := &model.RenderContext{
 		Usage: &model.UsageInfo{
