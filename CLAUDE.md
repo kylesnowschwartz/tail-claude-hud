@@ -42,7 +42,7 @@ stdin → gather → render → stdout
 
 3. **render** (`internal/render`): Walks configured lines, calls each widget's `RenderFunc` from the registry, joins non-empty results with the separator, and ANSI-truncates to terminal width.
 
-4. **widget** (`internal/render/widget`): 21 registered widgets (model, context, cost, directory, git, project, env, duration, tools, agents, todos, session, thinking, tokens, lines, outputstyle, messages, skills, speed, permission, usage). Each is a pure function: `(RenderContext, Config) -> WidgetResult`. Returns empty when it has nothing to show.
+4. **widget** (`internal/render/widget`): 25 registered widgets (model, context, cost, directory, git, project, env, duration, tools, agents, todos, session, thinking, tokens, lines, outputstyle, messages, skills, speed, permission, usage, worktree, effort, peers, exec). Each is a pure function: `(RenderContext, Config) -> WidgetResult`. Returns empty when it has nothing to show.
 
 ## Key Design Decisions
 
@@ -73,6 +73,8 @@ TOML at `~/.config/tail-claude-hud/config.toml` (or legacy `~/.claude/plugins/ta
 `~/.config/tail-claude-hud/theme-active.toml` can supply top-level widget tables with `fg` and `bg` keys. These colors override the built-in theme and `[theme.overrides]`; missing, unreadable, or malformed files are ignored so rendering stays fail-open.
 
 Layout is configured as `[[line]]` arrays with widget name lists. Default is three lines: summary, agents, tools.
+
+The `exec` widget runs a user command from `[exec] command` with the raw stdin JSON piped to the child's stdin and renders its first stdout line as a segment. **Use an absolute binary path in `command`**: the statusline process runs with the login PATH, not your shell's — direnv/repo-local `bin` entries (e.g. bumper-lanes' plugin `bin/`) are absent, and a bare command name fails open to an empty widget with no error.
 
 ## Stdin JSON Contract
 

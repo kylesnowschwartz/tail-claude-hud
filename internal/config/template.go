@@ -219,7 +219,10 @@ session_title = false
 # Exec widget — renders the first stdout line of a user command as a segment.
 # The command receives the raw statusline stdin JSON on its own stdin, so
 # stdin-aware gauges plug in directly, e.g.:
-#   command = "bumper-lanes status --widget=indicator"
+#   command = "/abs/path/to/bumper-lanes status --widget=indicator"
+# Use an absolute binary path: the statusline process runs with the login
+# PATH, so direnv/repo-local bin entries are absent and a bare command name
+# fails open to an empty widget.
 # ANSI SGR color codes are preserved; other escape sequences are stripped.
 # Errors, timeouts, or empty output hide the widget. Add "exec" to a [[line]]
 # widgets list to activate it.
