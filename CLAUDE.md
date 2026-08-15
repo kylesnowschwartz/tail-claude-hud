@@ -70,6 +70,8 @@ Subagent discovery on the tick path uses the library's metadata-only `agents.Sca
 
 TOML at `~/.config/tail-claude-hud/config.toml` (or legacy `~/.claude/plugins/tail-claude-hud/config.toml`). Generate defaults with `tail-claude-hud --init`.
 
+`~/.config/tail-claude-hud/theme-active.toml` can supply top-level widget tables with `fg` and `bg` keys. These colors override the built-in theme and `[theme.overrides]`; missing, unreadable, or malformed files are ignored so rendering stays fail-open.
+
 Layout is configured as `[[line]]` arrays with widget name lists. Default is three lines: summary, agents, tools.
 
 ## Stdin JSON Contract

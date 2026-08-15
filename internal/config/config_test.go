@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/kylesnowschwartz/tail-claude-hud/internal/theme"
 )
 
 // writeConfig creates a config.toml file at the given directory path and
@@ -392,6 +394,69 @@ bg = "#0000ff"
 	nordGitBg := "#3b4252"
 	if cfg.ResolvedTheme["git"].Bg != nordGitBg {
 		t.Errorf("non-overridden git Bg: got %q, want %q", cfg.ResolvedTheme["git"].Bg, nordGitBg)
+	}
+}
+
+func TestActiveThemeFile(t *testing.T) {
+	tests := []struct {
+		name        string
+		activeTheme string
+		wantModel   theme.WidgetColors
+		wantGit     theme.WidgetColors
+	}{
+		{
+			name:      "file absent",
+			wantModel: theme.WidgetColors{Fg: "#config-fg", Bg: "#config-bg"},
+			wantGit:   theme.WidgetColors{Fg: "#a3be8c", Bg: "#3b4252"},
+		},
+		{
+			name: "valid file layers over config overrides",
+			activeTheme: `
+[model]
+fg = "#active-fg"
+bg = "#active-bg"
+
+[git]
+fg = "#active-git-fg"
+bg = "#active-git-bg"
+`,
+			wantModel: theme.WidgetColors{Fg: "#active-fg", Bg: "#active-bg"},
+			wantGit:   theme.WidgetColors{Fg: "#active-git-fg", Bg: "#active-git-bg"},
+		},
+		{
+			name:        "malformed file ignored",
+			activeTheme: `this is not valid toml ][[[`,
+			wantModel:   theme.WidgetColors{Fg: "#config-fg", Bg: "#config-bg"},
+			wantGit:     theme.WidgetColors{Fg: "#a3be8c", Bg: "#3b4252"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			configDir := t.TempDir()
+			writeConfig(t, configDir, `
+[style]
+theme = "nord"
+
+[theme.overrides.model]
+fg = "#config-fg"
+bg = "#config-bg"
+`)
+			if tt.activeTheme != "" {
+				path := filepath.Join(configDir, "theme-active.toml")
+				if err := os.WriteFile(path, []byte(tt.activeTheme), 0o644); err != nil {
+					t.Fatalf("write active theme: %v", err)
+				}
+			}
+
+			cfg := loadHud(configDir, "")
+			if got := cfg.ResolvedTheme["model"]; got != tt.wantModel {
+				t.Errorf("model colors: got %+v, want %+v", got, tt.wantModel)
+			}
+			if got := cfg.ResolvedTheme["git"]; got != tt.wantGit {
+				t.Errorf("git colors: got %+v, want %+v", got, tt.wantGit)
+			}
+		})
 	}
 }
 

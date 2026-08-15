@@ -138,9 +138,11 @@ type Config struct {
 	} `toml:"extra"`
 
 	// ResolvedTheme is the effective per-widget color map after merging the
-	// selected built-in theme with any custom [theme.overrides].
+	// selected built-in theme, custom [theme.overrides], and the active theme file.
 	// Populated by ResolveTheme() during LoadHud. Not read from TOML directly.
 	ResolvedTheme theme.Theme `toml:"-"`
+
+	activeThemePath string
 }
 
 // DefaultLines returns the canonical default widget layout. It is defined
@@ -208,35 +210,46 @@ func defaults() *Config {
 	return cfg
 }
 
-// ResolveTheme populates cfg.ResolvedTheme by loading the named built-in theme
-// and merging any custom [theme.overrides] on top of it. Called after the TOML
-// decode so that both built-in selection and user overrides are captured.
+// ResolveTheme populates cfg.ResolvedTheme by loading the named built-in theme,
+// merging any custom [theme.overrides], then layering theme-active.toml on top.
+// Called after the TOML decode so that built-in selection and overrides are captured.
 // Also used by the preset package to trigger a palette refresh after mutating
 // Style fields.
 func ResolveTheme(cfg *Config) {
-	base := theme.Load(cfg.Style.Theme)
+	resolved := theme.Load(cfg.Style.Theme)
 	if len(cfg.Theme.Overrides) > 0 {
-		cfg.ResolvedTheme = theme.MergeOverrides(base, cfg.Theme.Overrides)
-	} else {
-		cfg.ResolvedTheme = base
+		resolved = theme.MergeOverrides(resolved, cfg.Theme.Overrides)
 	}
+
+	if overrides := activeThemeOverrides(cfg.activeThemePath); len(overrides) > 0 {
+		resolved = theme.MergeOverrides(resolved, overrides)
+	}
+	cfg.ResolvedTheme = resolved
 }
 
-// configPath returns the first config file path that exists, checking XDG
-// location first, then the legacy ~/.claude/plugins path.
-// Returns empty string when neither path exists.
-func configPath() string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return ""
+// activeThemeOverrides loads the external theme map. All read and decode errors
+// are ignored deliberately: statusline rendering must fall back to the resolved
+// built-in theme and config overrides when theme-active.toml is unusable.
+func activeThemeOverrides(path string) map[string]theme.WidgetColors {
+	if path == "" {
+		return nil
 	}
 
-	candidates := []string{
-		filepath.Join(home, ".config", "tail-claude-hud", "config.toml"),
-		filepath.Join(home, ".claude", "plugins", "tail-claude-hud", "config.toml"),
+	var overrides map[string]theme.WidgetColors
+	if _, err := toml.DecodeFile(path, &overrides); err != nil {
+		return nil
 	}
+	return overrides
+}
 
-	for _, p := range candidates {
+// configPath returns the first config file path that exists, checking configDir
+// first, then legacyConfigDir. Returns empty string when neither path exists.
+func configPath(configDir, legacyConfigDir string) string {
+	for _, dir := range []string{configDir, legacyConfigDir} {
+		if dir == "" {
+			continue
+		}
+		p := filepath.Join(dir, "config.toml")
 		if _, err := os.Stat(p); err == nil {
 			return p
 		}
@@ -250,9 +263,26 @@ func configPath() string {
 // never returns an error — any failure to read or parse the config file
 // results in the default config being returned.
 func LoadHud() *Config {
-	cfg := defaults()
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return loadHud("", "")
+	}
 
-	path := configPath()
+	return loadHud(
+		filepath.Join(home, ".config", "tail-claude-hud"),
+		filepath.Join(home, ".claude", "plugins", "tail-claude-hud"),
+	)
+}
+
+// loadHud is the testable core of LoadHud. Config directories are supplied by
+// the caller so theme resolution does not depend on the process home directory.
+func loadHud(configDir, legacyConfigDir string) *Config {
+	cfg := defaults()
+	if configDir != "" {
+		cfg.activeThemePath = filepath.Join(configDir, "theme-active.toml")
+	}
+
+	path := configPath(configDir, legacyConfigDir)
 	if path == "" {
 		ResolveTheme(cfg)
 		return cfg

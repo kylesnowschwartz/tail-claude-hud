@@ -114,6 +114,7 @@ func TestRenderPowerline_FallbackBgWhenNoThemeEntry(t *testing.T) {
 
 func TestRenderPowerline_ThemeBgTakesPriorityOverDefault(t *testing.T) {
 	// When a theme entry is set, it should be used instead of the fallback.
+	t.Setenv("HOME", t.TempDir())
 	cfg := config.LoadHud()
 	cfg.Style.Theme = "dark"
 	config.ResolveTheme(cfg)

@@ -230,6 +230,7 @@ func TestRender_PlainModeOutputIdentical(t *testing.T) {
 	ctx := &model.RenderContext{
 		EnvCounts: &model.EnvCounts{MCPServers: 3, Hooks: 2},
 	}
+	t.Setenv("HOME", t.TempDir())
 	cfg := config.LoadHud()
 	cfg.Lines = []config.Line{
 		{Widgets: []string{"env"}},

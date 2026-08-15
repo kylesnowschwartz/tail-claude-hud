@@ -40,6 +40,8 @@ By default Claude Code only re-runs the statusline on conversation events, so dy
 
 Works out of the box with the `default` preset. To customize, run `tail-claude-hud --init` to generate a config at `~/.config/tail-claude-hud/config.toml`.
 
+An external theme tool can set per-widget colors in `~/.config/tail-claude-hud/theme-active.toml`. Its top-level widget tables use `fg` and `bg` keys and override both the built-in theme and `[theme.overrides]`; missing, unreadable, or malformed files are ignored.
+
 ## Presets
 
 Five built-in presets. Apply one without editing TOML:
