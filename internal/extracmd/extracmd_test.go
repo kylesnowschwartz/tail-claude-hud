@@ -3,6 +3,7 @@ package extracmd
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 // --- Run ---
@@ -64,6 +65,47 @@ func TestRun_ANSIColorInLabel(t *testing.T) {
 	// The ESC byte should also be present (color code preserved).
 	if !strings.Contains(got, "\x1b[31m") {
 		t.Errorf("Run ANSI label = %q, want ANSI color escape preserved", got)
+	}
+}
+
+// --- RunWidget ---
+
+func TestRunWidget_EmptyCommand(t *testing.T) {
+	if got := RunWidget("", nil, time.Second); got != "" {
+		t.Errorf("RunWidget(\"\") = %q, want \"\"", got)
+	}
+}
+
+func TestRunWidget_ReceivesStdin(t *testing.T) {
+	got := RunWidget("cat", []byte(`{"session_id":"abc"}`), time.Second)
+	if got != `{"session_id":"abc"}` {
+		t.Errorf("RunWidget(cat) = %q, want stdin echoed back", got)
+	}
+}
+
+func TestRunWidget_FirstLineOnly(t *testing.T) {
+	got := RunWidget(`printf 'line1\nline2\n'`, nil, time.Second)
+	if got != "line1" {
+		t.Errorf("RunWidget multiline = %q, want \"line1\"", got)
+	}
+}
+
+func TestRunWidget_CommandFails(t *testing.T) {
+	if got := RunWidget("exit 1", nil, time.Second); got != "" {
+		t.Errorf("RunWidget(exit 1) = %q, want \"\"", got)
+	}
+}
+
+func TestRunWidget_Timeout(t *testing.T) {
+	if got := RunWidget("sleep 10", nil, 50*time.Millisecond); got != "" {
+		t.Errorf("RunWidget(sleep 10) = %q, want \"\" (should have timed out)", got)
+	}
+}
+
+func TestRunWidget_PreservesANSIColors(t *testing.T) {
+	got := RunWidget(`printf '\033[32m50%%\033[0m'`, nil, time.Second)
+	if !strings.Contains(got, "\x1b[32m") || !strings.Contains(got, "50%") {
+		t.Errorf("RunWidget ANSI = %q, want SGR escapes and content preserved", got)
 	}
 }
 

@@ -131,6 +131,16 @@ type Config struct {
 		SessionTitle bool `toml:"session_title"`
 	} `toml:"notify"`
 
+	// Exec configures the "exec" widget: a user command that receives the raw
+	// statusline stdin JSON on its stdin and whose first stdout line is rendered
+	// as a widget segment (e.g. `bumper-lanes status --widget=indicator`).
+	Exec struct {
+		Command string `toml:"command"`
+		// TimeoutMs bounds the command's runtime; on timeout the widget renders
+		// empty so the line is never blocked. Default: 100.
+		TimeoutMs int `toml:"timeout_ms"`
+	} `toml:"exec"`
+
 	// Extra holds user-configured extra command settings. When Command is set,
 	// the gather stage runs it and stores the result in RenderContext.ExtraOutput.
 	Extra struct {
@@ -185,6 +195,8 @@ func defaults() *Config {
 	cfg.Permission.ShowProject = true
 
 	cfg.Worktree.ShowBranch = true
+
+	cfg.Exec.TimeoutMs = 100
 
 	cfg.Usage.FiveHourThreshold = 0
 	cfg.Usage.SevenDayThreshold = 80

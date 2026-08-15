@@ -58,6 +58,11 @@ type RenderContext struct {
 	// Empty when no extra command is configured or the command fails/times out.
 	ExtraOutput string
 
+	// ExecOutput is the first stdout line of the user's [exec] widget command,
+	// rendered verbatim (SGR colors preserved) by the "exec" widget. Empty when
+	// no command is configured or the command fails/times out.
+	ExecOutput string
+
 	// PermissionProject is the project name (last path component of CWD) of
 	// another Claude Code session that appears to be blocked waiting for user
 	// permission approval. Empty when no session needs attention.

@@ -466,6 +466,44 @@ func TestGather_ExtraOutputEmptyWhenCommandFails(t *testing.T) {
 	}
 }
 
+func TestGather_ExecCommandReceivesRawStdin(t *testing.T) {
+	input := minimalInput()
+	input.Raw = []byte(`{"session_id":"raw-json"}`)
+	cfg := cfgWithWidgets("exec")
+	cfg.Exec.Command = "cat"
+	cfg.Exec.TimeoutMs = 1000
+
+	ctx := Gather(input, cfg)
+
+	if ctx.ExecOutput != `{"session_id":"raw-json"}` {
+		t.Errorf("ExecOutput: got %q, want raw stdin JSON echoed", ctx.ExecOutput)
+	}
+}
+
+func TestGather_ExecSkippedWhenWidgetInactive(t *testing.T) {
+	input := minimalInput()
+	cfg := cfgWithWidgets("model")
+	cfg.Exec.Command = "echo should-not-run"
+	cfg.Exec.TimeoutMs = 1000
+
+	ctx := Gather(input, cfg)
+
+	if ctx.ExecOutput != "" {
+		t.Errorf("ExecOutput: expected empty when widget not on any line, got %q", ctx.ExecOutput)
+	}
+}
+
+func TestGather_ExecEmptyWhenCommandUnset(t *testing.T) {
+	input := minimalInput()
+	cfg := cfgWithWidgets("exec")
+
+	ctx := Gather(input, cfg)
+
+	if ctx.ExecOutput != "" {
+		t.Errorf("ExecOutput: expected empty when command unset, got %q", ctx.ExecOutput)
+	}
+}
+
 func TestGather_NilModelAndContextWindow(t *testing.T) {
 	// Ensure Gather doesn't panic when optional StdinData fields are nil.
 	input := &model.StdinData{ContextPercent: 0}

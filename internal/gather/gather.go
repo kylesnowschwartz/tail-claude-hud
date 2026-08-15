@@ -125,6 +125,17 @@ func Gather(input *model.StdinData, cfg *config.Config) *model.RenderContext {
 		}()
 	}
 
+	// Exec widget goroutine: runs the user command with the raw stdin JSON on
+	// its stdin. Only spawned when the widget is on a line and a command is set.
+	if active["exec"] && cfg.Exec.Command != "" {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			timeout := time.Duration(cfg.Exec.TimeoutMs) * time.Millisecond
+			ctx.ExecOutput = extracmd.RunWidget(cfg.Exec.Command, input.Raw, timeout)
+		}()
+	}
+
 	// Usage: populated from stdin rate_limits (zero-cost, no network).
 	if active["usage"] {
 		ctx.Usage = usageFromStdin(input)

@@ -3,6 +3,7 @@
 package extracmd
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"os/exec"
@@ -52,6 +53,30 @@ func Run(command string) string {
 	}
 
 	return parseLabel(string(out))
+}
+
+// RunWidget executes a user-configured widget command with stdinJSON piped to
+// its stdin and returns the sanitized first line of stdout. Unlike Run, the
+// output contract is plain text rendered verbatim (SGR colors preserved), not
+// a JSON label. Returns empty string on error, timeout, or empty command, so
+// the widget disappears instead of blocking the line.
+func RunWidget(command string, stdinJSON []byte, timeout time.Duration) string {
+	if command == "" {
+		return ""
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "sh", "-c", command)
+	cmd.Stdin = bytes.NewReader(stdinJSON)
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+
+	firstLine, _, _ := strings.Cut(string(out), "\n")
+	return sanitize(firstLine)
 }
 
 // labelOutput is the expected JSON shape of the command's stdout.

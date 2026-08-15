@@ -60,6 +60,7 @@ var Registry = map[string]RenderFunc{
 	"worktree":    Worktree,
 	"effort":      Effort,
 	"peers":       Peers,
+	"exec":        Exec,
 }
 
 // Icons holds the icon strings for a given display mode (nerdfont, unicode, ascii).

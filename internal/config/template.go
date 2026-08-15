@@ -47,6 +47,7 @@ const DefaultTemplate = `# tail-claude-hud configuration
 #   worktree    — current git worktree name and branch
 #   effort      — current reasoning effort (low/medium/high/xhigh/max), color by intensity
 #   peers       — count of other concurrently running Claude Code sessions ("×2")
+#   exec        — output of a user command configured under [exec] (opt-in)
 #
 # Each [[line]] can optionally override the global style.mode:
 #   mode = "powerline"  — use powerline arrows for this line only
@@ -214,6 +215,18 @@ show_branch = true
 permission_bell = false
 # Set the terminal session title to "project · branch" on startup and resume.
 session_title = false
+
+# Exec widget — renders the first stdout line of a user command as a segment.
+# The command receives the raw statusline stdin JSON on its own stdin, so
+# stdin-aware gauges plug in directly, e.g.:
+#   command = "bumper-lanes status --widget=indicator"
+# ANSI SGR color codes are preserved; other escape sequences are stripped.
+# Errors, timeouts, or empty output hide the widget. Add "exec" to a [[line]]
+# widgets list to activate it.
+[exec]
+# command = "my-gauge-command"
+# Command timeout in milliseconds. Default: 100.
+# timeout_ms = 100
 
 [extra]
 # Uncomment to run a shell command and append its output to the statusline.
