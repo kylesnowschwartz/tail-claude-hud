@@ -387,6 +387,7 @@ func discoverSubagents(transcriptPath string) []model.AgentEntry {
 			ID:         m.ID,
 			Name:       displayName,
 			Status:     status,
+			Model:      m.Model,
 			StartTime:  startTime,
 			DurationMs: durationMs,
 			ColorIndex: i % agentColorCount,
@@ -536,6 +537,12 @@ func mergeSubagents(td *model.TranscriptData, fsAgents []model.AgentEntry) {
 			td.Agents[bestIdx].DurationMs = fa.DurationMs
 			td.Agents[bestIdx].Status = fa.Status
 			td.Agents[bestIdx].ID = fa.ID
+			// The transcript-observed model outranks the tool-input model
+			// param: the param is empty without an explicit override, and
+			// agent types carry their own model defaults.
+			if fa.Model != "" {
+				td.Agents[bestIdx].Model = fa.Model
+			}
 		} else {
 			td.Agents = append(td.Agents, fa)
 		}
