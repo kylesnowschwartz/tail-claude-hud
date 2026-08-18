@@ -1,15 +1,23 @@
-// Package version embeds the project version from the VERSION file.
+// Package version reports the module version recorded in the executable's Go build info.
+// Local builds without a module version report "dev".
 package version
 
 import (
-	_ "embed"
+	"runtime/debug"
 	"strings"
 )
 
-//go:embed VERSION
-var raw string
-
 // String returns the current version, e.g. "0.3.1".
 func String() string {
-	return strings.TrimSpace(raw)
+	if info, ok := debug.ReadBuildInfo(); ok {
+		return resolve(info.Main.Version)
+	}
+	return "dev"
+}
+
+func resolve(buildVersion string) string {
+	if buildVersion == "" || buildVersion == "(devel)" {
+		return "dev"
+	}
+	return strings.TrimPrefix(buildVersion, "v")
 }
