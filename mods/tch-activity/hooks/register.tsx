@@ -132,6 +132,7 @@ export const register: Register = (on, options) => {
     live.isDeclinedLast = false
     live.isFirstRequest = true
     live.resultsToReview = 0
+    live.lastAction = null
     dropMainCalls(live)
 
     const prompt = promptLabel(e.text, MAX_PROMPT_CHARS)
@@ -207,6 +208,8 @@ export const register: Register = (on, options) => {
     const call = callOf(e.tool, label, startMs, null)
 
     live.calls.set(e.tool_use_id, call)
+    // Kept after the call: the turn's last action stands while the model works.
+    live.lastAction = label
     live.turnActions += 1
     await publish($, live)
 

@@ -228,7 +228,7 @@ describe('register', () => {
     expect(await ui.find({ key: 'engine' })).toBeDefined()
   })
 
-  test('a turn reads, thinks, prepares, runs, reviews, writes and ends', async ($, on) => {
+  test('a turn reads, thinks, prepares, runs, holds the action, writes and ends', async ($, on) => {
     const { box } = seat(on, [
       [
         { kind: 'thinking', index: 0, text: 'The config looks off. I should check the loader first' },
@@ -254,7 +254,8 @@ describe('register', () => {
     await $.tool.call({ tool: 'Read', file_path: 'src/app.ts' })
 
     expect(box.seen[3]).toContain('Reading app.ts')
-    expect(await box.read()).toContain('Reviewing the results of 1 action')
+    // The model's next request keeps the last action, under the running glyph.
+    expect(await box.read()).toContain('⧗ Reading app.ts')
 
     await step($, 1)
 
@@ -312,7 +313,7 @@ describe('register', () => {
     expect(await ui.find({ key: 'history' })).toBeUndefined()
   })
 
-  test('thinking with no thought text says thinking, not the last action', async ($, on) => {
+  test('thinking with no thought text holds the last action, or the prompt before one', async ($, on) => {
     const { box } = seat(on, [
       [{ kind: 'thinking', index: 0, text: '' }],
       [{ kind: 'thinking', index: 0, text: '' }],
@@ -324,9 +325,57 @@ describe('register', () => {
     await $.tool.call({ tool: 'Read', file_path: 'src/app.ts' })
     await step($, 1)
 
-    expect(box.seen[0]).toContain('∴ Thinking')
-    expect(box.seen[2]).toContain('∴ Thinking')
-    expect(box.seen[2]).not.toContain('app.ts')
+    expect(box.seen[0]).toContain('∴ Reading your prompt')
+    expect(box.seen[2]).toContain('∴ Reading app.ts')
+  })
+
+  test('between calls the last action stands, without its size', async ($, on) => {
+    const { box } = seat(on, [
+      [
+        { kind: 'tool', index: 0, id: 'tu1', name: 'Write' },
+        { kind: 'input', index: 0, json: `{"file_path": "src/big.ts", "content": "${'x'.repeat(2000)}` },
+      ],
+      [
+        { kind: 'tool', index: 0, id: 'tu2', name: 'Read' },
+        { kind: 'input', index: 0, json: '{"file_path": "src/app.ts"' },
+      ],
+    ])
+
+    await mount($, box)
+    await $.turn.start({ text: 'write it', turnId: 't1' })
+    await step($, 0)
+
+    expect(box.seen[1]).toContain('Writing big.ts | 2.0 KB')
+
+    await $.tool.call({ tool: 'Write', file_path: 'src/big.ts', content: 'x' })
+
+    const between = await box.read()
+
+    expect(between).toContain('⧗ Writing big.ts')
+    expect(between).not.toContain('KB')
+
+    await step($, 1)
+
+    // A call not yet described keeps the last action; described, it names itself.
+    expect(box.seen[3]).toContain('⧗ Writing big.ts')
+    expect(box.seen[3]).not.toContain('KB')
+    expect(box.seen[4]).toContain('Reading app.ts')
+  })
+
+  test('a new turn starts without the last turn\'s action', async ($, on) => {
+    const { box } = seat(on, [[{ kind: 'thinking', index: 0, text: '' }]])
+
+    await mount($, box)
+
+    const { turnId } = await $.turn.start({ text: 'read it', turnId: 't1' })
+
+    await $.tool.call({ tool: 'Read', file_path: 'src/app.ts' })
+    await $.turn.complete({ ...DONE, turnId })
+    await $.turn.start({ text: 'think again', turnId: 't2' })
+    await step($, 0)
+
+    expect(box.seen[1]).toContain('∴ Reading your prompt')
+    expect(box.seen[1]).not.toContain('app.ts')
   })
 
   test('a command being written shows its description, never the command', async ($, on) => {

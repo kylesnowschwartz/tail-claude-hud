@@ -46,14 +46,14 @@ If the binary is missing, too old to have `style --json`, or prints something un
 |---|---|
 | Before any turn | ` Idle, waiting for your prompt` (clock icon, muted) |
 | Reading the prompt | `󰔟 Reading your prompt` |
-| Thinking | ` Thinking: …the hook needs to await next` (the thought's latest sentence), or ` Thinking` while none has streamed |
-| Writing a tool call | `󰔟 Preparing the next action` until its input says what it does, then `󰯠 Run the tests`, ` Writing register.tsx \| 2.3 KB` |
+| Thinking | ` Thinking: …the hook needs to await next` (the thought's latest sentence), or, while none has streamed, the turn's last action under the thinking icon (` Reading app.ts`), ` Reading your prompt` before there is one |
+| Writing a tool call | the turn's last action under the running icon (`󰔟 Preparing the next action` before there is one) until the call's input says what it does, then `󰯠 Run the tests`, ` Writing register.tsx \| 2.3 KB` |
 | Running a tool | the tool's category icon in the running color, then its label: `󰯠 Wait five seconds`, ` Reading app.ts`, `󰖟 Fetching example.org` |
 | Parallel calls | the newest, then `(+N more)` |
 | A subagent at work | `󱙺 Running an agent: find the bug \| Reading app.ts` |
 | Background agents | `󱙺 2 agents working`, and a row per agent under the headline label: `󱙺 Draft the plan \| Searching the web \| 1m 12s`. Each agent's icon and name take the color the HUD's agents widget gives it: its Agent call's position among the session's last 10, wrapped at the palette's 8 colors. |
 | Waiting on you | `󰅸 Waiting for your approval: Run the tests`, `󰅸 Waiting for your answer` (permission icon and color). In the terminal the approval dialog takes the band's place while it is up; a subagent's row says it waits until its call runs. |
-| Reading tool results | `󰔟 Reviewing the results of 3 actions` |
+| Between calls | the turn's last action under the running icon: `󰔟 Reading app.ts` |
 | Writing the reply | ` Writing the reply \| 120 words` |
 | Compacting | `󰔟 Compacting the conversation` |
 | Between turns | `Idle · last turn done in 42s, 6 actions`, or interrupted, stopped on an error, declined the request, stopped at a declined call; the glyph is the turn's outcome |

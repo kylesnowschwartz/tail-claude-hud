@@ -127,6 +127,7 @@ export type Live = {
   replyWords: number
   isReplyInWord: boolean
   composing: { tool: string; head: string; chars: number } | null
+  lastAction: string | null
   lastTurn: { label: string; outcome: ActivityOutcome } | null
   lastPublishMs: number
   trailing: Timer | null
@@ -155,6 +156,7 @@ export function createLive(): Live {
     replyWords: 0,
     isReplyInWord: false,
     composing: null,
+    lastAction: null,
     lastTurn: null,
     lastPublishMs: 0,
     trailing: null,
@@ -221,6 +223,8 @@ export function current(live: Live): ActivityNow {
 
   const sinceMs = live.phaseStartMs
 
+  // Between calls the turn's last action stands under the phase's glyph, so
+  // a run of quick calls reads as one stretch of work.
   switch (live.phase) {
     case 'requesting':
       return {
@@ -228,14 +232,14 @@ export function current(live: Live): ActivityNow {
         phase: 'requesting',
         label: live.isFirstRequest
           ? 'Reading your prompt'
-          : live.resultsToReview > 0
+          : live.lastAction ?? (live.resultsToReview > 0
             ? `Reviewing the results of ${plural(live.resultsToReview, 'action')}`
-            : 'Waiting for the model',
+            : 'Waiting for the model'),
         sinceMs,
       }
     case 'thinking': {
       const snippet = thoughtOf(live.thought, MAX_THOUGHT_CHARS)
-      const label = snippet ? `Thinking: ${snippet}` : 'Thinking'
+      const label = snippet ? `Thinking: ${snippet}` : standingLabel(live)
 
       return { ...base, phase: 'thinking', label, sinceMs }
     }
@@ -257,8 +261,8 @@ export function current(live: Live): ActivityNow {
 /**
  * A call being written is named once its input says what it does: a file
  * tool by its path, a command by its description, which streams after the
- * command itself. Until then the headline says a call is being prepared,
- * under the running glyph.
+ * command itself. Until then the turn's last action stands, or, before
+ * there is one, the headline says a call is being prepared.
  */
 function composingHeadline(live: Live): { label: string; detail: string | null; tool: string | null } {
   const { composing } = live
@@ -268,12 +272,20 @@ function composingHeadline(live: Live): { label: string; detail: string | null; 
     : Object.keys(args).length > 0)
 
   if (!composing || !isDescribed) {
-    return { label: PREPARING_LABEL, detail: null, tool: null }
+    return { label: live.lastAction ?? PREPARING_LABEL, detail: null, tool: null }
   }
 
   const detail = composing.chars >= LARGE_INPUT_CHARS ? sizeOf(composing.chars) : null
 
   return { label: activityOf(composing.tool, args), detail, tool: composing.tool }
+}
+
+/**
+ * What the headline keeps saying while the model thinks with no thought text
+ * to quote: the turn's last action, or the prompt before there is one.
+ */
+function standingLabel(live: Live): string {
+  return live.lastAction ?? 'Reading your prompt'
 }
 
 /** The agent an Agent call started, or the one that last did something. */
