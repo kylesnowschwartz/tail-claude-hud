@@ -1,6 +1,8 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { BUILTIN_STYLE, color, parseStyle, toolIcon } from '../hooks/style'
+import { bandLayout } from '../hooks/layout'
+import { withAgentCall, withAgentKey } from '../hooks/live'
+import { BUILTIN_STYLE, color, isStyleStale, parseStyle, toolIcon } from '../hooks/style'
 import { durationOf, elapsedOf, printable, promptLabel } from '../hooks/text'
 
 describe('parseStyle', () => {
@@ -35,6 +37,83 @@ describe('parseStyle', () => {
 
   test('an unknown tool takes the default category icon', async () => {
     expect(toolIcon(BUILTIN_STYLE, 'mcp__x__y')).toBe(BUILTIN_STYLE.icons['other'])
+  })
+})
+
+describe('isStyleStale', () => {
+  const bin = '/home/kyle/go/bin/tail-claude-hud'
+
+  test('a HUD look for the same binary and preset stands', async () => {
+    expect(isStyleStale({ kind: 'hud', binary: bin, preset: '' }, bin, '')).toBe(false)
+  })
+
+  test('nothing stored, the built-in look, or other options ask again', async () => {
+    expect(isStyleStale(null, bin, '')).toBe(true)
+    expect(isStyleStale({ kind: 'builtin', reason: 'old', binary: bin, preset: '' }, bin, '')).toBe(true)
+    expect(isStyleStale({ kind: 'hud', binary: '/other', preset: '' }, bin, '')).toBe(true)
+    expect(isStyleStale({ kind: 'hud', binary: bin, preset: '' }, bin, 'powerline')).toBe(true)
+  })
+})
+
+describe('bandLayout', () => {
+  /** Rows the layout draws: frame and headline, agents, then the history's. */
+  const rowsOf = (layout: ReturnType<typeof bandLayout>, entries: number) =>
+    3 + layout.agentRows + (layout.hasMoreAgents ? 1 : 0)
+    + (layout.isHistoryShown
+      ? 1 + (layout.hasEarlier ? 1 : 0) + (entries === 0 ? 1 : layout.historyRows) + (layout.hasNote ? 1 : 0)
+      : 0)
+
+  test('every row drawn fits in maxRows', async () => {
+    for (const maxRows of [3, 4, 5, 6, 8, 12, 20, 40]) {
+      for (const agents of [0, 1, 3, 9]) {
+        for (const entries of [0, 1, 5, 30]) {
+          for (const hasNote of [false, true]) {
+            const layout = bandLayout({ maxRows, agents, entries, isOpen: true, hasNote })
+
+            expect(rowsOf(layout, entries)).toBeLessThanOrEqual(Math.max(3, maxRows))
+          }
+        }
+      }
+    }
+  })
+
+  test('a long history leads with the earlier row and keeps the newest', async () => {
+    const layout = bandLayout({ maxRows: 10, agents: 0, entries: 30, isOpen: true, hasNote: true })
+
+    expect(layout).toEqual({
+      agentRows: 0,
+      hasMoreAgents: false,
+      isHistoryShown: true,
+      historyRows: 4,
+      hasEarlier: true,
+      hasNote: true,
+    })
+  })
+
+  test('agents past the cap share one more row', async () => {
+    const layout = bandLayout({ maxRows: 40, agents: 9, entries: 0, isOpen: false, hasNote: false })
+
+    expect(layout.agentRows).toBe(5)
+    expect(layout.hasMoreAgents).toBe(true)
+  })
+})
+
+describe('agent order', () => {
+  test('keeps each key once, the newest ten', async () => {
+    let order: readonly string[] = []
+
+    for (let i = 0; i < 12; i++) {
+      order = withAgentKey(order, `tu${i}`)
+    }
+
+    order = withAgentKey(order, 'tu11')
+
+    expect(order).toEqual(['tu2', 'tu3', 'tu4', 'tu5', 'tu6', 'tu7', 'tu8', 'tu9', 'tu10', 'tu11'])
+  })
+
+  test('an agent met by its id moves to its Agent call once known', async () => {
+    expect(withAgentCall(['tuA', 'a2', 'tuB'], 'a2', 'tuB')).toEqual(['tuA', 'tuB'])
+    expect(withAgentCall(['tuA', 'a2'], 'a2', 'tuC')).toEqual(['tuA', 'tuC'])
   })
 })
 

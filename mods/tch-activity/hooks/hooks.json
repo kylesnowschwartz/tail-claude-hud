@@ -1,4 +1,6 @@
 {
-  "description": "tch-activity: the model's stream, tool calls, approvals, subagents, compaction and turns keep a headline and a history current, drawn in the AbovePrompt band with tail-claude-hud's look",
-  "modules": ["./register.tsx"]
+  "description": "tch-activity: the model's stream, tool calls, approval checks, subagents, compaction and turns keep a headline and a history current, drawn in the AbovePrompt band with tail-claude-hud's look",
+  "modules": [
+    "./register.tsx"
+  ]
 }

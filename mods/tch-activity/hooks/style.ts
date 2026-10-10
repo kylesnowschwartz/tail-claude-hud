@@ -169,8 +169,11 @@ export function parseStyle(stdout: string): TchStyle | null {
   }
 }
 
-export function builtin(reason: string): LoadedStyle {
-  return { style: BUILTIN_STYLE, source: { kind: 'builtin', reason: printable(reason, MAX_REASON_CHARS) } }
+export function builtin(reason: string, binary: string, preset: string): LoadedStyle {
+  return {
+    style: BUILTIN_STYLE,
+    source: { kind: 'builtin', reason: printable(reason, MAX_REASON_CHARS), binary, preset },
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -205,4 +208,13 @@ function iconOf(text: string): string {
 
 function plainOf(text: string): string {
   return printable(text, MAX_REASON_CHARS)
+}
+
+/**
+ * Whether to ask the HUD for its look: always, unless the stored look came
+ * from the HUD run with this binary and preset. The built-in look is never
+ * kept, so a binary that gains `style` later is picked up.
+ */
+export function isStyleStale(stored: TchStyleSource | null, binary: string, preset: string): boolean {
+  return !(stored?.kind === 'hud' && stored.binary === binary && stored.preset === preset)
 }

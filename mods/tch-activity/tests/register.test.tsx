@@ -36,6 +36,9 @@ const SPAWN = {
   fork: false,
 } as const
 
+/** A conversation to compact: a compaction always leaves at least one message. */
+const TRANSCRIPT = [{ role: 'user', text: 'fix the config', toolUses: [] }] as never
+
 const STEP = { turnId: 't1', model: 'claude-opus-5-5', messageCount: 1 } as const
 
 /** Glyphs the HUD's export uses, distinct from the built-in look's. */
@@ -89,7 +92,7 @@ function seatHud(on: On, stdout: string, exitCode = 0) {
   mock.env(on, { HOME: '/home/kyle' })
   on('fs.exists', () => ({ value: true }))
   on('process.run', ($, e) => {
-    ran.push([...e.argv])
+    ran.push([...e.argv, `stdin=${JSON.stringify(e.init?.stdin)}`])
 
     return {
       value: { exitCode, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false },
@@ -109,7 +112,9 @@ function seat(on: On, script: readonly (readonly TurnStepChunk[])[]) {
     read: async () => '',
     seen: [] as string[],
     toolAnswer: { deny: 'stubbed in the test' } as { deny: string },
-    onTool: async () => {},
+    onTool: async (_call: { tool_use_id: string }) => {},
+    onCompact: async () => {},
+    verdict: 'allow' as 'allow' | 'ask' | 'deny',
   }
 
   const clock = mock.clock(on, { now: 1_000_000 })
@@ -121,9 +126,12 @@ function seat(on: On, script: readonly (readonly TurnStepChunk[])[]) {
 
   on('turn.start', ($, e) => ({ turnId: e.turnId }))
   on('turn.complete', ($, e) => ({ text: e.answer }))
-  on('classic.PermissionRequest', () => ({}))
-  on('classic.PreCompact', () => ({}))
-  on('classic.PostCompact', () => ({}))
+  on('tool.check', () => ({ decision: box.verdict }))
+  on('session.compact', async () => {
+    await box.onCompact()
+
+    return { messages: TRANSCRIPT }
+  })
 
   on('turn.step', async function* ($, e) {
     for (const chunk of script[e.index] ?? []) {
@@ -142,8 +150,8 @@ function seat(on: On, script: readonly (readonly TurnStepChunk[])[]) {
     } as const
   })
 
-  on('tool.call', async () => {
-    await box.onTool()
+  on('tool.call', async ($, e) => {
+    await box.onTool(e)
     await look()
 
     return box.toolAnswer
@@ -240,6 +248,17 @@ describe('register', () => {
     expect(box.seen[4]).toContain('Writing the reply · 7 words')
 
     await $.turn.complete({ ...DONE, turnId })
+
+    expect(await box.read()).toContain('Idle · last turn done in')
+  })
+
+  test('a turn whose start came before a reload still ends idle', async ($, on) => {
+    const { box } = seat(on, [[{ kind: 'text', index: 0, text: 'Done.' }]])
+
+    await mount($, box)
+    // No turn.start reaches this module load: the step is the first it sees.
+    await step($, 0)
+    await $.turn.complete({ ...DONE, turnId: 't1' })
 
     expect(await box.read()).toContain('Idle · last turn done in')
   })
@@ -371,20 +390,87 @@ describe('register', () => {
     expect(history).toContain('red.ts')
   })
 
-  test('a call waiting on a permission prompt says so', async ($, on) => {
+  test('a call put to approval waits, and one refused there is marked denied', async ($, on) => {
     const { box } = seat(on, [])
 
-    box.onTool = async () => {
-      await $.classic.PermissionRequest({ tool_name: 'Bash', tool_input: { command: 'npm test' } })
+    box.verdict = 'ask'
+    box.toolAnswer = { isError: true, text: 'The user refused this tool use.', result: null } as never
+    // The engine decides on the call from inside it, before it runs.
+    box.onTool = async call => {
+      await $.tool.check({ tool: 'Bash', input: { command: 'osascript' }, tool_use_id: call.tool_use_id })
+    }
+
+    const ui = await mount($, box)
+
+    await $.turn.start({ text: 'run it', turnId: 't1' })
+    await $.tool.call({ tool: 'Bash', command: 'osascript', description: 'Ask AppleScript' })
+    await ui.press({ key: 'toggle' })
+
+    expect(box.seen[0]).toContain('Waiting for approval: Ask AppleScript')
+    // The built-in look's permission icon.
+    expect(box.seen[0]).toContain('! Waiting')
+    expect((await ui.find({ key: 'history' }))?.text ?? '').toContain('⊘ $ Ask AppleScript')
+  })
+
+  test('an approved call stops waiting once it is drawn running', async ($, on) => {
+    const { box, clock } = seat(on, [])
+
+    on('ui.render', { component: 'ToolUse' }, ($, e) => {
+      const { Box } = $.ui.resolve(e)
+
+      return <Box key="row" />
+    })
+
+    await mount($, box)
+
+    box.verdict = 'ask'
+    box.onTool = async call => {
+      await $.tool.check({ tool: 'WebFetch', input: {}, tool_use_id: call.tool_use_id })
+      box.seen.push(await box.read())
+
+      // The person approves: the engine draws the call's row running.
+      await $.ui.mount({
+        plugin: 'tch-activity',
+        surface: 'terminal',
+        component: 'ToolUse',
+        props: { tool_use_id: call.tool_use_id, tool: 'WebFetch', input: {}, isRunning: true, isErrored: false, isInterrupted: false },
+      })
+      await clock.advance(1)
+    }
+
+    await $.turn.start({ text: 'fetch it', turnId: 't1' })
+    await $.tool.call({ tool: 'WebFetch', url: 'https://example.org', prompt: 'title' } as Parameters<Engine['tool']['call']>[0])
+
+    expect(box.seen[0]).toContain('Waiting for approval: Fetching example.org')
+    expect(box.seen[1]).toContain('Fetching example.org')
+    expect(box.seen[1]).not.toContain('Waiting')
+  })
+
+  test("a subagent's approval wait is said once and ends with its call", async ($, on) => {
+    const { box, clock } = seat(on, [])
+    const call = { tool: 'Bash', command: 'npm test', description: 'Run the tests', agentId: 'a1' }
+
+    on('agent.spawn', () => ({ model: 'claude-opus-5-5', agentId: 'a1' }))
+    box.verdict = 'ask'
+    box.onTool = async ({ tool_use_id }) => {
+      // Asked twice: the label still says it once.
+      await $.tool.check({ tool: 'Bash', input: {}, tool_use_id, agentId: 'a1' })
+      await $.tool.check({ tool: 'Bash', input: {}, tool_use_id, agentId: 'a1' })
+      await clock.advance(300)
     }
 
     await mount($, box)
-    await $.turn.start({ text: 'test it', turnId: 't1' })
-    await $.tool.call({ tool: 'Bash', command: 'npm test', description: 'Run the tests' })
+    await $.agent.spawn({ ...SPAWN, tool_use_id: 'tu1', description: 'Test it' })
+    await $.tool.call(call as Parameters<Engine['tool']['call']>[0])
 
-    expect(box.seen[0]).toContain('Waiting for your approval: Run the tests')
-    // The built-in look's permission icon.
-    expect(box.seen[0]).toContain('! Waiting')
+    expect(box.seen[0]).toContain('Test it › Waiting for approval: Run the tests')
+    expect(box.seen[0]).not.toContain('approval: Waiting')
+
+    // A subagent's updates land at most every 250 ms.
+    await clock.advance(300)
+
+    expect(await box.read()).toContain('Test it › Run the tests')
+    expect(await box.read()).not.toContain('Waiting')
   })
 
   test('a question to the person says it waits for an answer', async ($, on) => {
@@ -397,18 +483,50 @@ describe('register', () => {
     expect(box.seen[0]).toContain('Waiting for your answer')
   })
 
-  test('compacting says so and is kept in the history', async ($, on) => {
-    const { box } = seat(on, [])
+  test('compacting says so, times itself and is kept in the history', async ($, on) => {
+    const { box, clock } = seat(on, [])
     const ui = await mount($, box)
 
-    await $.classic.PreCompact({ trigger: 'manual', custom_instructions: null })
+    box.onCompact = async () => {
+      await clock.advance(5000)
+      box.seen.push(await box.read())
+    }
 
-    expect(await box.read()).toContain('Compacting the conversation')
+    await $.session.compact({ trigger: 'manual', messages: TRANSCRIPT })
 
-    await $.classic.PostCompact({ trigger: 'manual', compact_summary: 'summary' })
+    expect(box.seen[0]).toContain('Compacting the conversation | 5s')
+
     await ui.press({ key: 'toggle' })
 
-    expect((await ui.find({ key: 'history' }))?.text ?? '').toContain('Compacted the conversation')
+    expect((await ui.find({ key: 'history' }))?.text ?? '').toContain('Compacted the conversation 5s')
+  })
+
+  test('a compaction inside a turn restarts the timer of what follows', async ($, on) => {
+    const { box, clock } = seat(on, [])
+
+    await mount($, box)
+    await $.turn.start({ text: 'go', turnId: 't1' })
+    box.onCompact = async () => {
+      await clock.advance(7000)
+    }
+
+    await $.session.compact({ trigger: 'auto', messages: TRANSCRIPT })
+    await clock.advance(2000)
+
+    expect(await box.read()).toContain('| 2s')
+  })
+
+  test('a compaction made ahead of time is not shown', async ($, on) => {
+    const { box } = seat(on, [])
+
+    box.onCompact = async () => {
+      box.seen.push(await box.read())
+    }
+
+    await mount($, box)
+    await $.session.compact({ trigger: 'precompute', messages: TRANSCRIPT })
+
+    expect(box.seen[0]).toContain('Idle')
   })
 
   test('agents still at work after the turn keep the box busy', async ($, on) => {
@@ -462,6 +580,28 @@ describe('register', () => {
 
     expect(first?.props['color']).toBe('ansi256(12)')
     expect(second?.props['color']).toBe('ansi256(10)')
+  })
+
+  test('agent colors follow the order the conversation made the Agent calls', async ($, on) => {
+    const { box } = seat(on, [
+      [
+        { kind: 'tool', index: 0, id: 'tuA', name: 'Agent' },
+        { kind: 'tool', index: 1, id: 'tuB', name: 'Agent' },
+      ],
+    ])
+
+    on('agent.spawn', ($, e) => ({ model: 'claude-opus-5-5', agentId: `agent-${e.tool_use_id}` }))
+
+    const ui = await mount($, box)
+
+    await $.turn.start({ text: 'two agents', turnId: 't1' })
+    await step($, 0)
+    // The second call's agent starts first; the order still follows the calls.
+    await $.agent.spawn({ ...SPAWN, tool_use_id: 'tuB', description: 'Second' })
+    await $.agent.spawn({ ...SPAWN, tool_use_id: 'tuA', description: 'First' })
+
+    expect((await ui.find({ type: 'Text', text: 'First' }))?.props['color']).toBe('ansi256(12)')
+    expect((await ui.find({ type: 'Text', text: 'Second' }))?.props['color']).toBe('ansi256(10)')
   })
 
   test('a named agent is shown by its Agent call description, never its prompt', async ($, on) => {
@@ -522,8 +662,10 @@ describe('register', () => {
 describe('style', () => {
   test('the HUD look is asked for once and draws the box', async ($, on) => {
     const ran = seatHud(on, HUD_STYLE)
-    const { box } = seat(on, [])
+    const { box, clock } = seat(on, [])
     const ui = await mount($, box)
+
+    await clock.advance(1)
 
     const { turnId } = await $.turn.start({ text: 'read it', turnId: 't1' })
 
@@ -531,7 +673,8 @@ describe('style', () => {
     await $.turn.complete({ ...DONE, turnId })
     await $.turn.start({ text: 'again', turnId: 't2' })
 
-    expect(ran).toEqual([['/home/kyle/go/bin/tail-claude-hud', 'style', '--json']])
+    // Once per module load, with an empty stdin so an old binary returns at once.
+    expect(ran).toEqual([['/home/kyle/go/bin/tail-claude-hud', 'style', '--json', 'stdin=""']])
     expect(box.seen[0]).toContain('RD Reading app.ts')
 
     await ui.press({ key: 'toggle' })
@@ -544,19 +687,64 @@ describe('style', () => {
 
   test('the binary option names the HUD to run', { options: { binary: '/opt/tch/tail-claude-hud' } }, async ($, on) => {
     const ran = seatHud(on, HUD_STYLE)
-    const { box } = seat(on, [])
+    const { box, clock } = seat(on, [])
 
     await mount($, box)
-    await $.turn.start({ text: 'go', turnId: 't1' })
+    await clock.advance(1)
 
     expect(ran[0]?.[0]).toBe('/opt/tch/tail-claude-hud')
   })
 
+  test('the preset option is passed to the HUD', { options: { preset: 'powerline' } }, async ($, on) => {
+    const ran = seatHud(on, HUD_STYLE)
+    const { box, clock } = seat(on, [])
+
+    await mount($, box)
+    await clock.advance(1)
+
+    expect(ran[0]?.slice(1, 5)).toEqual(['style', '--json', '--preset', 'powerline'])
+  })
+
+  test('the look loads without holding up the event that asked for it', async ($, on) => {
+    let release = () => {}
+    const held = new Promise<void>(resolve => {
+      release = resolve
+    })
+
+    mock.env(on, { HOME: '/home/kyle' })
+    on('fs.exists', () => ({ value: true }))
+    on('process.run', async () => {
+      await held
+
+      return { value: { exitCode: 0, stdout: HUD_STYLE, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+    })
+
+    const { box, clock } = seat(on, [])
+
+    await mount($, box)
+    await $.turn.start({ text: 'go', turnId: 't1' })
+    await clock.advance(1)
+
+    // The turn started and the box drew while the HUD had not answered.
+    expect(await box.read()).toContain('◐ Reading your prompt')
+
+    release()
+    await clock.advance(1)
+
+    for (let i = 0; i < 20 && !(await box.read()).includes('RU'); i++) {
+      await Promise.resolve()
+    }
+
+    expect(await box.read()).toContain('RU Reading your prompt')
+  })
+
   test('a running tool is drawn in the HUD running color', async ($, on) => {
     seatHud(on, HUD_STYLE)
-    const { box } = seat(on, [])
+    const { box, clock } = seat(on, [])
     let glyphColor: unknown = 'unread'
     const ui = await mount($, box)
+
+    await clock.advance(1)
 
     box.onTool = async () => {
       glyphColor = (await ui.find({ type: 'Text', text: ' RD ' }))?.props['color']
@@ -570,8 +758,10 @@ describe('style', () => {
 
   test('a HUD that fails leaves the built-in look and a dim note', async ($, on) => {
     seatHud(on, 'not json', 0)
-    const { box } = seat(on, [])
+    const { box, clock } = seat(on, [])
     const ui = await mount($, box)
+
+    await clock.advance(1)
 
     await $.turn.start({ text: 'read it', turnId: 't1' })
     await $.tool.call({ tool: 'Read', file_path: 'src/app.ts' })

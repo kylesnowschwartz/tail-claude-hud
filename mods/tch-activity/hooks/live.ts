@@ -28,18 +28,34 @@ export const UNNAMED_AGENT = 'Agent'
 /** What the model is doing in the main loop, between and around tool calls. */
 export type ModelPhase = 'idle' | 'requesting' | 'thinking' | 'writing' | 'composing' | 'compacting'
 
-/** A main-loop tool call in flight. */
+/**
+ * A tool call in flight: the main loop's, or a subagent's (`agentId`). It
+ * awaits approval from an `ask` verdict until it is seen running or ends.
+ */
 export type Call = {
   tool: string
   label: string
   startMs: number
+  agentId: string | null
   isAwaitingApproval: boolean
 }
 
 /**
+ * The agents tail-claude-hud's agents widget colors: Agent calls in the order
+ * the main conversation made them, the newest AGENT_ORDER_WINDOW kept, each
+ * taking the palette slot of its position. An agent met with no Agent call
+ * seen joins the list by its id.
+ */
+export const AGENT_ORDER_WINDOW = 10
+
+/** The HUD's agent palette has eight colors; a position wraps at that. */
+const AGENT_PALETTE_SIZE = 8
+
+/**
  * A subagent at work, from its spawn (or its first call, when the spawn came
  * before a reload) to its stop. `toolUseId` names the Agent call that started
- * it; `activeMs` is when it last did something; `colorIndex` its palette slot.
+ * it; `activeMs` is when it last did something; `colorKey` its entry in the
+ * agent order, which picks its color.
  */
 export type Agent = {
   name: string
@@ -48,7 +64,7 @@ export type Agent = {
   activeMs: number
   toolUseId: string | null
   isBackground: boolean
-  colorIndex: number
+  colorKey: string
 }
 
 /**
@@ -60,7 +76,8 @@ export type Live = {
   agents: Map<string, Agent>
   agentNames: Map<string, string>
   described: Map<string, string>
-  nextColorIndex: number
+  agentOrder: readonly string[]
+  isRestored: boolean
   phase: ModelPhase
   phaseStartMs: number
   turnStartMs: number | null
@@ -87,7 +104,8 @@ export function createLive(): Live {
     agents: new Map(),
     agentNames: new Map(),
     described: new Map(),
-    nextColorIndex: 0,
+    agentOrder: [],
+    isRestored: false,
     phase: 'idle',
     phaseStartMs: 0,
     turnStartMs: null,
@@ -117,7 +135,7 @@ export function current(live: Live): ActivityNow {
     return { ...base, phase: 'compacting', label: 'Compacting the conversation', sinceMs: live.phaseStartMs }
   }
 
-  const open = [...live.calls.entries()]
+  const open = [...live.calls.entries()].filter(([, call]) => call.agentId === null)
   const [newestId, newest] = open.at(-1) ?? []
 
   if (newestId !== undefined && newest !== undefined) {
@@ -125,7 +143,7 @@ export function current(live: Live): ActivityNow {
     const call = { ...base, sinceMs: newest.startMs, tool: newest.tool }
 
     if (newest.isAwaitingApproval) {
-      return { ...call, phase: 'approval', label: `Waiting for your approval: ${newest.label}${more}` }
+      return { ...call, phase: 'approval', label: `Waiting for approval: ${newest.label}${more}` }
     }
 
     if (newest.tool === 'AskUserQuestion') {
@@ -136,23 +154,30 @@ export function current(live: Live): ActivityNow {
 
     return inner === undefined
       ? { ...call, phase: 'tool', label: `${newest.label}${more}` }
-      : { ...call, phase: 'agent', label: `${newest.label} › ${inner.label}${more}`, colorIndex: inner.colorIndex }
+      : {
+          ...call,
+          phase: 'agent',
+          label: `${newest.label} › ${agentLabel(live, inner)}${more}`,
+          colorIndex: colorIndexOf(live, inner.colorKey),
+        }
   }
 
   if (live.phase === 'idle' && live.agents.size > 0) {
     // Between turns, background agents may still be at work.
-    const working = [...live.agents.values()]
-    const sinceMs = Math.min(...working.map(agent => agent.startMs))
-    const busiest = working.reduce((a, b) => (b.activeMs > a.activeMs ? b : a))
+    const working = [...live.agents.entries()]
+    const sinceMs = Math.min(...working.map(([, agent]) => agent.startMs))
+    const [busiestId, busiest] = working.reduce((a, b) => (b[1].activeMs > a[1].activeMs ? b : a))
     const isAlone = working.length === 1
 
     return {
       ...base,
       phase: 'agent',
-      label: isAlone ? `${busiest.name} › ${busiest.label}` : `${plural(working.length, 'agent')} working`,
+      label: isAlone
+        ? `${busiest.name} › ${agentLabel(live, { ...busiest, id: busiestId })}`
+        : `${plural(working.length, 'agent')} working`,
       sinceMs,
       tool: 'Agent',
-      colorIndex: isAlone ? busiest.colorIndex : null,
+      colorIndex: isAlone ? colorIndexOf(live, busiest.colorKey) : null,
     }
   }
 
@@ -222,11 +247,42 @@ function standingLabel(live: Live): string {
 }
 
 /** The agent an Agent call started, or the one that last did something. */
-function agentUnder(live: Live, toolUseId: string): Agent | undefined {
-  const working = [...live.agents.values()]
+function agentUnder(live: Live, toolUseId: string): (Agent & { id: string }) | undefined {
+  const working = [...live.agents.entries()].map(([id, agent]) => ({ ...agent, id }))
 
   return working.find(agent => agent.toolUseId === toolUseId)
-    ?? working.reduce<Agent | undefined>((a, b) => (a === undefined || b.activeMs > a.activeMs ? b : a), undefined)
+    ?? working.reduce<(Agent & { id: string }) | undefined>((a, b) => (a === undefined || b.activeMs > a.activeMs ? b : a), undefined)
+}
+
+/**
+ * What an agent is doing: waiting on approval for its newest call that
+ * waits, else its latest action. Derived on each read, so a second request
+ * never stacks a second prefix.
+ */
+export function agentLabel(live: Live, agent: Agent & { id: string }): string {
+  const waiting = [...live.calls.values()]
+    .reverse()
+    .find(call => call.agentId === agent.id && call.isAwaitingApproval)
+
+  return waiting === undefined ? agent.label : `Waiting for approval: ${waiting.label}`
+}
+
+/** The order with `key` added at its end, once, the newest window kept. */
+export function withAgentKey(order: readonly string[], key: string): readonly string[] {
+  return order.includes(key) ? order : [...order, key].slice(-AGENT_ORDER_WINDOW)
+}
+
+/**
+ * The order once an agent first met by its id is known by its Agent call:
+ * the id's entry goes, and the call keeps (or takes) its own place.
+ */
+export function withAgentCall(order: readonly string[], agentId: string, toolUseId: string): readonly string[] {
+  return withAgentKey(order.filter(key => key !== agentId), toolUseId)
+}
+
+/** An agent's palette slot: its position in the agent order, wrapped at the palette size. */
+export function colorIndexOf(live: Live, key: string): number {
+  return Math.max(0, live.agentOrder.indexOf(key)) % AGENT_PALETTE_SIZE
 }
 
 /** How a turn ended, in the words the idle headline and the history use. */

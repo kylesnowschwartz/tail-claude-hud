@@ -9,13 +9,25 @@
   "homepage": "https://github.com/kylesnowschwartz/tail-claude-hud",
   "repository": "https://github.com/kylesnowschwartz/tail-claude-hud",
   "license": "MIT",
-  "keywords": ["status", "activity", "hud", "mod", "function-hooks"],
+  "keywords": [
+    "status",
+    "activity",
+    "hud",
+    "mod",
+    "function-hooks"
+  ],
   "types": "./types/index.d.ts",
   "userConfig": {
     "binary": {
       "type": "string",
       "title": "tail-claude-hud binary",
       "description": "Path to the tail-claude-hud binary the box reads its look from. Empty: ~/go/bin/tail-claude-hud when it exists, else tail-claude-hud on the PATH.",
+      "default": ""
+    },
+    "preset": {
+      "type": "string",
+      "title": "tail-claude-hud preset",
+      "description": "The --preset your statusLine command passes to tail-claude-hud (a preset name or TOML path), so the box reads the same look. Empty: none.",
       "default": ""
     }
   }

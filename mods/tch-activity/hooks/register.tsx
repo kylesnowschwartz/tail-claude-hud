@@ -15,6 +15,8 @@ import type {
 import type { ActivityAgent, ActivityEntry, ActivityOutcome, TchStyle, TchStyleSource } from '../types'
 import { activityOf, isAgentTool } from './activity-of'
 import {
+  agentLabel,
+  colorIndexOf,
   createLive,
   current,
   entryOf,
@@ -26,7 +28,10 @@ import {
   type Agent,
   type Live,
   type ModelPhase,
+  withAgentCall,
+  withAgentKey,
 } from './live'
+import { bandLayout } from './layout'
 import { entryMark, headlineMark, styleNote } from './marks'
 import {
   agentColor,
@@ -36,6 +41,7 @@ import {
   color,
   GO_BIN_SUFFIX,
   icon,
+  isStyleStale,
   parseStyle,
   toolIcon,
   type LoadedStyle,
@@ -57,6 +63,15 @@ const team = atom(
   [] as readonly ActivityAgent[],
 )
 
+/** The Agent calls (or agent ids) whose position picks each agent's color. */
+const agentOrder = atom({ plugin: 'tch-activity', key: 'agentOrder' } as const, [] as readonly string[])
+
+/** How the last main turn ended, for the idle headline after a reload. */
+const lastTurn = atom(
+  { plugin: 'tch-activity', key: 'lastTurn' } as const,
+  null as { label: string; outcome: ActivityOutcome } | null,
+)
+
 const isExpanded = atom({ plugin: 'tch-activity', key: 'isExpanded' } as const, false)
 
 /** The HUD's look, loaded once per session; `null` until then. */
@@ -74,8 +89,8 @@ const styleSource = atom(
  *
  * The model's stream (`turn.step`) says whether it is reading, thinking,
  * writing the reply or composing a tool's input; `tool.call` which tool
- * runs; `classic.PermissionRequest` when one waits for approval; a
- * subagent's calls carry its `agentId`. Every hook is display only: it reads
+ * runs; `tool.check` when one is put to approval; `session.compact` when
+ * the conversation compacts; a subagent's calls carry its `agentId`. Every hook is display only: it reads
  * its event and passes it on unchanged.
  *
  * @param on the engine's registrar
@@ -88,7 +103,7 @@ export const register: Register = (on, options) => {
   on('session.start', async ($, e, next) => {
     const result = await next(e)
 
-    await ensureStyle($, asked)
+    ensureStyle($, asked)
     await publish($, live)
 
     return result
@@ -97,7 +112,7 @@ export const register: Register = (on, options) => {
   on('turn.start', async ($, e, next) => {
     // A module loaded after the session started (a plugin folder added or
     // edited mid-session) saw no `session.start`: its first turn loads the look.
-    await ensureStyle($, asked)
+    ensureStyle($, asked)
 
     // A prompt folded into a running turn starts no new one.
     if (live.turnStartMs !== null) {
@@ -130,6 +145,13 @@ export const register: Register = (on, options) => {
       return yield* next(e)
     }
 
+    // A module reloaded mid-turn missed the turn's start: it takes the turn
+    // up here, so the turn's end returns the box to idle.
+    if (live.turnStartMs === null) {
+      live.turnStartMs = await $.clock.now()
+      keepTicking($, live)
+    }
+
     await enter($, live, 'requesting')
     await publish($, live)
 
@@ -152,23 +174,29 @@ export const register: Register = (on, options) => {
 
     if (e.agentId !== undefined) {
       const agent = await agentOf($, live, e.agentId)
+      const startMs = await $.clock.now()
 
       // Kept after the call: the agent's last action stands while it thinks.
       agent.label = label
-      agent.activeMs = await $.clock.now()
+      agent.activeMs = startMs
+      live.calls.set(e.tool_use_id, { tool: e.tool, label, startMs, agentId: e.agentId, isAwaitingApproval: false })
       await publish($, live, false)
 
       try {
         return await next(e)
       } finally {
-        agent.label = label
+        live.calls.delete(e.tool_use_id)
         await publish($, live, false)
       }
     }
 
     const startMs = await $.clock.now()
 
-    live.calls.set(e.tool_use_id, { tool: e.tool, label, startMs, isAwaitingApproval: false })
+    if (isAgentTool(e.tool)) {
+      await rememberAgentKey($, live, e.tool_use_id)
+    }
+
+    live.calls.set(e.tool_use_id, { tool: e.tool, label, startMs, agentId: null, isAwaitingApproval: false })
     live.lastAction = { label, tool: e.tool }
     live.turnActions += 1
     await publish($, live)
@@ -192,11 +220,17 @@ export const register: Register = (on, options) => {
           void sweep($, live)
         }
 
-        await launched($, live, result.result, description)
+        await launched($, live, result.result, description, e.tool_use_id)
       }
 
       return result
     } finally {
+      // A call put to approval that errors without ever being seen running
+      // was refused at the dialog, which the engine reports as an error.
+      if (outcome === 'error' && live.calls.get(e.tool_use_id)?.isAwaitingApproval) {
+        outcome = 'denied'
+      }
+
       live.calls.delete(e.tool_use_id)
       live.resultsToReview += 1
 
@@ -210,35 +244,34 @@ export const register: Register = (on, options) => {
     }
   })
 
-  on('classic.PermissionRequest', async ($, e, next) => {
-    if (e.agent_id !== undefined) {
-      const agent = await agentOf($, live, e.agent_id)
+  // An `ask` verdict puts the call to the mode's decider: the person's
+  // dialog, or the auto-mode classifier. Display only: the verdict passes on
+  // unchanged.
+  on('tool.check', async ($, e, next) => {
+    const verdict = await next(e)
+    const call = e.tool_use_id === undefined ? undefined : live.calls.get(e.tool_use_id)
 
-      agent.label = `Waiting for your approval: ${agent.label}`
-    } else {
-      const waiting = [...live.calls.values()]
-        .reverse()
-        .find(call => call.tool === e.tool_name && !call.isAwaitingApproval)
-
-      if (waiting) {
-        waiting.isAwaitingApproval = true
-      }
+    if (verdict.decision === 'ask' && call !== undefined && !call.isAwaitingApproval) {
+      call.isAwaitingApproval = true
+      await publish($, live)
     }
 
-    await publish($, live)
+    return verdict
+  }).catch(($, e, next) => next(e))
+
+  // A call's row is drawn running only once it runs, which for a call that
+  // waited means the person approved it.
+  on('ui.render', { component: 'ToolUse' }, ($, e, next) => {
+    if (e.props.isRunning) {
+      approved($, live, e.props.tool_use_id)
+    }
 
     return next(e)
   })
 
-  // The run-in-background pill shows only under a call that is running, so
-  // its drawing means the person has answered the approval it waited on.
+  // The run-in-background pill shows only under a running call: the same sign.
   on('ui.render', { component: 'ToolProgress' }, ($, e, next) => {
-    const call = live.calls.get(e.props.tool_use_id)
-
-    if (call?.isAwaitingApproval) {
-      call.isAwaitingApproval = false
-      $.clock.after(0, () => void publish($, live))
-    }
+    approved($, live, e.props.tool_use_id)
 
     return next(e)
   })
@@ -258,8 +291,9 @@ export const register: Register = (on, options) => {
         activeMs: startMs,
         toolUseId: e.tool_use_id,
         isBackground: e.background,
-        colorIndex: live.nextColorIndex++,
+        colorKey: e.tool_use_id || result.agentId,
       })
+      await placeAgent($, live, result.agentId, e.tool_use_id)
       keepTicking($, live)
       await publish($, live)
     }
@@ -273,21 +307,35 @@ export const register: Register = (on, options) => {
     return next(e)
   })
 
-  on('classic.PreCompact', async ($, e, next) => {
+  // A compaction of the main conversation, timed from the call to its
+  // answer. One made ahead of time (`precompute`) runs unseen in the
+  // background and is not shown.
+  on('session.compact', async ($, e, next) => {
+    if (e.agentId !== undefined || e.trigger === 'precompute') {
+      return next(e)
+    }
+
     await enter($, live, 'compacting')
+    keepTicking($, live)
     await publish($, live)
 
-    return next(e)
-  })
+    let outcome: ActivityOutcome = 'error'
 
-  on('classic.PostCompact', async ($, e, next) => {
-    const durationMs = (await $.clock.now()) - live.phaseStartMs
+    try {
+      const result = await next(e)
 
-    live.phase = live.turnStartMs === null ? 'idle' : 'requesting'
-    await remember($, { ...entryOf('compact', 'Compacted the conversation'), durationMs })
-    await publish($, live)
+      outcome = result.skip === undefined ? 'ok' : 'denied'
 
-    return next(e)
+      return result
+    } finally {
+      const durationMs = (await $.clock.now()) - live.phaseStartMs
+      const label = outcome === 'ok' ? 'Compacted the conversation' : outcome === 'denied' ? 'Compaction skipped' : 'Compaction failed'
+
+      await enter($, live, live.turnStartMs === null ? 'idle' : 'requesting')
+      await remember($, { ...entryOf('compact', label, outcome), durationMs })
+      keepTicking($, live)
+      await publish($, live)
+    }
   })
 
   on('turn.complete', async ($, e, next) => {
@@ -309,6 +357,7 @@ export const register: Register = (on, options) => {
     await remember($, { ...entryOf('end', capitalized(label), outcome), durationMs })
 
     live.lastTurn = { label, outcome }
+    await update($, lastTurn, () => live.lastTurn)
     live.turnStartMs = null
     live.calls.clear()
 
@@ -322,6 +371,10 @@ export const register: Register = (on, options) => {
     if (e.props.hasSurvey) {
       return next(e)
     }
+
+    // A reload (an edit, a changed option) sees no session start: the first
+    // draw after it checks the look, off the draw.
+    ensureStyle($, asked)
 
     // The band is one site for every plugin: what the plugins beneath draw
     // stays, under the box, so another mod's band is never hidden.
@@ -368,16 +421,70 @@ async function publish($: EngineInterface, live: Live, isUrgent = true): Promise
   }
 
   live.lastPublishMs = nowMs
+  await restore($, live)
+
   const headline = current(live)
-  const working: ActivityAgent[] = [...live.agents.values()].map(agent => ({
+  const working: ActivityAgent[] = [...live.agents.entries()].map(([id, agent]) => ({
     name: agent.name,
-    label: agent.label,
+    label: agentLabel(live, { ...agent, id }),
     sinceMs: agent.startMs,
-    colorIndex: agent.colorIndex,
+    colorIndex: colorIndexOf(live, agent.colorKey),
   }))
 
   await update($, now, () => headline)
   await update($, team, () => working)
+}
+
+/**
+ * Takes up, once per module load, what the session's state kept across a
+ * reload: the agent order and how the last turn ended.
+ */
+async function restore($: EngineInterface, live: Live): Promise<void> {
+  if (live.isRestored) {
+    return
+  }
+
+  live.isRestored = true
+  live.agentOrder = await read($, agentOrder)
+  live.lastTurn ??= await read($, lastTurn)
+}
+
+/** Adds an agent to the order that picks its color, as the HUD's agents widget orders it. */
+async function rememberAgentKey($: EngineInterface, live: Live, key: string): Promise<void> {
+  await restore($, live)
+
+  const order = withAgentKey(live.agentOrder, key)
+
+  if (order !== live.agentOrder) {
+    live.agentOrder = order
+    await update($, agentOrder, () => order)
+  }
+}
+
+/**
+ * Places an agent in the color order by its Agent call, dropping the entry
+ * its id took if its own calls arrived first.
+ */
+async function placeAgent($: EngineInterface, live: Live, agentId: string, toolUseId: string): Promise<void> {
+  await restore($, live)
+
+  const order = toolUseId === '' ? withAgentKey(live.agentOrder, agentId) : withAgentCall(live.agentOrder, agentId, toolUseId)
+
+  if (order.join('\n') !== live.agentOrder.join('\n')) {
+    live.agentOrder = order
+    await update($, agentOrder, () => order)
+  }
+}
+
+/** Marks a call that waited on approval as approved, once it is seen running. */
+function approved($: EngineInterface, live: Live, toolUseId: string): void {
+  const call = live.calls.get(toolUseId)
+
+  if (call?.isAwaitingApproval) {
+    call.isAwaitingApproval = false
+    // Drawing may not write state: publish just after.
+    $.clock.after(0, () => void publish($, live))
+  }
 }
 
 /** The agent at work under `agentId`, taken up if its spawn came before a reload. */
@@ -396,10 +503,11 @@ async function agentOf($: EngineInterface, live: Live, agentId: string): Promise
     activeMs: startMs,
     toolUseId: null,
     isBackground: true,
-    colorIndex: live.nextColorIndex++,
+    colorKey: agentId,
   }
 
   live.agents.set(agentId, agent)
+  await rememberAgentKey($, live, agentId)
   keepTicking($, live)
 
   return agent
@@ -428,7 +536,7 @@ async function finish(
       ...entryOf('tool', `Agent: ${agent.name}`, outcome),
       durationMs: (await $.clock.now()) - agent.startMs,
       tool: 'Agent',
-      colorIndex: agent.colorIndex,
+      colorIndex: colorIndexOf(live, agent.colorKey),
     })
   }
 
@@ -491,11 +599,11 @@ async function sweepListed($: EngineInterface, live: Live, listed: readonly Agen
 }
 
 /**
- * Keeps the elapsed time ticking while a turn runs or an agent works, and
- * stops it once neither does.
+ * Keeps the elapsed time ticking while a turn runs, an agent works or the
+ * conversation compacts, and stops it once none does.
  */
 function keepTicking($: EngineInterface, live: Live): void {
-  const isBusy = live.turnStartMs !== null || live.agents.size > 0
+  const isBusy = live.turnStartMs !== null || live.agents.size > 0 || live.phase === 'compacting'
 
   if (isBusy && live.ticker === null) {
     live.ticker = $.clock.every(TICK_MS, () => {
@@ -583,6 +691,13 @@ async function follow($: EngineInterface, live: Live, chunk: TurnStepChunk): Pro
       await enter($, live, 'composing')
       live.resultsToReview = 0
       live.composing = { tool: chunk.name, head: '', chars: 0 }
+
+      // The stream names Agent calls in the order the transcript keeps them,
+      // the order the HUD colors agents by.
+      if (isAgentTool(chunk.name)) {
+        await rememberAgentKey($, live, chunk.id)
+      }
+
       await publish($, live)
 
       return
@@ -615,6 +730,7 @@ async function launched(
   live: Live,
   result: unknown,
   asked: unknown,
+  toolUseId: string,
 ): Promise<void> {
   if (typeof result !== 'object' || result === null) {
     return
@@ -638,32 +754,54 @@ async function launched(
 
   live.agentNames.set(agentId, name)
   agent.name = name
+  agent.toolUseId ??= toolUseId
+  agent.colorKey = toolUseId
+  await placeAgent($, live, agentId, toolUseId)
   await publish($, live)
 }
 
-/** The HUD answers in a few milliseconds; past this it is not coming. */
-const STYLE_TIMEOUT_MS = 3000
+/**
+ * The HUD answers in a few milliseconds. A binary too old to know `style`
+ * runs as the statusline, which reads its JSON from stdin: the empty stdin
+ * ends it at once, and this bounds anything slower.
+ */
+const STYLE_TIMEOUT_MS = 1500
 
 /** Whether this module load has asked the HUD for its look yet. */
 type StyleAsked = { isAsked: boolean; options: PluginOptions }
 
 /**
- * Loads the HUD's look into `$.state` once per module load at most: the call
- * costs tens of milliseconds, so it never runs per event or per draw, and a
- * reload finds the session's look already stored.
+ * Checks the look once per module load, off the hook that asks: the hook's
+ * event goes on at once and the box redraws when the look arrives. A stored
+ * look stands only when the HUD supplied it with this load's binary and
+ * preset; the built-in look, or one from other options, is asked again.
  */
-async function ensureStyle($: EngineInterface, asked: StyleAsked): Promise<void> {
+function ensureStyle($: EngineInterface, asked: StyleAsked): void {
   if (asked.isAsked) {
     return
   }
 
   asked.isAsked = true
+  $.clock.after(0, () => void refreshStyle($, asked.options))
+}
 
-  if ((await read($, styleState)) !== null) {
+async function refreshStyle($: EngineInterface, options: PluginOptions): Promise<void> {
+  const preset = presetOf(options)
+  let binary = BARE_BINARY
+
+  try {
+    binary = await binaryOf($, options)
+  } catch {
+    // Without HOME or the file check, the bare name is still worth a try.
+  }
+
+  const stored = await read($, styleSource)
+
+  if (!isStyleStale(stored, binary, preset)) {
     return
   }
 
-  const loaded = await loadStyle($, asked.options)
+  const loaded = await loadStyle($, binary, preset)
 
   if (loaded.source.kind === 'builtin') {
     $.ui.log(`tch-activity: ${loaded.source.reason}; drawing the built-in look`, { to: 'debug' })
@@ -671,35 +809,40 @@ async function ensureStyle($: EngineInterface, asked: StyleAsked): Promise<void>
 
   await update($, styleState, () => loaded.style)
   await update($, styleSource, () => loaded.source)
+  $.ui.invalidate('ui.render')
 }
 
 /**
- * Asks the HUD for its look once. Never rejects: a binary that is missing,
- * slow, failing or answering something unreadable yields the built-in look
- * and the reason, which the expanded history shows as one dim line.
- *
- * @param options the plugin's `userConfig` values; `binary` overrides the path
+ * Asks the HUD for its look. Never rejects: a binary that is missing, slow,
+ * failing or answering something unreadable yields the built-in look and the
+ * reason, which the expanded history shows as one dim line.
  */
-async function loadStyle($: EngineInterface, options: PluginOptions): Promise<LoadedStyle> {
-  let binary = BARE_BINARY
+async function loadStyle($: EngineInterface, binary: string, preset: string): Promise<LoadedStyle> {
+  const argv = [binary, 'style', '--json', ...(preset === '' ? [] : ['--preset', preset])]
+  const command = argv.slice(0, 3).join(' ') + (preset === '' ? '' : ` --preset ${preset}`)
 
   try {
-    binary = await binaryOf($, options)
-
-    const ran = await $.process.run([binary, 'style', '--json'], { timeoutMs: STYLE_TIMEOUT_MS })
+    const ran = await $.process.run(argv, { stdin: '', timeoutMs: STYLE_TIMEOUT_MS })
 
     if (ran.exitCode !== 0) {
-      return builtin(`${binary} style --json exited ${ran.exitCode}`)
+      return builtin(`${command} exited ${ran.exitCode}`, binary, preset)
     }
 
     const parsed = parseStyle(ran.stdout)
 
     return parsed === null
-      ? builtin(`${binary} style --json printed no style this mod reads`)
-      : { style: parsed, source: { kind: 'hud', binary } }
+      ? builtin(`${command} printed no style this mod reads`, binary, preset)
+      : { style: parsed, source: { kind: 'hud', binary, preset } }
   } catch (error) {
-    return builtin(`${binary} could not run: ${error instanceof Error ? error.message : String(error)}`)
+    return builtin(`${binary} could not run: ${error instanceof Error ? error.message : String(error)}`, binary, preset)
   }
+}
+
+/** The `preset` option: the preset the statusline command runs with, or empty. */
+function presetOf(options: PluginOptions): string {
+  const preset = options['preset']
+
+  return typeof preset === 'string' ? preset.trim() : ''
 }
 
 /**
@@ -727,13 +870,8 @@ async function binaryOf($: EngineInterface, options: PluginOptions): Promise<str
   return BARE_BINARY
 }
 
-const MAX_HISTORY_ROWS = 12
 const MAX_LABEL_CHARS = 120
 const MAX_AGENT_NAME_CHARS = 40
-const MAX_AGENT_ROWS = 6
-
-/** Rows the box spends on its frame and headline before history rows. */
-const FRAME_ROWS = 4
 
 /** The HUD's segment separator, drawn faint as the statusline draws it. */
 const SEPARATOR = ' | '
@@ -822,8 +960,17 @@ async function drawBox($: EngineInterface, e: AbovePromptInput) {
   // One agent the headline names; more, or one beside the main loop's
   // work, get a row each.
   const isTeamListed = working.length > 1 || (working.length === 1 && headline.phase !== 'agent')
-  const listed = isTeamListed ? working.slice(-MAX_AGENT_ROWS) : []
-  const unlisted = isTeamListed ? working.length - listed.length : 0
+  const note = styleNote(source)
+  const layout = bandLayout({
+    maxRows: e.props.maxRows,
+    agents: isTeamListed ? working.length : 0,
+    entries: entries.length,
+    isOpen,
+    hasNote: note !== null,
+  })
+
+  const listed = layout.agentRows > 0 ? working.slice(-layout.agentRows) : []
+  const unlisted = working.length - listed.length
 
   const agentRows = listed.map((agent, i) => (
     <Box key={`agent-${i}`} flexDirection="row">
@@ -831,9 +978,9 @@ async function drawBox($: EngineInterface, e: AbovePromptInput) {
     </Box>
   ))
 
-  const moreAgents = unlisted > 0 ? [<Text dimColor>{`… ${plural(unlisted, 'more agent')}`}</Text>] : []
+  const moreAgents = layout.hasMoreAgents ? [<Text dimColor>{`… ${plural(unlisted, 'more agent')}`}</Text>] : []
 
-  const teamBox = isTeamListed
+  const teamBox = isTeamListed && (listed.length > 0 || layout.hasMoreAgents)
     ? [
         <Box key="agents" flexDirection="column">
           {agentRows}
@@ -842,9 +989,7 @@ async function drawBox($: EngineInterface, e: AbovePromptInput) {
       ]
     : []
 
-  const teamRows = listed.length + moreAgents.length
-  const rows = Math.min(MAX_HISTORY_ROWS, Math.max(1, e.props.maxRows - FRAME_ROWS - teamRows))
-  const shown = entries.slice(-rows)
+  const shown = layout.historyRows > 0 ? entries.slice(-layout.historyRows) : []
   const hidden = entries.length - shown.length
 
   const historyRows = shown.map((entry, i) => (
@@ -853,12 +998,11 @@ async function drawBox($: EngineInterface, e: AbovePromptInput) {
     </Box>
   ))
 
-  const earlier = hidden > 0 ? [<Text dimColor>{`… ${hidden} earlier`}</Text>] : []
+  const earlier = layout.hasEarlier ? [<Text dimColor>{`… ${hidden} earlier`}</Text>] : []
   const empty = entries.length === 0 ? [<Text dimColor>No actions yet</Text>] : []
-  const note = styleNote(source)
-  const footer = note === null ? [] : [<Text dimColor wrap="truncate-end">{note}</Text>]
+  const footer = layout.hasNote && note !== null ? [<Text dimColor wrap="truncate-end">{note}</Text>] : []
 
-  const body = isOpen
+  const body = layout.isHistoryShown
     ? [
         <Box key="history" flexDirection="column" marginTop={1}>
           {earlier}

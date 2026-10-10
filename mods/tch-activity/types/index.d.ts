@@ -75,12 +75,13 @@ export type TchStyle = {
 }
 
 /**
- * Where the box's look came from: the HUD binary, or the built-in look with
- * the reason the binary could not supply it.
+ * Where the box's look came from: the HUD binary run with `preset` (empty
+ * for none), or the built-in look with the reason that binary could not
+ * supply one.
  */
 export type TchStyleSource =
-  | { kind: 'hud'; binary: string }
-  | { kind: 'builtin'; reason: string }
+  | { kind: 'hud'; binary: string; preset: string }
+  | { kind: 'builtin'; reason: string; binary: string; preset: string }
 
 declare module 'claude-code' {
   interface PluginState {
@@ -91,6 +92,8 @@ declare module 'claude-code' {
       isExpanded: boolean
       style: TchStyle | null
       styleSource: TchStyleSource | null
+      agentOrder: readonly string[]
+      lastTurn: { label: string; outcome: ActivityOutcome } | null
     }
   }
 }
