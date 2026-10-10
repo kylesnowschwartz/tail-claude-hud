@@ -12,9 +12,9 @@ import (
 )
 
 var (
-	greenStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
-	yellowStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
-	redStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
+	greenStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color(GreenColor))
+	yellowStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(YellowColor))
+	redStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color(RedColor))
 )
 
 // colorStyle returns a lipgloss.Style using the given color string. If colorName
@@ -61,33 +61,42 @@ func contextThresholds(pct, warnAt, critAt int, contextColor, warningColor, crit
 	}
 }
 
-// thresholdFgColor returns the ANSI color string for threshold-based coloring.
-// Uses config overrides when set, otherwise returns the default green/yellow/red.
-// Config values are passed through resolveColor so named ANSI colors (e.g.
-// "green") are converted to their numeric equivalents before the caller passes
-// them to lipgloss.Color().
-func thresholdFgColor(pct, warnAt, critAt int, cfgContext, cfgWarning, cfgCritical string) string {
-	// Determine the effective color string for each tier.
-	greenFg := "2"
-	if cfgContext != "" {
-		greenFg = color.ResolveColorName(cfgContext)
-	}
-	yellowFg := "3"
-	if cfgWarning != "" {
-		yellowFg = color.ResolveColorName(cfgWarning)
-	}
-	redFg := "1"
-	if cfgCritical != "" {
-		redFg = color.ResolveColorName(cfgCritical)
-	}
+// ThresholdColors holds the lipgloss color strings for the three tiers of
+// threshold-based coloring (context, cost, usage).
+type ThresholdColors struct {
+	Normal   string
+	Warning  string
+	Critical string
+}
 
+// ResolveThresholdFgColors applies the [style.colors] config values over the
+// default green/yellow/red tiers. Named ANSI colors (e.g. "green") resolve to
+// their numeric equivalents so the results can go straight to lipgloss.Color().
+func ResolveThresholdFgColors(cfgContext, cfgWarning, cfgCritical string) ThresholdColors {
+	colors := ThresholdColors{Normal: GreenColor, Warning: YellowColor, Critical: RedColor}
+	if cfgContext != "" {
+		colors.Normal = color.ResolveColorName(cfgContext)
+	}
+	if cfgWarning != "" {
+		colors.Warning = color.ResolveColorName(cfgWarning)
+	}
+	if cfgCritical != "" {
+		colors.Critical = color.ResolveColorName(cfgCritical)
+	}
+	return colors
+}
+
+// thresholdFgColor returns the ANSI color string for threshold-based coloring,
+// selecting the tier for pct from ResolveThresholdFgColors.
+func thresholdFgColor(pct, warnAt, critAt int, cfgContext, cfgWarning, cfgCritical string) string {
+	colors := ResolveThresholdFgColors(cfgContext, cfgWarning, cfgCritical)
 	switch {
 	case pct >= critAt:
-		return redFg
+		return colors.Critical
 	case pct >= warnAt:
-		return yellowFg
+		return colors.Warning
 	default:
-		return greenFg
+		return colors.Normal
 	}
 }
 

@@ -6,6 +6,24 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
+// Base ANSI colors shared by the tools, thinking, agents, and threshold
+// widgets. Values are lipgloss color strings (ANSI 16 indices) so they follow
+// the terminal's own palette.
+const (
+	RedColor    = "1" // errors, critical thresholds, permission alerts
+	GreenColor  = "2" // completed tools and agents, normal thresholds
+	YellowColor = "3" // running tools, active thinking, warning thresholds
+	MutedColor  = "8" // bright black: static metadata (MutedStyle)
+)
+
+// AgentPalette returns a copy of the agent identity palette in assignment
+// order. Agents take palette[ColorIndex % len(palette)].
+func AgentPalette() []string {
+	palette := make([]string, len(agentColors))
+	copy(palette, agentColors[:])
+	return palette
+}
+
 // agentColors is the 8-color palette for agent identity, using ANSI 16 codes so colors
 // adapt to the terminal's own palette.
 // Indexed as: bright blue, bright green, bright red, bright yellow, bright magenta, bright cyan, yellow, magenta.
@@ -78,7 +96,7 @@ var (
 	// MutedStyle is tier 4: ANSI bright black for static metadata.
 	// Visually distinct from DimStyle (Faint) — uses explicit color instead of attribute.
 	// Used for: session ID, env counts, message counts, token counts.
-	MutedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	MutedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(MutedColor))
 )
 
 var (

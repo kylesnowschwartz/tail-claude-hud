@@ -26,7 +26,7 @@ func Thinking(ctx *model.RenderContext, cfg *config.Config) WidgetResult {
 		return WidgetResult{
 			Text:      yellowStyle.Render(icons.Thinking),
 			PlainText: icons.Thinking,
-			FgColor:   "3",
+			FgColor:   YellowColor,
 		}
 	}
 
@@ -35,7 +35,7 @@ func Thinking(ctx *model.RenderContext, cfg *config.Config) WidgetResult {
 		return WidgetResult{
 			Text:      DimStyle.Render(plain),
 			PlainText: plain,
-			FgColor:   "8",
+			FgColor:   MutedColor,
 		}
 	}
 

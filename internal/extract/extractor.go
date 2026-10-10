@@ -460,7 +460,7 @@ func (es *ExtractionState) handleRegularToolUse(b transcript.ToolUseBlock, ts ti
 		id:        b.ID,
 		name:      b.Name,
 		target:    extractTarget(b.Name, b.Input),
-		category:  toolCategory(b.Name),
+		category:  ToolCategory(b.Name),
 		startTime: ts,
 	}
 	es.toolMap[b.ID] = t
@@ -762,12 +762,12 @@ func (es *ExtractionState) resolveTaskIndex(taskID string) int {
 	return -1
 }
 
-// toolCategory returns the display category for a tool name: the library
+// ToolCategory returns the display category for a tool name: the library
 // taxonomy plus one HUD policy override — Skill keeps its own category
 // because the renderer has a dedicated Skill icon (the library folds Skill
 // into Task). Everything else delegates so new tool names (Workflow,
 // multi-agent aliases) categorize without a HUD release.
-func toolCategory(name string) string {
+func ToolCategory(name string) string {
 	if name == "Skill" {
 		return "Skill"
 	}

@@ -5,6 +5,9 @@
 package widget
 
 import (
+	"slices"
+	"strings"
+
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/config"
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/model"
 )
@@ -186,4 +189,42 @@ func CategoryIcon(icons Icons, category string) string {
 	default:
 		return icons.Other
 	}
+}
+
+// ByKey returns every icon keyed by its lower-camel field name ("check",
+// "running", "read", ...). CategoryIconKey returns keys from this map.
+func (i Icons) ByKey() map[string]string {
+	return map[string]string{
+		"check":      i.Check,
+		"running":    i.Running,
+		"clock":      i.Clock,
+		"folder":     i.Folder,
+		"branch":     i.Branch,
+		"read":       i.Read,
+		"edit":       i.Edit,
+		"write":      i.Write,
+		"bash":       i.Bash,
+		"grep":       i.Grep,
+		"glob":       i.Glob,
+		"web":        i.Web,
+		"task":       i.Task,
+		"skill":      i.Skill,
+		"thinking":   i.Thinking,
+		"other":      i.Other,
+		"error":      i.Error,
+		"permission": i.Permission,
+	}
+}
+
+// IconCategories lists the tool categories CategoryIcon gives a dedicated
+// icon. Every other category renders with the "other" icon.
+var IconCategories = []string{"Read", "Edit", "Write", "Bash", "Grep", "Glob", "Web", "Task", "Skill", "Thinking"}
+
+// CategoryIconKey returns the ByKey key of the icon CategoryIcon draws for a
+// tool category.
+func CategoryIconKey(category string) string {
+	if slices.Contains(IconCategories, category) {
+		return strings.ToLower(category)
+	}
+	return "other"
 }

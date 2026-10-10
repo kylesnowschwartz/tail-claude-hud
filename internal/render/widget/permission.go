@@ -7,7 +7,7 @@ import (
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/model"
 )
 
-var permissionStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
+var permissionStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(RedColor))
 
 // Permission renders a red alert when another Claude Code session is waiting
 // for permission approval. Returns an empty WidgetResult when no session needs
@@ -32,6 +32,6 @@ func Permission(ctx *model.RenderContext, cfg *config.Config) WidgetResult {
 	return WidgetResult{
 		Text:      permissionStyle.Render(label),
 		PlainText: label,
-		FgColor:   "1", // red
+		FgColor:   RedColor,
 	}
 }
