@@ -83,7 +83,7 @@ just mod-dev      # claude with this folder loaded (hot-reloads on save), whats-
 just mod-check    # validate (mod and marketplace), run the tests, typecheck
 ```
 
-`just mod-dev` builds this checkout's HUD binary to a temporary folder and points the mod at it, and passes `--settings` with `"enabledPlugins":{"whats-agent-doing@tzafrir":false}`, which turns an installed whats-agent-doing off for that session alone. Set `TCH_HUD_BINARY=/path/to/tail-claude-hud` to use another HUD binary. Loading the mod writes the API's types to `.claude-plugin/types/` (git-ignored), which `tsconfig.json` extends; `just mod-check` typechecks only once that has happened.
+`just mod-dev` builds this checkout's HUD binary to a temporary folder and points the mod at it, and passes `--settings` with `"enabledPlugins":{"whats-agent-doing@tzafrir":false}`, which turns an installed whats-agent-doing off for that session alone. Set `TCH_HUD_BINARY=/path/to/tail-claude-hud` to use another HUD binary. Loading the mod writes the API's types to `.claude-plugin/types/` (git-ignored), which `tsconfig.json` extends. `just mod-check` typechecks only once that has happened; until then it validates and runs the tests, prints `type check skipped: run 'just mod-dev' once to write the API types`, and exits 0.
 
 `QA.md` is a scripted checklist for driving the mod in tmux.
 
