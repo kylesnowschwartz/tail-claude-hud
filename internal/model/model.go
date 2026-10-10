@@ -147,6 +147,15 @@ type TranscriptData struct {
 	// MessageCount is the number of user/assistant conversational turns in the
 	// transcript, excluding pure tool_result entries.
 	MessageCount int
+
+	// LastRequestAt is when the main conversation last sent a request that
+	// the model answered. Its prompt cache stays warm for CacheTTL after
+	// this. Zero before any answered request.
+	LastRequestAt time.Time
+
+	// CacheTTL is the lifetime of the main conversation's latest prompt-cache
+	// write (5m or 1h). Zero when no write has been seen.
+	CacheTTL time.Duration
 }
 
 // ToolEntry records a single tool invocation observed in the transcript.

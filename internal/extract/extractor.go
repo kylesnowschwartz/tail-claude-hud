@@ -177,6 +177,76 @@ type ExtractionState struct {
 	// user-typed slash commands (<command-name> tags) and assistant-side
 	// Skill tool_use blocks.
 	skills []model.SkillInvocation
+
+	// cache tracks when the main conversation last sent a request to the
+	// model and which TTL its latest prompt-cache write used.
+	cache cacheState
+}
+
+// cacheState follows the main conversation's prompt cache. A prompt or tool
+// result is written as a user entry just before the request that carries it,
+// so the last user entry before a response marks when that request was sent.
+type cacheState struct {
+	// lastUserAt is the timestamp of the most recent user entry.
+	lastUserAt time.Time
+	// lastResponseID is the message id of the most recent counted response.
+	// One response spans several assistant entries sharing this id.
+	lastResponseID string
+	// requestSentAt is when the latest answered request was sent.
+	requestSentAt time.Time
+	// ttl is the lifetime of the latest cache write; zero until one is seen.
+	ttl time.Duration
+}
+
+// Prompt-cache lifetimes the API writes with.
+const (
+	cacheTTL5m = 5 * time.Minute
+	cacheTTL1h = time.Hour
+)
+
+// syntheticModel marks assistant entries Claude Code writes itself (errors,
+// interruptions) without calling the model.
+const syntheticModel = "<synthetic>"
+
+// observe updates the cache state from one main-conversation entry. ts is
+// the entry's parsed timestamp; entries without one are ignored.
+func (c *cacheState) observe(e transcript.Entry, ts time.Time) {
+	if ts.IsZero() {
+		return
+	}
+	switch e.Type {
+	case "user":
+		c.lastUserAt = ts
+	case "assistant":
+		if e.Message.Model == syntheticModel || !hasUsage(e.Message.Usage) {
+			return
+		}
+		if e.Message.ID != c.lastResponseID {
+			c.lastResponseID = e.Message.ID
+			sentAt := c.lastUserAt
+			if sentAt.IsZero() {
+				sentAt = ts
+			}
+			if sentAt.After(c.requestSentAt) {
+				c.requestSentAt = sentAt
+			}
+		}
+		written := e.Message.Usage.CacheCreation
+		switch {
+		case written.Ephemeral1hInputTokens > 0:
+			c.ttl = cacheTTL1h
+		case written.Ephemeral5mInputTokens > 0:
+			c.ttl = cacheTTL5m
+		}
+	}
+}
+
+// hasUsage reports whether an assistant entry carries a usage record. Usage
+// decodes to the zero value when absent, and every answered request reports
+// at least some input or output tokens.
+func hasUsage(u transcript.EntryUsage) bool {
+	return u.InputTokens > 0 || u.OutputTokens > 0 ||
+		u.CacheReadInputTokens > 0 || u.CacheCreationInputTokens > 0
 }
 
 // NewExtractionState returns an initialised, empty ExtractionState.
@@ -216,6 +286,7 @@ func (es *ExtractionState) ProcessEntry(e transcript.Entry) {
 
 	blocks := transcript.ExtractContentBlocks(e)
 	ts := e.ParsedTimestamp()
+	es.cache.observe(e, ts)
 
 	// Count conversational turns: user and assistant messages that are not
 	// pure tool_result responses. Tool results are infrastructure — they carry
@@ -664,6 +735,8 @@ func (es *ExtractionState) ToTranscriptData() *model.TranscriptData {
 		SpinnerFrame:   es.spinnerFrame,
 		DividerOffset:  es.dividerOffset,
 		MessageCount:   es.messageCount,
+		LastRequestAt:  es.cache.requestSentAt,
+		CacheTTL:       es.cache.ttl,
 	}
 }
 
@@ -804,6 +877,52 @@ type extractionSnapshot struct {
 	SpinnerFrame   int                   `json:"spinner_frame"`
 	DividerOffset  int                   `json:"divider_offset"`
 	MessageCount   int                   `json:"message_count"`
+	Cache          snapshotCache         `json:"cache"`
+}
+
+// snapshotCache is the serializable form of cacheState. Times are
+// RFC3339Nano strings, empty when unset; TTLSecs is 0 until a write is seen.
+type snapshotCache struct {
+	LastUserAt     string `json:"last_user_at,omitempty"`
+	LastResponseID string `json:"last_response_id,omitempty"`
+	RequestSentAt  string `json:"request_sent_at,omitempty"`
+	TTLSecs        int    `json:"ttl_secs,omitempty"`
+}
+
+func (c cacheState) snapshot() snapshotCache {
+	return snapshotCache{
+		LastUserAt:     formatSnapshotTime(c.lastUserAt),
+		LastResponseID: c.lastResponseID,
+		RequestSentAt:  formatSnapshotTime(c.requestSentAt),
+		TTLSecs:        int(c.ttl / time.Second),
+	}
+}
+
+func (s snapshotCache) restore() cacheState {
+	return cacheState{
+		lastUserAt:     parseSnapshotTime(s.LastUserAt),
+		lastResponseID: s.LastResponseID,
+		requestSentAt:  parseSnapshotTime(s.RequestSentAt),
+		ttl:            time.Duration(s.TTLSecs) * time.Second,
+	}
+}
+
+// formatSnapshotTime encodes t as RFC3339Nano, or "" for the zero time.
+func formatSnapshotTime(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	return t.Format(time.RFC3339Nano)
+}
+
+// parseSnapshotTime decodes an RFC3339Nano string, yielding the zero time
+// for "" or a malformed value.
+func parseSnapshotTime(s string) time.Time {
+	t, err := time.Parse(time.RFC3339Nano, s)
+	if err != nil {
+		return time.Time{}
+	}
+	return t
 }
 
 type snapshotTool struct {
@@ -896,6 +1015,7 @@ func (es *ExtractionState) MarshalSnapshot() (json.RawMessage, error) {
 		SpinnerFrame:   es.spinnerFrame,
 		DividerOffset:  es.dividerOffset,
 		MessageCount:   es.messageCount,
+		Cache:          es.cache.snapshot(),
 	}
 	return json.Marshal(snap)
 }
@@ -1003,6 +1123,7 @@ func (es *ExtractionState) UnmarshalSnapshot(data json.RawMessage) error {
 	es.spinnerFrame = snap.SpinnerFrame
 	es.dividerOffset = snap.DividerOffset
 	es.messageCount = snap.MessageCount
+	es.cache = snap.Cache.restore()
 	return nil
 }
 
@@ -1036,4 +1157,6 @@ func truncateAgentDescription(s string) string {
 // dedupe split assistant entries that repeat one API response's usage, so
 // stored samples change meaning and count. Skill invocations gain
 // timestamps (skill_names []string → skills []{name, ts}).
-const SchemaVersion = 6
+// v7: the snapshot records the main conversation's last request time and
+// prompt-cache TTL for the cachettl widget.
+const SchemaVersion = 7
