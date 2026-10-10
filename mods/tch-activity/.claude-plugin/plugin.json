@@ -1,7 +1,7 @@
 {
   "name": "tch-activity",
   "displayName": "tail-claude-hud activity",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A box above the prompt that says what Claude is doing right now (reading, thinking, running a tool, waiting for you) in tail-claude-hud's icons and colors, and expands to show what it has done.",
   "author": {
     "name": "Kyle Snow Schwartz"
