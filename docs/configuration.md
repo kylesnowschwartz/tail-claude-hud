@@ -39,6 +39,7 @@ levels = 2
 [git]
 dirty = true
 ahead_behind = true
+line_stats = false     # uncommitted +N -M next to the branch (the lines widget shows session totals)
 ```
 
 ## Usage (rate limits)

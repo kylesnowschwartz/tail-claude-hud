@@ -35,6 +35,9 @@ func TestDefaultTemplateLoadsWithDefaults(t *testing.T) {
 	if cfg.Style.Icons != "nerdfont" {
 		t.Errorf("expected icons=nerdfont, got %q", cfg.Style.Icons)
 	}
+	if cfg.Git.LineStats {
+		t.Error("expected line_stats=false")
+	}
 }
 
 // TestInitCreatesFile verifies Init writes the template to the expected path.

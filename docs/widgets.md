@@ -43,7 +43,7 @@ Gathered from the filesystem:
 | Widget | Shows | Config |
 |---|---|---|
 | `directory` | Working directory; `fish` shortens parent segments to one letter, hidden ones to the dot and one letter (`~/C/.c/w/wt`) | `style` (full/fish/basename), `levels` (int) |
-| `git` | Branch, dirty indicator, ahead/behind counts, uncommitted line deltas (`+100 -55`) | `dirty` (bool), `ahead_behind` (bool), `file_stats` (bool), `line_stats` (bool) |
+| `git` | Branch, dirty indicator, ahead/behind counts, uncommitted line deltas (`+100 -55`) when `line_stats` is on | `dirty` (bool), `ahead_behind` (bool), `file_stats` (bool), `line_stats` (bool, default: false) |
 | `project` | Composite of directory + git in a single segment | inherits `[directory]` and `[git]` config |
 | `env` | MCP servers, CLAUDE.md files, rule files, hooks (e.g. "3M 2C 4R 3H") | -- |
 | `permission` | Red alert when another session needs approval (requires hooks via `--init`) | `show_project` (bool, default: true) |

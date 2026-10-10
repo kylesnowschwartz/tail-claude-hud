@@ -49,6 +49,11 @@ func TestDefaultsWhenNoFile(t *testing.T) {
 		t.Errorf("Style.Separator: got %q, want %q", cfg.Style.Separator, " | ")
 	}
 
+	// The lines widget owns the +N -M look; the git widget leaves it off.
+	if cfg.Git.LineStats {
+		t.Error("Git.LineStats: want false")
+	}
+
 	// Model defaults
 	if !cfg.Model.ShowContextSize {
 		t.Error("Model.ShowContextSize: want true")
