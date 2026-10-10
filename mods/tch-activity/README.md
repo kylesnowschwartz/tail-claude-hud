@@ -4,13 +4,13 @@ A box above the Claude Code prompt that says what Claude is doing right now, dra
 
 ```
 ╭────────────────────────────────────────────────────────────────╮
-│ ▾  Idle, last turn done in 12.3s, 2 actions                   │
+│ ▾  Idle · last turn done in 12s, 2 actions                    │
 │                                                                │
 │ › Run the shell command `sleep 5 && echo done` with the Bash … │
-│   Read VERSION 0.4s                                          │
-│  󰯠 Wait five seconds 5.7s                                     │
+│  Read VERSION 0.4s                                            │
+│ 󰯠 Wait five seconds 5.7s                                       │
 │  Wrote the reply (11 words) <0.1s                             │
-│  Done, 2 actions 12.3s                                        │
+│  Done in 12s, 2 actions                                       │
 ╰────────────────────────────────────────────────────────────────╯
 ```
 
@@ -56,11 +56,11 @@ If the binary is missing, too old to have `style --json`, or prints something un
 | Reading tool results | `󰪠 Reviewing the results of 3 actions` |
 | Writing the reply | ` Writing the reply \| 120 words` |
 | Compacting | `󰪠 Compacting the conversation` |
-| Between turns | `Idle, last turn done in 42s, 6 actions`, or interrupted, stopped on an error, declined the request, stopped at a declined call; the glyph is the turn's outcome |
+| Between turns | `Idle · last turn done in 42s, 6 actions`, or interrupted, stopped on an error, declined the request, stopped at a declined call; the glyph is the turn's outcome |
 
 Labels are drawn in the default text color. A state's color is on its glyph and on the border: yellow while Claude works or thinks, red while it or a subagent waits on you, muted grey when idle. Numbers, timers and separators are faint. A timer after the label (`| 4.2s`) counts how long the current state has lasted, in tenths of a second under ten seconds; a tool's timer leaves out the time its approval dialog was up. The box widens to fit its widest row and keeps that width for the rest of the session.
 
-Focus the band with `ctrl+x tab` and press Enter, or click the triangle, to expand the history: each prompt (`›`), stretch of thinking, tool call, reply and turn ending, with durations. A tool row is in the past tense and reads `<outcome> <category icon> <label> <duration>`, as in `  Read VERSION 0.4s`. The outcome is the HUD's check (success color), its error icon (error color), `⊘` declined or `■` interrupted (both muted). A question to you shows the bell in place of the category icon. Category, thought, reply and compaction (`⇣`) icons are faint. A background agent gets a `Started an agent:` row when it is launched and a `Ran an agent:` row when it finishes. The turn ends with `Done, 2 actions 12.3s`, or, when the last call was one you declined, `⊘ Stopped at a declined call`. A prompt the engine sends for you (`<agent-message …>`, `<task-notification>`) is listed by its tag, `Agent message`.
+Focus the band with `ctrl+x tab` and press Enter, or click the triangle, to expand the history: each prompt (`›`), stretch of thinking, tool call, reply and turn ending, with durations. A tool row is in the past tense and has one glyph, as the HUD's tools widget draws a finished tool: the tool's category icon in the success color, or the error color when it failed, as in ` Read VERSION 0.4s`. A call you declined shows `⊘` and an interrupted one `■` (both muted) in place of the icon, so those rows never rely on color alone. A question to you shows the bell, and an agent's row the robot, under the same rule. Thought, reply and compaction (`⇣`) icons are faint. A background agent gets a `Started an agent:` row when it is launched and a `Ran an agent:` row when it finishes. The turn's last row says how it ended with its time in the label, `Done in 12s, 2 actions`, or `⊘ Stopped at a declined call after 7.1s` when its last call was one you declined. A prompt the engine sends for you (`<agent-message …>`, `<task-notification>`) is listed by its tag, `Agent message`.
 
 The box steps aside while a survey holds the band. Other mods that draw above the prompt keep their place beneath it.
 
