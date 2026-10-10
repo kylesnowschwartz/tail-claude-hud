@@ -25,6 +25,9 @@ const LARGE_INPUT_CHARS = 1024
 
 export const STARTING_LABEL = 'Getting started'
 
+/** The headline while the model writes a call its input does not name yet. */
+export const PREPARING_LABEL = 'Preparing the next action'
+
 export const UNNAMED_AGENT = 'Agent'
 
 /** What the model is doing in the main loop, between and around tool calls. */
@@ -92,7 +95,6 @@ export type Live = {
   replyWords: number
   isReplyInWord: boolean
   composing: { tool: string; head: string; chars: number } | null
-  lastAction: { label: string; tool: string } | null
   lastTurn: { label: string; outcome: ActivityOutcome } | null
   lastPublishMs: number
   trailing: Timer | null
@@ -120,7 +122,6 @@ export function createLive(): Live {
     replyWords: 0,
     isReplyInWord: false,
     composing: null,
-    lastAction: null,
     lastTurn: null,
     lastPublishMs: 0,
     trailing: null,
@@ -145,7 +146,7 @@ export function current(live: Live): ActivityNow {
     const call = { ...base, sinceMs: newest.startMs, tool: newest.tool }
 
     if (newest.isAwaitingApproval) {
-      return { ...call, phase: 'approval', label: `Waiting for approval: ${newest.label}${more}` }
+      return { ...call, phase: 'approval', label: `Waiting for your approval: ${newest.label}${more}` }
     }
 
     if (newest.tool === 'AskUserQuestion') {
@@ -200,10 +201,8 @@ export function current(live: Live): ActivityNow {
         sinceMs,
       }
     case 'thinking': {
-      // With no thought text to quote, the last action stands, drawn with
-      // the thinking icon; before any action, the prompt is what it reads.
       const snippet = thoughtOf(live.thought, MAX_THOUGHT_CHARS)
-      const label = snippet ? `Thinking: ${snippet}` : standingLabel(live)
+      const label = snippet ? `Thinking: ${snippet}` : 'Thinking'
 
       return { ...base, phase: 'thinking', label, sinceMs }
     }
@@ -225,7 +224,8 @@ export function current(live: Live): ActivityNow {
 /**
  * A call being written is named once its input says what it does: a file
  * tool by its path, a command by its description, which streams after the
- * command itself. Until then the last action stands.
+ * command itself. Until then the headline says a call is being prepared,
+ * under the running glyph.
  */
 function composingHeadline(live: Live): { label: string; detail: string | null; tool: string | null } {
   const { composing } = live
@@ -235,20 +235,12 @@ function composingHeadline(live: Live): { label: string; detail: string | null; 
     : Object.keys(args).length > 0)
 
   if (!composing || !isDescribed) {
-    return { label: standingLabel(live), detail: null, tool: live.lastAction?.tool ?? null }
+    return { label: PREPARING_LABEL, detail: null, tool: null }
   }
 
   const detail = composing.chars >= LARGE_INPUT_CHARS ? sizeOf(composing.chars) : null
 
   return { label: activityOf(composing.tool, args), detail, tool: composing.tool }
-}
-
-/**
- * What the box keeps saying while Claude thinks or writes a call it cannot
- * name yet: the turn's last action, or the prompt before there is one.
- */
-function standingLabel(live: Live): string {
-  return live.lastAction?.label ?? 'Reading your prompt'
 }
 
 /** The agent an Agent call started, or the one that last did something. */
@@ -267,7 +259,7 @@ function agentUnder(live: Live, toolUseId: string): (Agent & { id: string }) | u
 export function agentLabel(live: Live, agent: Agent & { id: string }): string {
   const waiting = waitingCallOf(live, agent.id)
 
-  return waiting === undefined ? agent.label : `Waiting for approval: ${waiting.label}`
+  return waiting === undefined ? agent.label : `Waiting for your approval: ${waiting.label}`
 }
 
 /** Whether a call of the agent's waits on approval. */

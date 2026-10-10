@@ -127,8 +127,12 @@ describe('text', () => {
     expect(durationOf(108_000)).toBe('1m 48s')
   })
 
-  test('running timers count whole seconds, then minutes', async () => {
-    expect(elapsedOf(4_900)).toBe('4s')
+  test('running timers show tenths under ten seconds, then whole seconds, then minutes', async () => {
+    expect(elapsedOf(0)).toBe('0.0s')
+    expect(elapsedOf(4_250)).toBe('4.2s')
+    expect(elapsedOf(9_999)).toBe('9.9s')
+    expect(elapsedOf(10_000)).toBe('10s')
+    expect(elapsedOf(12_900)).toBe('12s')
     expect(elapsedOf(94_000)).toBe('1m 34s')
     expect(elapsedOf(3_720_000)).toBe('1h 2m')
   })

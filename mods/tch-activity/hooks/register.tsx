@@ -34,7 +34,7 @@ import {
   withAgentKey,
 } from './live'
 import { bandLayout } from './layout'
-import { borderColor, entryMark, headlineMark, styleNote } from './marks'
+import { borderColor, entryMark, entryToolIcon, headlineMark, styleNote } from './marks'
 import {
   agentColor,
   BARE_BINARY,
@@ -44,10 +44,9 @@ import {
   icon,
   isStyleStale,
   parseStyle,
-  toolIcon,
   type LoadedStyle,
 } from './style'
-import { durationOf, elapsedOf, oneLine, plural, printable, promptLabel, wordsAdded } from './text'
+import { durationOf, elapsedOf, oneLine, TENTHS_UNDER_MS, plural, printable, promptLabel, wordsAdded } from './text'
 
 /** The headline. */
 const now = atom({ plugin: 'tch-activity', key: 'now' } as const, IDLE)
@@ -124,7 +123,6 @@ export const register: Register = (on, options) => {
     live.turnActions = 0
     live.isFirstRequest = true
     live.resultsToReview = 0
-    live.lastAction = null
     live.calls.clear()
 
     const prompt = promptLabel(e.text, MAX_PROMPT_CHARS)
@@ -198,12 +196,12 @@ export const register: Register = (on, options) => {
     }
 
     live.calls.set(e.tool_use_id, { tool: e.tool, label, startMs, agentId: null, isAwaitingApproval: false })
-    live.lastAction = { label, tool: e.tool }
     live.turnActions += 1
     await publish($, live)
 
     // A call that never settles (the turn was interrupted) keeps this.
     let outcome: ActivityOutcome = 'interrupted'
+    let done = activityOf(e.tool, args, 'past')
 
     try {
       const result = await next(e)
@@ -221,7 +219,9 @@ export const register: Register = (on, options) => {
           void sweep($, live)
         }
 
-        await launched($, live, result.result, description, e.tool_use_id)
+        if (await launched($, live, result.result, description, e.tool_use_id)) {
+          done = `Started an agent: ${typeof description === 'string' ? oneLine(description) : ''}`
+        }
       }
 
       return result
@@ -236,7 +236,7 @@ export const register: Register = (on, options) => {
       live.resultsToReview += 1
 
       await remember($, {
-        ...entryOf('tool', label, outcome),
+        ...entryOf('tool', done, outcome),
         durationMs: (await $.clock.now()) - startMs,
         tool: e.tool,
       })
@@ -402,8 +402,11 @@ const MAX_INPUT_HEAD = 4000
 /** Streaming chunks arrive far faster than anyone reads; publish at most this often. */
 const STREAM_THROTTLE_MS = 250
 
-/** The running timer counts whole seconds. */
-const TICK_MS = 1000
+/** The running timer shows tenths under ten seconds; the box redraws this often then. */
+const TICK_MS = 100
+
+/** Past ten seconds the timer counts whole seconds: the box redraws, and checks on agents, once a second. */
+const TICKS_PER_SECOND = 10
 
 /**
  * Writes the headline. A streaming update (`isUrgent` false) lands at most
@@ -535,7 +538,7 @@ async function finish(
 
   if (agent.isBackground) {
     await remember($, {
-      ...entryOf('tool', `Agent: ${agent.name}`, outcome),
+      ...entryOf('tool', `Ran an agent: ${agent.name}`, outcome),
       durationMs: (await $.clock.now()) - agent.startMs,
       tool: 'Agent',
     })
@@ -607,14 +610,37 @@ function keepTicking($: EngineInterface, live: Live): void {
   const isBusy = live.turnStartMs !== null || live.agents.size > 0 || live.phase === 'compacting'
 
   if (isBusy && live.ticker === null) {
-    live.ticker = $.clock.every(TICK_MS, () => {
-      $.ui.invalidate('ui.render')
-      void sweep($, live)
+    let ticks = 0
+
+    live.ticker = $.clock.every(TICK_MS, async () => {
+      ticks += 1
+
+      const isWholeSecond = ticks % TICKS_PER_SECOND === 0
+
+      if (isWholeSecond) {
+        void sweep($, live)
+      }
+
+      if (isWholeSecond || hasTenthsTimer(live, await $.clock.now())) {
+        $.ui.invalidate('ui.render')
+      }
     })
   } else if (!isBusy && live.ticker !== null) {
     live.ticker.cancel()
     live.ticker = null
   }
+}
+
+/** Whether a timer the box draws is still under ten seconds, and so shows tenths. */
+function hasTenthsTimer(live: Live, nowMs: number): boolean {
+  const headline = current(live)
+  const starts = [...live.agents.values()].map(agent => agent.startMs)
+
+  if (headline.phase !== 'idle') {
+    starts.push(headline.sinceMs)
+  }
+
+  return starts.some(startMs => nowMs - startMs < TENTHS_UNDER_MS)
 }
 
 async function remember($: EngineInterface, entry: ActivityEntry): Promise<void> {
@@ -725,6 +751,8 @@ async function follow($: EngineInterface, live: Live, chunk: TurnStepChunk): Pro
  * short `description`, keyed by the id its result carries (the result's own
  * `description` can hold the whole prompt). Its own calls may already have
  * shown it.
+ *
+ * @returns whether the call launched a background agent
  */
 async function launched(
   $: EngineInterface,
@@ -732,15 +760,15 @@ async function launched(
   result: unknown,
   asked: unknown,
   toolUseId: string,
-): Promise<void> {
+): Promise<boolean> {
   if (typeof result !== 'object' || result === null) {
-    return
+    return false
   }
 
   const { agentId, description, status } = result as Record<string, unknown>
 
   if (typeof agentId !== 'string' || status !== 'async_launched') {
-    return
+    return false
   }
 
   const name = [asked, description].find(
@@ -748,7 +776,7 @@ async function launched(
   )
 
   if (name === undefined) {
-    return
+    return true
   }
 
   const agent = await agentOf($, live, agentId)
@@ -759,6 +787,8 @@ async function launched(
   agent.colorKey = toolUseId
   await placeAgent($, live, agentId, toolUseId)
   await publish($, live)
+
+  return true
 }
 
 /**
@@ -929,7 +959,7 @@ async function drawBox($: EngineInterface, e: AbovePromptInput) {
     const toolMark = entry.kind === 'tool' && entry.tool !== null
       ? [
           <Box flexShrink={0}>
-            <Text dimColor>{`${toolIcon(style, entry.tool)} `}</Text>
+            <Text dimColor>{`${entryToolIcon(style, entry.tool)} `}</Text>
           </Box>,
         ]
       : []

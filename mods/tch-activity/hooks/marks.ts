@@ -15,6 +15,16 @@ const PROMPT_GLYPH = '›'
 const COMPACT_GLYPH = '⇣'
 
 /**
+ * The reply's speech bubble, which the HUD's icon set has no key for: the
+ * Nerd Font comment icon (nf-fa-comment), a narrow quote mark otherwise.
+ */
+const REPLY_GLYPHS: Readonly<Record<string, string>> = { nerdfont: '\uf075', unicode: '❝', ascii: '"' }
+const REPLY_FALLBACK = '❝'
+
+/** The tool that puts a question to you, drawn with the needs-you bell wherever it shows. */
+const QUESTION_TOOL = 'AskUserQuestion'
+
+/**
  * A glyph, the color it is drawn in (`undefined`: default foreground), and
  * whether it is drawn faint.
  */
@@ -32,7 +42,7 @@ export function headlineMark(style: TchStyle, headline: ActivityNow): Mark {
     case 'thinking':
       return { glyph: icon(style, 'thinking'), color: color(style, 'thinking') }
     case 'writing':
-      return { glyph: icon(style, 'write'), color: running }
+      return { glyph: replyGlyph(style), color: running }
     case 'tool':
     case 'composing':
       return headline.tool === null
@@ -73,13 +83,22 @@ export function entryMark(style: TchStyle, entry: ActivityEntry): Mark {
     case 'thought':
       return { glyph: icon(style, 'thinking'), color: undefined, isFaint: true }
     case 'reply':
-      return { glyph: icon(style, 'write'), color: undefined, isFaint: true }
+      return { glyph: replyGlyph(style), color: undefined, isFaint: true }
     case 'compact':
       return { glyph: COMPACT_GLYPH, color: undefined, isFaint: true }
     case 'tool':
     case 'end':
       return outcomeMark(style, entry.outcome)
   }
+}
+
+/** A history tool row's kind icon: the HUD's for the tool's category, the bell for a question to you. */
+export function entryToolIcon(style: TchStyle, tool: string): string {
+  return tool === QUESTION_TOOL ? icon(style, 'permission') : toolIcon(style, tool)
+}
+
+function replyGlyph(style: TchStyle): string {
+  return REPLY_GLYPHS[style.iconMode] ?? REPLY_FALLBACK
 }
 
 /**

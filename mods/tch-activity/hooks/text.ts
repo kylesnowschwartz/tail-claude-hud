@@ -92,12 +92,21 @@ export function durationOf(ms: number): string {
   return `${minutes}m ${seconds}s`
 }
 
+/** Under this, a running timer shows tenths of a second. */
+export const TENTHS_UNDER_MS = 10_000
+
 /**
- * A running timer, ticked once a second: whole seconds, then minutes and
- * seconds, as the HUD's agents widget counts a running agent.
+ * A running timer: tenths under ten seconds (`4.2s`), whole seconds to a
+ * minute, then minutes and seconds.
  */
 export function elapsedOf(ms: number): string {
-  const total = Math.max(0, Math.floor(ms / 1000))
+  const clamped = Math.max(0, ms)
+
+  if (clamped < TENTHS_UNDER_MS) {
+    return `${(Math.floor(clamped / 100) / 10).toFixed(1)}s`
+  }
+
+  const total = Math.floor(clamped / 1000)
 
   if (total < 60) {
     return `${total}s`

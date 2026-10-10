@@ -234,9 +234,9 @@ describe('register', () => {
     await step($, 0)
 
     expect(box.seen[0]).toContain('Thinking: I should check the loader first')
-    expect(box.seen[1]).toContain('Reading your prompt')
+    // The call is named once its input says what it does.
+    expect(box.seen[1]).toContain('◐ Preparing the next action')
     expect(box.seen[2]).toContain('Reading app.ts')
-    expect(box.seen.join(' ')).not.toContain('Preparing')
 
     await $.tool.call({ tool: 'Read', file_path: 'src/app.ts' })
 
@@ -245,7 +245,7 @@ describe('register', () => {
 
     await step($, 1)
 
-    expect(box.seen[4]).toContain('Writing the reply | 7 words')
+    expect(box.seen[4]).toContain('❝ Writing the reply | 7 words')
 
     await $.turn.complete({ ...DONE, turnId })
 
@@ -287,7 +287,7 @@ describe('register', () => {
     expect(history).toContain('fix the config')
     expect(history).toContain('Thought (4 words)')
     // Denied: the muted mark, then the Read category's built-in icon.
-    expect(history).toContain('⊘ ≡ Reading app.ts')
+    expect(history).toContain('⊘ ≡ Read app.ts')
     expect(history).toContain('Wrote the reply (1 word)')
     expect(history).toContain('Done, 1 action')
     expect(history).not.toContain('Done in')
@@ -298,7 +298,7 @@ describe('register', () => {
     expect(await ui.find({ key: 'history' })).toBeUndefined()
   })
 
-  test('thinking with no thought text keeps the last action', async ($, on) => {
+  test('thinking with no thought text says thinking, not the last action', async ($, on) => {
     const { box } = seat(on, [
       [{ kind: 'thinking', index: 0, text: '' }],
       [{ kind: 'thinking', index: 0, text: '' }],
@@ -310,9 +310,9 @@ describe('register', () => {
     await $.tool.call({ tool: 'Read', file_path: 'src/app.ts' })
     await step($, 1)
 
-    expect(box.seen[0]).toContain('Reading your prompt')
-    expect(box.seen[2]).toContain('Reading app.ts')
-    expect(box.seen.join(' ')).not.toContain('Thinking')
+    expect(box.seen[0]).toContain('∴ Thinking')
+    expect(box.seen[2]).toContain('∴ Thinking')
+    expect(box.seen[2]).not.toContain('app.ts')
   })
 
   test('a command being written shows its description, never the command', async ($, on) => {
@@ -328,8 +328,8 @@ describe('register', () => {
     await $.turn.start({ text: 'test it', turnId: 't1' })
     await step($, 0)
 
-    expect(box.seen[1]).toContain('Reading your prompt')
-    expect(box.seen[2]).toContain('Run the tests')
+    expect(box.seen[1]).toContain('◐ Preparing the next action')
+    expect(box.seen[2]).toContain('$ Run the tests')
     expect(box.seen.join(' ')).not.toContain('npm test')
   })
 
@@ -407,7 +407,7 @@ describe('register', () => {
     await $.tool.call({ tool: 'Bash', command: 'osascript', description: 'Ask AppleScript' })
     await ui.press({ key: 'toggle' })
 
-    expect(box.seen[0]).toContain('Waiting for approval: Ask AppleScript')
+    expect(box.seen[0]).toContain('Waiting for your approval: Ask AppleScript')
     // The built-in look's permission icon.
     expect(box.seen[0]).toContain('! Waiting')
     expect((await ui.find({ key: 'history' }))?.text ?? '').toContain('⊘ $ Ask AppleScript')
@@ -442,7 +442,7 @@ describe('register', () => {
     await $.turn.start({ text: 'fetch it', turnId: 't1' })
     await $.tool.call({ tool: 'WebFetch', url: 'https://example.org', prompt: 'title' } as Parameters<Engine['tool']['call']>[0])
 
-    expect(box.seen[0]).toContain('Waiting for approval: Fetching example.org')
+    expect(box.seen[0]).toContain('Waiting for your approval: Fetching example.org')
     expect(box.seen[1]).toContain('Fetching example.org')
     expect(box.seen[1]).not.toContain('Waiting')
   })
@@ -464,7 +464,7 @@ describe('register', () => {
     await $.agent.spawn({ ...SPAWN, tool_use_id: 'tu1', description: 'Test it' })
     await $.tool.call(call as Parameters<Engine['tool']['call']>[0])
 
-    expect(box.seen[0]).toContain('Test it | Waiting for approval: Run the tests')
+    expect(box.seen[0]).toContain('Test it | Waiting for your approval: Run the tests')
     expect(box.seen[0]).not.toContain('approval: Waiting')
 
     // A subagent's updates land at most every 250 ms.
@@ -474,14 +474,19 @@ describe('register', () => {
     expect(await box.read()).not.toContain('Waiting')
   })
 
-  test('a question to the person says it waits for an answer', async ($, on) => {
+  test('a question to the person says it waits for an answer, under the bell there and in history', async ($, on) => {
     const { box } = seat(on, [])
 
-    await mount($, box)
+    box.toolAnswer = { text: 'Blue.', result: null } as never
+
+    const ui = await mount($, box)
+
     await $.turn.start({ text: 'ask me', turnId: 't1' })
     await $.tool.call({ tool: 'AskUserQuestion', questions: [] } as Parameters<Engine['tool']['call']>[0])
+    await ui.press({ key: 'toggle' })
 
-    expect(box.seen[0]).toContain('Waiting for your answer')
+    expect(box.seen[0]).toContain('! Waiting for your answer')
+    expect((await ui.find({ key: 'history' }))?.text ?? '').toContain('✓ ! Asked you a question')
   })
 
   test('compacting says so, times itself and is kept in the history', async ($, on) => {
@@ -495,7 +500,7 @@ describe('register', () => {
 
     await $.session.compact({ trigger: 'manual', messages: TRANSCRIPT })
 
-    expect(box.seen[0]).toContain('Compacting the conversation | 5s')
+    expect(box.seen[0]).toContain('Compacting the conversation | 5.0s')
 
     await ui.press({ key: 'toggle' })
 
@@ -514,7 +519,7 @@ describe('register', () => {
     await $.session.compact({ trigger: 'auto', messages: TRANSCRIPT })
     await clock.advance(2000)
 
-    expect(await box.read()).toContain('| 2s')
+    expect(await box.read()).toContain('| 2.0s')
   })
 
   test('a compaction made ahead of time is not shown', async ($, on) => {
@@ -562,8 +567,8 @@ describe('register', () => {
     const history = (await ui.find({ key: 'history' }))?.text ?? ''
 
     expect(await box.read()).toContain('Idle')
-    expect(history).toContain('✓ ◆ Agent: Storyboard the video')
-    expect(history).toContain('✗ ◆ Agent: Draft the plan')
+    expect(history).toContain('✓ ◆ Ran an agent: Storyboard the video')
+    expect(history).toContain('✗ ◆ Ran an agent: Draft the plan')
   })
 
   test('agents take the palette in spawn order', async ($, on) => {
@@ -657,7 +662,7 @@ describe('register', () => {
   test('a background agent is named from the Agent call that launched it', async ($, on) => {
     const { box, clock } = seat(on, [])
 
-    await mount($, box)
+    const ui = await mount($, box)
 
     box.toolAnswer = {
       result: { status: 'async_launched', agentId: 'b1', description: 'This is a long prompt. Read it all.' },
@@ -671,6 +676,43 @@ describe('register', () => {
     await clock.advance(300)
 
     expect(await box.read()).toContain('Tour the source | Reading app.ts')
+
+    await ui.press({ key: 'toggle' })
+
+    expect((await ui.find({ key: 'history' }))?.text ?? '').toContain('◆ Started an agent: Tour the source')
+  })
+
+  test('the timer shows tenths under ten seconds, whole seconds after', async ($, on) => {
+    const { box, clock } = seat(on, [])
+
+    await mount($, box)
+    await $.turn.start({ text: 'go', turnId: 't1' })
+    await clock.advance(4200)
+
+    expect(await box.read()).toContain('Reading your prompt | 4.2s')
+
+    await clock.advance(8000)
+
+    expect(await box.read()).toContain('Reading your prompt | 12s')
+  })
+
+  test('history tool rows are in the past tense', async ($, on) => {
+    const { box } = seat(on, [])
+
+    box.toolAnswer = { text: 'ok', result: null } as never
+
+    const ui = await mount($, box)
+
+    await $.turn.start({ text: 'go', turnId: 't1' })
+    await $.tool.call({ tool: 'Edit', file_path: 'src/a.ts', old_string: 'a', new_string: 'b' } as Parameters<Engine['tool']['call']>[0])
+    await $.tool.call({ tool: 'WebFetch', url: 'https://example.org/x', prompt: 'title' } as Parameters<Engine['tool']['call']>[0])
+    await ui.press({ key: 'toggle' })
+
+    const history = (await ui.find({ key: 'history' }))?.text ?? ''
+
+    expect(history).toContain('Edited a.ts')
+    expect(history).toContain('Fetched example.org')
+    expect(history).not.toContain('Editing')
   })
 })
 
@@ -777,7 +819,7 @@ describe('emphasis', () => {
     await $.turn.complete({ ...DONE, turnId })
     await ui.press({ key: 'toggle' })
 
-    for (const glyph of ['∴ ', '✎ ', '◆ ']) {
+    for (const glyph of ['∴ ', '❝ ', '◆ ']) {
       const found = await ui.find({ type: 'Text', text: glyph })
 
       expect(found?.props['dimColor']).toBe(true)
@@ -808,7 +850,7 @@ describe('style', () => {
 
     const history = (await ui.find({ key: 'history' }))?.text ?? ''
 
-    expect(history).toContain('⊘ RD Reading app.ts')
+    expect(history).toContain('⊘ RD Read app.ts')
     expect(history).not.toContain('Built-in look')
   })
 
