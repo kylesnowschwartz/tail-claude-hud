@@ -55,6 +55,18 @@ export function callOf(tool: string, label: string, startMs: number, agentId: st
   return { tool, label, startMs, agentId, isAwaitingApproval: false, askedMs: null, waitedMs: 0 }
 }
 
+/**
+ * Forgets the main loop's calls, as a turn's start or end does. A background
+ * agent's calls outlive the main turn and stay, an approval wait included.
+ */
+export function dropMainCalls(live: Live): void {
+  for (const [id, call] of live.calls) {
+    if (call.agentId === null) {
+      live.calls.delete(id)
+    }
+  }
+}
+
 /** Ends a call's approval wait at `nowMs`, adding it to the time the call leaves out. */
 export function endWait(call: Call, nowMs: number): void {
   if (call.askedMs !== null) {

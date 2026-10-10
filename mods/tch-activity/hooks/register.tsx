@@ -20,6 +20,7 @@ import {
   colorIndexOf,
   createLive,
   current,
+  dropMainCalls,
   endWait,
   entryOf,
   IDLE,
@@ -131,7 +132,7 @@ export const register: Register = (on, options) => {
     live.isDeclinedLast = false
     live.isFirstRequest = true
     live.resultsToReview = 0
-    live.calls.clear()
+    dropMainCalls(live)
 
     const prompt = promptLabel(e.text, MAX_PROMPT_CHARS)
 
@@ -389,7 +390,7 @@ export const register: Register = (on, options) => {
     live.lastTurn = { label, outcome }
     await update($, lastTurn, () => live.lastTurn)
     live.turnStartMs = null
-    live.calls.clear()
+    dropMainCalls(live)
 
     keepTicking($, live)
     await publish($, live)

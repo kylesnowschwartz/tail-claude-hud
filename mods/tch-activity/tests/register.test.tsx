@@ -1071,6 +1071,41 @@ describe('who decides an ask', () => {
   })
 })
 
+describe('turn ends and background agents', () => {
+  test("the main turn's end keeps a background agent's call waiting on approval", async ($, on) => {
+    const { box, clock } = seat(on, [])
+    let release = () => {}
+    const held = new Promise<void>(resolve => {
+      release = resolve
+    })
+
+    on('agent.spawn', () => ({ model: 'claude-opus-5-5', agentId: 'a1' }))
+    box.verdict = 'ask'
+    box.onTool = async ({ tool_use_id }) => {
+      await $.tool.check({ tool: 'Bash', input: {}, tool_use_id, agentId: 'a1' })
+      await held
+    }
+
+    const ui = await mount($, box)
+    const { turnId } = await $.turn.start({ text: 'launch it', turnId: 't1' })
+
+    await $.agent.spawn({ ...SPAWN, tool_use_id: 'tu1', description: 'Test it' })
+
+    const agentCall = $.tool.call({ tool: 'Bash', command: 'npm test', description: 'Run the tests', agentId: 'a1' } as Parameters<Engine['tool']['call']>[0])
+
+    await clock.advance(DIALOG_GRACE_MS)
+    await $.turn.complete({ ...DONE, turnId })
+    await $.turn.start({ text: 'next', turnId: 't2' })
+    await clock.advance(300)
+
+    expect((await ui.find({ key: 'agents' }))?.text ?? '').toContain('Test it | Waiting for your approval: Run the tests')
+    expect((await ui.find({ key: 'frame' }))?.props['borderColor']).toBe('ansi256(1)')
+
+    release()
+    await agentCall
+  })
+})
+
 describe('emphasis', () => {
   test('state color sits on the glyph and the border, never on a label or in bold', async ($, on) => {
     seatHud(on, HUD_STYLE)
