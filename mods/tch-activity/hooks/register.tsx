@@ -237,9 +237,14 @@ export const register: Register = (on, options) => {
       return result
     } finally {
       // A call put to approval that errors without ever being seen running
-      // was refused at the dialog, which the engine reports as an error.
-      if (outcome === 'error' && call.isAwaitingApproval) {
+      // was refused by its decider, which the engine reports as an error.
+      if (outcome === 'error' && call.askedMs !== null) {
         outcome = 'denied'
+      }
+
+      // Decided before it was taken for a dialog: no wait of yours to leave out.
+      if (!call.isAwaitingApproval) {
+        call.askedMs = null
       }
 
       // Still waiting as it ends: the dialog was declined or the turn stopped.
@@ -271,22 +276,17 @@ export const register: Register = (on, options) => {
     const verdict = await next(e)
     const call = e.tool_use_id === undefined ? undefined : live.calls.get(e.tool_use_id)
 
-    if (verdict.decision === 'ask' && call !== undefined && !call.isAwaitingApproval) {
-      call.isAwaitingApproval = true
+    if (verdict.decision === 'ask' && call !== undefined && call.askedMs === null && !call.isAwaitingApproval) {
       call.askedMs = await $.clock.now()
-
-      if (call.agentId === null) {
-        await markWaiting($, call.tool)
-      }
-
-      await publish($, live)
+      $.clock.after(DIALOG_GRACE_MS, () => void putToYou($, live, call))
     }
 
     return verdict
   }).catch(($, e, next) => next(e))
 
-  // A call's row is drawn running only once it runs, which for a call that
-  // waited means the person approved it.
+  // A call's row is drawn running once it runs, or at once when a decider
+  // other than the dialog (the auto-mode classifier) reviews it: for a call
+  // that waited on you, it means you approved it.
   on('ui.render', { component: 'ToolUse' }, ($, e, next) => {
     if (e.props.isRunning) {
       approved($, live, e.props.tool_use_id)
@@ -517,6 +517,13 @@ async function placeAgent($: EngineInterface, live: Live, agentId: string, toolU
 function approved($: EngineInterface, live: Live, toolUseId: string): void {
   const call = live.calls.get(toolUseId)
 
+  // Drawn running within the grace: no dialog is up, the decider's time is the call's.
+  if (call !== undefined && call.askedMs !== null && !call.isAwaitingApproval) {
+    call.askedMs = null
+
+    return
+  }
+
   if (call?.isAwaitingApproval) {
     call.isAwaitingApproval = false
 
@@ -530,6 +537,35 @@ function approved($: EngineInterface, live: Live, toolUseId: string): void {
       await publish($, live)
     })
   }
+}
+
+/**
+ * How long a call put to approval may go undrawn before the box takes it for
+ * the dialog. The engine draws a call running at once when a decider other
+ * than the dialog (the auto-mode classifier, a host) reviews it, and only
+ * after you answer when the dialog asks you.
+ */
+const DIALOG_GRACE_MS = 250
+
+/**
+ * Takes a call still asked and undrawn after the grace as waiting on you:
+ * the headline and border say so and, for the main loop, the breadcrumb is
+ * written.
+ */
+async function putToYou($: EngineInterface, live: Live, call: Call): Promise<void> {
+  const isInFlight = [...live.calls.values()].includes(call)
+
+  if (!isInFlight || call.askedMs === null || call.isAwaitingApproval) {
+    return
+  }
+
+  call.isAwaitingApproval = true
+
+  if (call.agentId === null) {
+    await markWaiting($, call.tool)
+  }
+
+  await publish($, live)
 }
 
 /**

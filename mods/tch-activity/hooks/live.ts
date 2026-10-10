@@ -34,10 +34,11 @@ export const UNNAMED_AGENT = 'Agent'
 export type ModelPhase = 'idle' | 'requesting' | 'thinking' | 'writing' | 'composing' | 'compacting'
 
 /**
- * A tool call in flight: the main loop's, or a subagent's (`agentId`). It
- * awaits approval from an `ask` verdict (at `askedMs`) until it is seen
- * running or ends; `waitedMs` is the approval wait already over, which its
- * timer and duration leave out.
+ * A tool call in flight: the main loop's, or a subagent's (`agentId`). An
+ * `ask` verdict (at `askedMs`) puts it to the mode's decider; it awaits your
+ * approval once that turns out to be the dialog, until it is seen running or
+ * ends. `waitedMs` is the approval wait already over, which its timer and
+ * duration leave out.
  */
 export type Call = {
   tool: string

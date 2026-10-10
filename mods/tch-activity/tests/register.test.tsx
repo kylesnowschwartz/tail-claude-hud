@@ -160,6 +160,19 @@ function seat(on: On, script: readonly (readonly TurnStepChunk[])[]) {
   return { box, clock }
 }
 
+/**
+ * How long a call put to approval goes undrawn before the box takes it for
+ * the person's dialog: a decider that is no dialog (the auto-mode
+ * classifier) has the engine draw the call running at once.
+ */
+const DIALOG_GRACE_MS = 300
+
+/** Puts a call to approval and lets the dialog stand past the grace. */
+async function putToYou($: Engine, clock: { advance: (ms: number) => Promise<void> }, check: Parameters<Engine['tool']['check']>[0] & { tool_use_id?: string; agentId?: string }) {
+  await $.tool.check(check)
+  await clock.advance(DIALOG_GRACE_MS)
+}
+
 async function mount($: Engine, box: { read: () => Promise<string> }) {
   const ui = await $.ui.mount(BAND)
 
@@ -393,13 +406,13 @@ describe('register', () => {
   })
 
   test('a call put to approval waits, and one refused there is marked denied', async ($, on) => {
-    const { box } = seat(on, [])
+    const { box, clock } = seat(on, [])
 
     box.verdict = 'ask'
     box.toolAnswer = { isError: true, text: 'The user refused this tool use.', result: null } as never
     // The engine decides on the call from inside it, before it runs.
     box.onTool = async call => {
-      await $.tool.check({ tool: 'Bash', input: { command: 'osascript' }, tool_use_id: call.tool_use_id })
+      await putToYou($, clock, { tool: 'Bash', input: { command: 'osascript' }, tool_use_id: call.tool_use_id })
     }
 
     const ui = await mount($, box)
@@ -546,7 +559,7 @@ describe('register', () => {
 
     box.verdict = 'ask'
     box.onTool = async call => {
-      await $.tool.check({ tool: 'WebFetch', input: {}, tool_use_id: call.tool_use_id })
+      await putToYou($, clock, { tool: 'WebFetch', input: {}, tool_use_id: call.tool_use_id })
       box.seen.push(await box.read())
 
       // The person approves: the engine draws the call's row running.
@@ -893,7 +906,7 @@ describe('approval breadcrumb', () => {
     box.verdict = 'ask'
     box.toolAnswer = { text: 'ok', result: null } as never
     box.onTool = async call => {
-      await $.tool.check({ tool: 'Bash', input: {}, tool_use_id: call.tool_use_id })
+      await putToYou($, clock, { tool: 'Bash', input: {}, tool_use_id: call.tool_use_id })
       during.push(removed.filter(argv => argv[0] === '/bin/rm'))
       await drawRunning($, call.tool_use_id)
       await clock.advance(1)
@@ -918,7 +931,7 @@ describe('approval breadcrumb', () => {
     box.verdict = 'ask'
     box.toolAnswer = { isError: true, text: 'The user refused this tool use.', result: null } as never
     box.onTool = async call => {
-      await $.tool.check({ tool: 'Bash', input: {}, tool_use_id: call.tool_use_id })
+      await putToYou($, clock, { tool: 'Bash', input: {}, tool_use_id: call.tool_use_id })
     }
 
     await mount($, box)
@@ -980,7 +993,7 @@ describe('approval breadcrumb', () => {
     box.verdict = 'ask'
     box.toolAnswer = { isError: true, text: 'The user refused this tool use.', result: null } as never
     box.onTool = async call => {
-      await $.tool.check({ tool: 'Bash', input: {}, tool_use_id: call.tool_use_id })
+      await putToYou($, clock, { tool: 'Bash', input: {}, tool_use_id: call.tool_use_id })
     }
 
     const ui = await mount($, box)
@@ -994,6 +1007,67 @@ describe('approval breadcrumb', () => {
 
     expect(result.isError).toBe(true)
     expect((await ui.find({ key: 'history' }))?.text ?? '').toContain('⊘ Ask AppleScript')
+  })
+})
+
+describe('who decides an ask', () => {
+  test('a call the auto-mode classifier reviews is never shown as waiting on you', async ($, on) => {
+    const { writes } = seatBreadcrumbs(on)
+    const { box, clock } = seat(on, [])
+
+    on('ui.render', { component: 'ToolUse' }, ($, e) => {
+      const { Box } = $.ui.resolve(e)
+
+      return <Box key="row" />
+    })
+
+    box.verdict = 'ask'
+    box.toolAnswer = { text: 'ok', result: null } as never
+    box.onTool = async call => {
+      await $.tool.check({ tool: 'Write', input: {}, tool_use_id: call.tool_use_id })
+      // A decider that is no dialog: the engine draws the call running at once.
+      await drawRunning($, call.tool_use_id)
+      await clock.advance(DIALOG_GRACE_MS)
+      box.seen.push(await box.read())
+      // The classifier's review takes a while before the tool runs.
+      await clock.advance(600)
+    }
+
+    const ui = await mount($, box)
+
+    await $.turn.start({ text: 'write it', turnId: 't1' })
+    await $.tool.call({ tool: 'Write', file_path: '/tmp/x.txt', content: 'hi' } as Parameters<Engine['tool']['call']>[0])
+    await ui.press({ key: 'toggle' })
+
+    expect(box.seen.join(' ')).not.toContain('Waiting for your approval')
+    expect(writes.some(write => write.path.includes('/waiting/'))).toBe(false)
+    // The review's time is the call's own.
+    expect((await ui.find({ key: 'history' }))?.text ?? '').toContain('Wrote x.txt 0.9s')
+  })
+
+  test('a call left undrawn past the grace is a dialog put to you', async ($, on) => {
+    const { writes } = seatBreadcrumbs(on)
+    const { box, clock } = seat(on, [])
+    let border: unknown = 'unread'
+
+    box.verdict = 'ask'
+    box.onTool = async call => {
+      await $.tool.check({ tool: 'Bash', input: {}, tool_use_id: call.tool_use_id })
+      box.seen.push(await box.read())
+      await clock.advance(DIALOG_GRACE_MS)
+      box.seen.push(await box.read())
+      border = (await ui.find({ key: 'frame' }))?.props['borderColor']
+    }
+
+    const ui = await mount($, box)
+
+    await $.turn.start({ text: 'run it', turnId: 't1' })
+    await $.tool.call({ tool: 'Bash', command: 'osascript', description: 'Ask AppleScript' })
+
+    expect(box.seen[0]).not.toContain('Waiting for your approval')
+    expect(box.seen[1]).toContain('Waiting for your approval: Ask AppleScript')
+    expect(border).toBe('ansi256(1)')
+    expect(writes.some(write => write.path === CRUMB)).toBe(true)
   })
 })
 
@@ -1043,7 +1117,7 @@ describe('emphasis', () => {
 
     box.verdict = 'ask'
     box.onTool = async call => {
-      await $.tool.check({ tool: 'Bash', input: {}, tool_use_id: call.tool_use_id })
+      await putToYou($, clock, { tool: 'Bash', input: {}, tool_use_id: call.tool_use_id })
       border = (await ui.find({ key: 'frame' }))?.props['borderColor']
     }
 
@@ -1067,7 +1141,7 @@ describe('emphasis', () => {
       await $.tool.check({ tool: 'Bash', input: {}, tool_use_id, agentId: 'a1' })
       await clock.advance(300)
       border = (await ui.find({ key: 'frame' }))?.props['borderColor']
-      label = (await ui.find({ type: 'Text', text: 'Waiting for approval' }))?.props['color']
+      label = (await ui.find({ type: 'Text', text: 'Waiting for your approval' }))?.props['color']
     }
 
     await $.agent.spawn({ ...SPAWN, tool_use_id: 'tu1', description: 'Test it' })
