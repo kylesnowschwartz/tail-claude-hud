@@ -249,7 +249,7 @@ describe('register', () => {
 
     await $.turn.complete({ ...DONE, turnId })
 
-    expect(await box.read()).toContain('Idle, last turn done in')
+    expect(await box.read()).toContain('Idle · last turn done in')
   })
 
   test('a turn whose start came before a reload still ends idle', async ($, on) => {
@@ -260,7 +260,7 @@ describe('register', () => {
     await step($, 0)
     await $.turn.complete({ ...DONE, turnId: 't1' })
 
-    expect(await box.read()).toContain('Idle, last turn done in')
+    expect(await box.read()).toContain('Idle · last turn done in')
   })
 
   test('the triangle opens the history of the turn', async ($, on) => {
@@ -286,11 +286,12 @@ describe('register', () => {
 
     expect(history).toContain('fix the config')
     expect(history).toContain('Thought (4 words)')
-    // Denied: the muted mark, then the Read category's built-in icon.
-    expect(history).toContain('⊘ ≡ Read app.ts')
+    // Denied: the muted mark in place of the Read category's icon.
+    expect(history).toContain('⊘ Read app.ts')
+    expect(history).not.toContain('≡')
     expect(history).toContain('Wrote the reply (1 word)')
-    expect(history).toContain('Done, 1 action')
-    expect(history).not.toContain('Done in')
+    // The time is said once, in the label: no duration follows the row.
+    expect(history).toMatch(/Done in \d+\.\ds, 1 action(?!\s*[<\d])/)
     expect((await ui.find({ key: 'activity' }))?.text).toContain('▾')
 
     await ui.press({ key: 'toggle' })
@@ -410,7 +411,7 @@ describe('register', () => {
     expect(box.seen[0]).toContain('Waiting for your approval: Ask AppleScript')
     // The built-in look's permission icon.
     expect(box.seen[0]).toContain('! Waiting')
-    expect((await ui.find({ key: 'history' }))?.text ?? '').toContain('⊘ $ Ask AppleScript')
+    expect((await ui.find({ key: 'history' }))?.text ?? '').toContain('⊘ Ask AppleScript')
   })
 
   test('a turn whose last call you declined ends declined, the dialog time left out', async ($, on) => {
@@ -432,9 +433,9 @@ describe('register', () => {
 
     const history = (await ui.find({ key: 'history' }))?.text ?? ''
 
-    expect(await box.read()).toContain('⊘ Idle, last turn stopped at a declined call')
-    expect(history).toContain('⊘ $ Ask AppleScript 0.0s')
-    expect(history).toContain('⊘ Stopped at a declined call')
+    expect(await box.read()).toContain('⊘ Idle · last turn stopped at a declined call after 4.0s')
+    expect(history).toContain('⊘ Ask AppleScript 0.0s')
+    expect(history).toMatch(/⊘ Stopped at a declined call after 4\.0s(?!\s*[<\d])/)
     expect(history).not.toContain('Done')
   })
 
@@ -452,7 +453,7 @@ describe('register', () => {
     await $.turn.complete({ ...DONE, turnId })
     await ui.press({ key: 'toggle' })
 
-    expect((await ui.find({ key: 'history' }))?.text ?? '').toContain('Done, 1 action')
+    expect((await ui.find({ key: 'history' }))?.text ?? '').toMatch(/Done in [\d.]+s, 1 action(?!\s*[<\d])/)
   })
 
   test('an approved call times only its run, not the dialog', async ($, on) => {
@@ -491,7 +492,7 @@ describe('register', () => {
     // The dialog's own wait shows while it is up.
     expect(box.seen[0]).toContain('Waiting for your approval: Wait in AppleScript | 5.0s')
     expect(box.seen[1]).toContain('Wait in AppleScript | 0.0s')
-    expect((await ui.find({ key: 'history' }))?.text ?? '').toContain('✓ $ Wait in AppleScript 2s')
+    expect((await ui.find({ key: 'history' }))?.text ?? '').toContain('$ Wait in AppleScript 2s')
   })
 
   test('agent rows start under the headline label', async ($, on) => {
@@ -605,7 +606,7 @@ describe('register', () => {
     await ui.press({ key: 'toggle' })
 
     expect(box.seen[0]).toContain('! Waiting for your answer')
-    expect((await ui.find({ key: 'history' }))?.text ?? '').toContain('✓ ! Asked you a question')
+    expect((await ui.find({ key: 'history' }))?.text ?? '').toContain('! Asked you a question')
   })
 
   test('compacting says so, times itself and is kept in the history', async ($, on) => {
@@ -686,8 +687,13 @@ describe('register', () => {
     const history = (await ui.find({ key: 'history' }))?.text ?? ''
 
     expect(await box.read()).toContain('Idle')
-    expect(history).toContain('✓ ◆ Ran an agent: Storyboard the video')
-    expect(history).toContain('✗ ◆ Ran an agent: Draft the plan')
+    expect(history).toContain('◆ Ran an agent: Storyboard the video')
+    expect(history).toContain('◆ Ran an agent: Draft the plan')
+
+    // The robot takes the outcome's color: success, then error.
+    const robots = await ui.findAll({ type: 'Text', text: '◆ ' })
+
+    expect(robots.map(robot => robot.props['color'])).toEqual(['ansi256(2)', 'ansi256(1)'])
   })
 
   test('agents take the palette in spawn order', async ($, on) => {
@@ -938,7 +944,7 @@ describe('emphasis', () => {
     await $.turn.complete({ ...DONE, turnId })
     await ui.press({ key: 'toggle' })
 
-    for (const glyph of ['∴ ', '❝ ', '◆ ']) {
+    for (const glyph of ['∴ ', '❝ ']) {
       const found = await ui.find({ type: 'Text', text: glyph })
 
       expect(found?.props['dimColor']).toBe(true)
@@ -969,8 +975,33 @@ describe('style', () => {
 
     const history = (await ui.find({ key: 'history' }))?.text ?? ''
 
-    expect(history).toContain('⊘ RD Read app.ts')
+    expect(history).toContain('⊘ Read app.ts')
     expect(history).not.toContain('Built-in look')
+  })
+
+  test('a finished tool row has one glyph, its category icon in the outcome color', async ($, on) => {
+    seatHud(on, HUD_STYLE)
+    const { box, clock } = seat(on, [])
+    const ui = await mount($, box)
+
+    await clock.advance(1)
+
+    const { turnId } = await $.turn.start({ text: 'read it', turnId: 't1' })
+
+    box.toolAnswer = { text: 'ok', result: null } as never
+    await $.tool.call({ tool: 'Read', file_path: 'src/ok.ts' })
+    box.toolAnswer = { isError: true, text: 'no such file', result: null } as never
+    await $.tool.call({ tool: 'Bash', command: 'false', description: 'Fail on purpose' })
+    await $.turn.complete({ ...DONE, turnId })
+    await ui.press({ key: 'toggle' })
+
+    const history = (await ui.find({ key: 'history' }))?.text ?? ''
+
+    expect(history).toContain('RD Read ok.ts')
+    expect(history).toContain('SH Fail on purpose')
+    expect(history).not.toContain('OK RD')
+    expect((await ui.find({ type: 'Text', text: 'RD ' }))?.props['color']).toBe('ansi256(2)')
+    expect((await ui.find({ type: 'Text', text: 'SH ' }))?.props['color']).toBe('ansi256(1)')
   })
 
   test('the binary option names the HUD to run', { options: { binary: '/opt/tch/tail-claude-hud' } }, async ($, on) => {

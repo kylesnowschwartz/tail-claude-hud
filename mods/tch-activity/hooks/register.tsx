@@ -28,7 +28,6 @@ import {
   STARTING_LABEL,
   turnEndLabel,
   turnEndOf,
-  turnEndRowLabel,
   UNNAMED_AGENT,
   type Agent,
   type Live,
@@ -37,7 +36,7 @@ import {
   withAgentKey,
 } from './live'
 import { AGENT_INDENT_COLUMNS, bandLayout, boxColumnsOf, columnsOf, type Segment } from './layout'
-import { borderColor, entryMark, entryToolIcon, headlineMark, styleNote } from './marks'
+import { borderColor, entryMark, headlineMark, styleNote } from './marks'
 import {
   agentColor,
   BARE_BINARY,
@@ -49,7 +48,7 @@ import {
   parseStyle,
   type LoadedStyle,
 } from './style'
-import { durationOf, elapsedOf, oneLine, TENTHS_UNDER_MS, plural, printable, promptLabel, wordsAdded } from './text'
+import { capitalized, durationOf, elapsedOf, oneLine, TENTHS_UNDER_MS, plural, printable, promptLabel, wordsAdded } from './text'
 
 /** The headline. */
 const now = atom({ plugin: 'tch-activity', key: 'now' } as const, IDLE)
@@ -364,7 +363,8 @@ export const register: Register = (on, options) => {
     const label = turnEndLabel(end, durationMs, live.turnActions)
 
     await enter($, live, 'idle')
-    await remember($, { ...entryOf('end', turnEndRowLabel(end, live.turnActions), outcome), durationMs })
+    // The row says its time in its label, so it has no duration of its own.
+    await remember($, entryOf('end', capitalized(label), outcome))
 
     live.lastTurn = { label, outcome }
     await update($, lastTurn, () => live.lastTurn)
@@ -983,20 +983,16 @@ async function drawBox($: EngineInterface, e: AbovePromptInput) {
   }
 
   /**
-   * One history row: a status glyph, for a tool call its category icon, the
-   * label, and the duration drawn faint, as the HUD's tools widget draws a
-   * finished tool.
+   * One history row: its glyph (for a tool call, the category icon in the
+   * outcome's color), the label, and the duration drawn faint, as the HUD's
+   * tools widget draws a finished tool.
    */
   const historyRow = (entry: ActivityEntry): Segment[] => {
     const mark = entryMark(style, entry)
     const isQuiet = entry.kind === 'thought' || entry.kind === 'end'
-    const toolMark: Segment[] = entry.kind === 'tool' && entry.tool !== null
-      ? [{ text: `${entryToolIcon(style, entry.tool)} `, isFaint: true }]
-      : []
 
     return [
       { text: `${mark.glyph} `, color: mark.color, isFaint: mark.isFaint },
-      ...toolMark,
       { text: printable(entry.label, MAX_LABEL_CHARS), isFaint: isQuiet, isClipped: true },
       { text: entry.durationMs === null ? '' : ` ${durationOf(entry.durationMs)}`, isFaint: true },
     ]

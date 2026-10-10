@@ -87,13 +87,32 @@ export function entryMark(style: TchStyle, entry: ActivityEntry): Mark {
     case 'compact':
       return { glyph: COMPACT_GLYPH, color: undefined, isFaint: true }
     case 'tool':
+      return entry.tool === null ? outcomeMark(style, entry.outcome) : toolMark(style, entry.tool, entry.outcome)
     case 'end':
       return outcomeMark(style, entry.outcome)
   }
 }
 
+/**
+ * A finished tool's one glyph, as the HUD's tools widget draws it: the
+ * category icon in the success or error color. A declined or interrupted
+ * call shows its muted mark in the icon's place, so its row never depends
+ * on color alone.
+ */
+function toolMark(style: TchStyle, tool: string, outcome: ActivityOutcome): Mark {
+  switch (outcome) {
+    case 'ok':
+      return { glyph: entryToolIcon(style, tool), color: color(style, 'success') }
+    case 'error':
+      return { glyph: entryToolIcon(style, tool), color: color(style, 'error') }
+    case 'denied':
+    case 'interrupted':
+      return outcomeMark(style, outcome)
+  }
+}
+
 /** A history tool row's kind icon: the HUD's for the tool's category, the bell for a question to you. */
-export function entryToolIcon(style: TchStyle, tool: string): string {
+function entryToolIcon(style: TchStyle, tool: string): string {
   return tool === QUESTION_TOOL ? icon(style, 'permission') : toolIcon(style, tool)
 }
 

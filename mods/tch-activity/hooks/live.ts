@@ -4,7 +4,7 @@ import type { Timer, TurnCompleteReason } from 'claude-code'
 
 import type { ActivityEntry, ActivityNow, ActivityOutcome } from '../types'
 import { activityOf, isAgentTool, isShellTool, partialArgsOf } from './activity-of'
-import { durationOf, plural, sizeOf, thoughtOf } from './text'
+import { elapsedOf, plural, sizeOf, thoughtOf } from './text'
 
 /** The headline before any turn. */
 export const IDLE: ActivityNow = {
@@ -236,7 +236,7 @@ export function current(live: Live): ActivityNow {
     case 'composing':
       return { ...base, ...composingHeadline(live), phase: 'composing', sinceMs }
     case 'idle':
-      return live.lastTurn === null ? base : { ...base, label: `Idle, last turn ${live.lastTurn.label}` }
+      return live.lastTurn === null ? base : { ...base, label: `Idle · last turn ${live.lastTurn.label}` }
   }
 }
 
@@ -318,9 +318,12 @@ export function turnEndOf(reason: TurnCompleteReason, isDeclinedLast: boolean): 
   return isDeclinedLast && (reason === 'answer' || reason === 'aborted') ? 'declined' : reason
 }
 
-/** How a turn ended, in the words the idle headline uses. */
+/**
+ * How a turn ended, with its time counted as the running timer counts it:
+ * the idle headline's words, and, capitalized, the turn's last history row.
+ */
 export function turnEndLabel(end: TurnEnd, durationMs: number, actions: number): string {
-  const took = durationOf(durationMs)
+  const took = elapsedOf(durationMs)
 
   switch (end) {
     case 'aborted':
@@ -333,22 +336,6 @@ export function turnEndLabel(end: TurnEnd, durationMs: number, actions: number):
       return `stopped at a declined call after ${took}`
     case 'answer':
       return `done in ${took}, ${plural(actions, 'action')}`
-  }
-}
-
-/** How a turn ended, as its history row says it; the row's duration follows it. */
-export function turnEndRowLabel(end: TurnEnd, actions: number): string {
-  switch (end) {
-    case 'aborted':
-      return 'Interrupted'
-    case 'error':
-      return 'Stopped on an error'
-    case 'refusal':
-      return 'Declined the request'
-    case 'declined':
-      return 'Stopped at a declined call'
-    case 'answer':
-      return `Done, ${plural(actions, 'action')}`
   }
 }
 
