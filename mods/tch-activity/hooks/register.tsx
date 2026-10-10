@@ -30,6 +30,7 @@ import {
   turnEndOf,
   UNNAMED_AGENT,
   type Agent,
+  type Call,
   type Live,
   type ModelPhase,
   withAgentCall,
@@ -48,6 +49,7 @@ import {
   parseStyle,
   type LoadedStyle,
 } from './style'
+import { breadcrumbOf, waitingPathOf } from './waiting'
 import { capitalized, durationOf, elapsedOf, oneLine, TENTHS_UNDER_MS, plural, printable, promptLabel, wordsAdded } from './text'
 
 /** The headline. */
@@ -240,6 +242,11 @@ export const register: Register = (on, options) => {
         outcome = 'denied'
       }
 
+      // Still waiting as it ends: the dialog was declined or the turn stopped.
+      if (call.isAwaitingApproval) {
+        clearWaiting($, live, call)
+      }
+
       const endMs = await $.clock.now()
 
       endWait(call, endMs)
@@ -267,6 +274,11 @@ export const register: Register = (on, options) => {
     if (verdict.decision === 'ask' && call !== undefined && !call.isAwaitingApproval) {
       call.isAwaitingApproval = true
       call.askedMs = await $.clock.now()
+
+      if (call.agentId === null) {
+        await markWaiting($, call.tool)
+      }
+
       await publish($, live)
     }
 
@@ -344,6 +356,14 @@ export const register: Register = (on, options) => {
       keepTicking($, live)
       await publish($, live)
     }
+  })
+
+  // Every end, a /clear's included, takes the ending session's breadcrumb
+  // with it; a /clear's new session id is not the one that waited.
+  on('session.end', async ($, e, next) => {
+    clearWaiting($, live, null, e.sessionId)
+
+    return next(e)
   })
 
   on('turn.complete', async ($, e, next) => {
@@ -499,12 +519,74 @@ function approved($: EngineInterface, live: Live, toolUseId: string): void {
 
   if (call?.isAwaitingApproval) {
     call.isAwaitingApproval = false
+
+    if (call.agentId === null) {
+      clearWaiting($, live, call)
+    }
+
     // Drawing may not write state or read the clock: both happen just after.
     $.clock.after(0, async () => {
       endWait(call, await $.clock.now())
       await publish($, live)
     })
   }
+}
+
+/**
+ * Writes this session's approval breadcrumb, which other sessions' HUD
+ * status lines show as an alert. A failure is let go: the HUD ignores a
+ * breadcrumb past its staleness limit.
+ */
+async function markWaiting($: EngineInterface, tool: string): Promise<void> {
+  try {
+    const home = await $.env.get('HOME')
+
+    if (home === undefined || home === '') {
+      return
+    }
+
+    const sessionId = await $.session.id()
+
+    await $.fs.write(waitingPathOf(home, sessionId), breadcrumbOf(sessionId, await $.session.cwd(), tool))
+  } catch {
+    // The HUD's staleness limit retires a breadcrumb that never lands.
+  }
+}
+
+/** `rm` answers at once; this bounds a stuck one. */
+const REMOVE_TIMEOUT_MS = 1500
+
+/**
+ * Removes a session's approval breadcrumb, unless another main-loop call
+ * besides `ending` still waits. The session is `sessionId`, or the current
+ * one, read fresh since a /clear changes it. The removal runs just after:
+ * inside a declined call's chain the engine aborts `$` calls. `$.fs` has no
+ * delete, so `/bin/rm -f` removes the file; a failure is let go, as the HUD
+ * ignores a breadcrumb past its staleness limit.
+ */
+function clearWaiting($: EngineInterface, live: Live, ending: Call | null, sessionId?: string): void {
+  const isStillWaiting = [...live.calls.values()]
+    .some(call => call !== ending && call.agentId === null && call.isAwaitingApproval)
+
+  if (sessionId === undefined && isStillWaiting) {
+    return
+  }
+
+  $.clock.after(0, async () => {
+    try {
+      const home = await $.env.get('HOME')
+
+      if (home === undefined || home === '') {
+        return
+      }
+
+      const path = waitingPathOf(home, sessionId ?? (await $.session.id()))
+
+      await $.process.run(['/bin/rm', '-f', path], { timeoutMs: REMOVE_TIMEOUT_MS })
+    } catch {
+      // The HUD's staleness limit retires a breadcrumb left behind.
+    }
+  })
 }
 
 /** The agent at work under `agentId`, taken up if its spawn came before a reload. */

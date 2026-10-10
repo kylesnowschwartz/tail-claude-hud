@@ -841,6 +841,162 @@ describe('register', () => {
   })
 })
 
+/**
+ * Stands for a host whose session `s1` runs in `/x/proj` under HOME
+ * `/home/kyle`: `writes` keeps each file written, `removed` each `rm` run.
+ */
+function seatBreadcrumbs(on: On) {
+  const writes: { path: string; text: string }[] = []
+  const removed: string[][] = []
+
+  mock.env(on, { HOME: '/home/kyle' })
+  on('session.id', () => ({ value: 's1' }))
+  on('session.cwd', () => ({ value: '/x/proj' }))
+  on('fs.write', ($, e) => {
+    writes.push({ path: e.path, text: e.text })
+
+    return { value: undefined }
+  })
+  on('process.run', ($, e) => {
+    removed.push([...e.argv])
+
+    return { value: { exitCode: 0, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+  })
+
+  return { writes, removed }
+}
+
+const CRUMB = '/home/kyle/.config/tail-claude-hud/waiting/s1'
+
+/** Draws a call's row running, as the engine does once the person approves it. */
+async function drawRunning($: Engine, toolUseId: string) {
+  await $.ui.mount({
+    plugin: 'tch-activity',
+    surface: 'terminal',
+    component: 'ToolUse',
+    props: { tool_use_id: toolUseId, tool: 'Bash', input: {}, isRunning: true, isErrored: false, isInterrupted: false },
+  })
+}
+
+describe('approval breadcrumb', () => {
+  test("an approval wait writes the HUD's breadcrumb, and approving removes it", async ($, on) => {
+    const { writes, removed } = seatBreadcrumbs(on)
+    const { box, clock } = seat(on, [])
+    const during: string[][][] = []
+
+    on('ui.render', { component: 'ToolUse' }, ($, e) => {
+      const { Box } = $.ui.resolve(e)
+
+      return <Box key="row" />
+    })
+
+    box.verdict = 'ask'
+    box.toolAnswer = { text: 'ok', result: null } as never
+    box.onTool = async call => {
+      await $.tool.check({ tool: 'Bash', input: {}, tool_use_id: call.tool_use_id })
+      during.push(removed.filter(argv => argv[0] === '/bin/rm'))
+      await drawRunning($, call.tool_use_id)
+      await clock.advance(1)
+      during.push(removed.filter(argv => argv[0] === '/bin/rm'))
+    }
+
+    await mount($, box)
+    await $.turn.start({ text: 'run it', turnId: 't1' })
+    await $.tool.call({ tool: 'Bash', command: 'osascript', description: 'Wait in AppleScript' })
+
+    expect(writes.filter(write => write.path === CRUMB)).toEqual([
+      { path: CRUMB, text: JSON.stringify({ session_id: 's1', project: 'proj', tool_name: 'Bash' }) },
+    ])
+    expect(during[0]).toEqual([])
+    expect(during[1]).toEqual([['/bin/rm', '-f', CRUMB]])
+  })
+
+  test('declining removes the breadcrumb once the call ends', async ($, on) => {
+    const { writes, removed } = seatBreadcrumbs(on)
+    const { box, clock } = seat(on, [])
+
+    box.verdict = 'ask'
+    box.toolAnswer = { isError: true, text: 'The user refused this tool use.', result: null } as never
+    box.onTool = async call => {
+      await $.tool.check({ tool: 'Bash', input: {}, tool_use_id: call.tool_use_id })
+    }
+
+    await mount($, box)
+    await $.turn.start({ text: 'run it', turnId: 't1' })
+    await $.tool.call({ tool: 'Bash', command: 'osascript', description: 'Wait in AppleScript' })
+    await clock.advance(1)
+
+    expect(writes.some(write => write.path === CRUMB)).toBe(true)
+    expect(removed.filter(argv => argv[0] === '/bin/rm')).toEqual([['/bin/rm', '-f', CRUMB]])
+  })
+
+  test("a subagent's approval wait writes no breadcrumb", async ($, on) => {
+    const { writes } = seatBreadcrumbs(on)
+    const { box, clock } = seat(on, [])
+
+    on('agent.spawn', () => ({ model: 'claude-opus-5-5', agentId: 'a1' }))
+    box.verdict = 'ask'
+    box.onTool = async ({ tool_use_id }) => {
+      await $.tool.check({ tool: 'Bash', input: {}, tool_use_id, agentId: 'a1' })
+    }
+
+    await mount($, box)
+    await $.agent.spawn({ ...SPAWN, tool_use_id: 'tu1', description: 'Test it' })
+    await $.tool.call({ tool: 'Bash', command: 'npm test', description: 'Run the tests', agentId: 'a1' } as Parameters<Engine['tool']['call']>[0])
+    await clock.advance(1)
+
+    expect(writes.some(write => write.path.includes('/waiting/'))).toBe(false)
+  })
+
+  test("the session's end removes its breadcrumb, a /clear too", async ($, on) => {
+    const { removed } = seatBreadcrumbs(on)
+    const clock = mock.clock(on, { now: 1_000_000 })
+
+    seatBand(on)
+    on('session.end', ($, e) => ({ sessionId: e.sessionId }))
+
+    await $.ui.mount(BAND)
+    await $.session.end({ reason: 'clear', sessionId: 'old-session', resume: {} as never })
+    await clock.advance(1)
+
+    expect(removed.filter(argv => argv[0] === '/bin/rm')).toEqual([
+      ['/bin/rm', '-f', '/home/kyle/.config/tail-claude-hud/waiting/old-session'],
+    ])
+  })
+
+  test('a breadcrumb that cannot be written or removed leaves the call alone', async ($, on) => {
+    const { box, clock } = seat(on, [])
+
+    mock.env(on, { HOME: '/home/kyle' })
+    on('session.id', () => ({ value: 's1' }))
+    on('session.cwd', () => ({ value: '/x/proj' }))
+    on('fs.write', () => {
+      throw new Error('read-only file system')
+    })
+    on('process.run', () => {
+      throw new Error('no rm')
+    })
+
+    box.verdict = 'ask'
+    box.toolAnswer = { isError: true, text: 'The user refused this tool use.', result: null } as never
+    box.onTool = async call => {
+      await $.tool.check({ tool: 'Bash', input: {}, tool_use_id: call.tool_use_id })
+    }
+
+    const ui = await mount($, box)
+
+    await $.turn.start({ text: 'run it', turnId: 't1' })
+
+    const result = await $.tool.call({ tool: 'Bash', command: 'osascript', description: 'Ask AppleScript' })
+
+    await clock.advance(1)
+    await ui.press({ key: 'toggle' })
+
+    expect(result.isError).toBe(true)
+    expect((await ui.find({ key: 'history' }))?.text ?? '').toContain('⊘ Ask AppleScript')
+  })
+})
+
 describe('emphasis', () => {
   test('state color sits on the glyph and the border, never on a label or in bold', async ($, on) => {
     seatHud(on, HUD_STYLE)

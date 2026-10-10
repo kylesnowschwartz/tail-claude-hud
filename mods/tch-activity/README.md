@@ -66,7 +66,11 @@ The box steps aside while a survey holds the band. Other mods that draw above th
 
 ## Data and privacy
 
-The mod runs one local command (`tail-claude-hud style --json`) when a session starts, and again after a reload while the HUD's look is not in place; it reads `HOME` to find the binary. It keeps its headline, history and look in the session's own state (`$.state`). It makes no network calls and writes no files. Every hook is display only and passes its event on unchanged; it never answers a permission prompt.
+The mod runs one local command (`tail-claude-hud style --json`) when a session starts, and again after a reload while the HUD's look is not in place; it reads `HOME` to find the binary. It keeps its headline, history and look in the session's own state (`$.state`). It makes no network calls.
+
+It writes one file: while a call of the main conversation waits on your approval, `~/.config/tail-claude-hud/waiting/<session id>` holds the session id, the working folder's name and the tool's name, the file the HUD's `hook permission-request` writes. Other sessions' status lines read it to show that this one waits on you. The mod removes it, by running `/bin/rm -f` on that path, as soon as you approve or decline the call and when the session ends or is cleared. A file it fails to remove is ignored by the HUD after two minutes.
+
+Every hook passes its event on unchanged; it never answers a permission prompt.
 
 The box shows your prompts, file names, URLs, command descriptions (or the command when it has none), MCP tool names and a line of the model's thinking where it streams. Labels are cleaned of control and invisible characters before they are drawn.
 
@@ -91,6 +95,7 @@ just mod-check    # validate (mod and marketplace), run the tests, typecheck
 | `hooks/style.ts` | The built-in look, parsing `style --json`, and icon and color lookups (pure) |
 | `hooks/activity-of.ts` | A tool call, whole or streaming, as a short label |
 | `hooks/text.ts` | Printable labels, thought snippets, word counts, sizes, durations |
+| `hooks/waiting.ts` | The approval breadcrumb's path and contents (pure) |
 | `types/index.d.ts` | The `$.state` contract |
 | `tests/` | The turn state by state, the history toggle, hostile labels, approvals, agents and their palette, the HUD look and its fallback |
 
