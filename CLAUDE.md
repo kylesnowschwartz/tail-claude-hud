@@ -14,7 +14,7 @@ Uses `just` (justfile) for all tasks:
 
 ```sh
 just              # default: run tests
-just build        # go build -o bin/tail-claude-hud ./cmd/tail-claude-hud
+just build        # go install ./cmd/tail-claude-hud (to ~/go/bin)
 just test         # go test ./... -count=1
 just test-race    # go test -race ./... -count=1
 just bench        # go test -bench=. -benchmem ./internal/... -count=1
@@ -54,7 +54,7 @@ stdin → gather → render → stdout
 
 **Conditional goroutines**: The gather stage checks which widgets are configured before spawning work. If no transcript widgets are active, no transcript parsing runs.
 
-**Hook-based permission detection**: The binary doubles as a Claude Code hook handler via `tail-claude-hud hook <event>`. The `PermissionRequest` hook writes a breadcrumb file to `~/.config/tail-claude-hud/waiting/{session_id}`; `PostToolUse` and `Stop` hooks remove it. The statusline gather stage scans this directory (skipping its own session) to detect other sessions blocked on permission approval. Breadcrumbs older than 120s are ignored (covers hard crashes). This replaced a cgo-based process table scanner, enabling `CGO_ENABLED=0` builds.
+**Hook-based permission detection**: The binary doubles as a Claude Code hook handler via `tail-claude-hud hook <event>`. The `PermissionRequest` hook writes a breadcrumb file to `~/.config/tail-claude-hud/waiting/{session_id}`; the `PostToolUse`, `PostToolUseFailure` and `Stop` hooks run `hook cleanup`, which removes it and deletes every waiting file older than 120s. The tch-activity mod writes and removes the same breadcrumb itself while a main-conversation call waits on approval (`mods/tch-activity/hooks/waiting.ts`). The statusline gather stage scans this directory (skipping its own session) to detect other sessions blocked on permission approval. Breadcrumbs older than 120s are ignored (covers hard crashes). Detection needs no process table scan or cgo, so the binary builds with `CGO_ENABLED=0`.
 
 ## Transcript Processing (Three Layers)
 
@@ -70,7 +70,7 @@ Subagent discovery on the tick path uses the library's metadata-only `agents.Sca
 
 TOML at `~/.config/tail-claude-hud/config.toml` (or legacy `~/.claude/plugins/tail-claude-hud/config.toml`). Generate defaults with `tail-claude-hud --init`.
 
-`~/.config/tail-claude-hud/theme-active.toml` can supply top-level widget tables with `fg` and `bg` keys. These colors override the built-in theme and `[theme.overrides]`; missing, unreadable, or malformed files are ignored so rendering stays fail-open.
+`~/.config/tail-claude-hud/theme-active.toml` can supply top-level widget tables with `fg` and `bg` keys. These colors override the built-in theme and `[theme.overrides]` field by field (`theme.MergeOverrides`): an empty `fg` or `bg` keeps the value beneath it. Missing, unreadable, or malformed files are ignored so rendering stays fail-open.
 
 Layout is configured as `[[line]]` arrays with widget name lists. Default is three lines: summary, agents, tools.
 

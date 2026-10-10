@@ -66,7 +66,7 @@ cost_critical = 10.00
 
 Three rendering styles, set globally or per-line:
 
-- **`plain`** (default) -- Separator-joined, widgets apply their own ANSI styling.
+- **`plain`** (default) -- Widgets joined by a faint separator; widgets apply their own ANSI styling.
 - **`powerline`** -- Nerd Font arrow transitions between colored background segments. Auto-detects light/dark terminal background.
 - **`minimal`** -- Space-separated, foreground color only, no backgrounds.
 
@@ -89,6 +89,10 @@ Per-widget color overrides:
 model = { fg = "#ffffff", bg = "#2d2d2d" }
 tools = { fg = "#87ceeb", bg = "#2a2a2a" }
 ```
+
+Overrides merge field by field: an entry that sets only `fg` or only `bg` keeps the theme's value for the other.
+
+A theme `fg` colors a widget in its normal state. When `context`, `cost`, `usage`, or `cachettl` reaches its warning or critical state, the state color wins over the theme `fg` in every mode. In powerline mode that segment is drawn on the state color, with black or white text, whichever contrasts more.
 
 ## Fail-open
 

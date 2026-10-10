@@ -2,6 +2,8 @@
 
 26 widgets, each a pure function that returns a styled string or `""` when it has nothing to show.
 
+`context`, `cost`, `usage`, and `cachettl` switch to a warning or critical color at their thresholds. That state color wins over a theme `fg`, and in powerline mode the segment is drawn on the state color (see [Themes](configuration.md#themes)).
+
 ## Session data
 
 From Claude Code's stdin JSON:
@@ -9,15 +11,17 @@ From Claude Code's stdin JSON:
 | Widget | Shows | Config |
 |---|---|---|
 | `model` | Model name, optional context window size | `show_context_size` (bool, default: true) |
-| `context` | Context usage, color-coded by threshold | `display` (text/bar/percent/both), `bar_width` (int), `value` (percent/tokens), `show_breakdown` (bool) |
+| `context` | Context usage, color-coded by threshold; with Nerd Font icons a pie icon comes before the value | `display` (text/bar/percent/both), `bar_width` (int), `value` (percent/tokens), `show_breakdown` (bool) |
 | `cost` | Session cost in USD, color-coded by threshold | -- |
-| `tokens` | Token count and cache hit ratio | -- |
+| `tokens` | Token count and cache hit ratio (`136k tok · 40% cached`) | -- |
 | `duration` | Elapsed session time | -- |
 | `lines` | Lines added/removed (green +N, red -N) | -- |
 | `speed` | Output tokens/sec averaged over the window, with a ↑/↓ trend arrow when generation is ramping or slowing; hides when idle past the window | `window_secs` (int, default: 30; 0 = session average, no arrow) |
 | `messages` | Conversation turn count | -- |
 | `session` | Session name | -- |
 | `outputstyle` | Active output style name | -- |
+| `effort` | Reasoning effort level (low/medium/high/xhigh/max), falling back to `CLAUDE_EFFORT` | -- |
+| `worktree` | Worktree name (`wt:fix-bug`) and branch when running in a git worktree | `show_branch` (bool, default: true) |
 
 ## Transcript data
 
@@ -26,7 +30,7 @@ Parsed incrementally from the JSONL transcript:
 | Widget | Shows | Config |
 |---|---|---|
 | `tools` | Running/completed tool invocations as a scrolling activity feed | -- |
-| `agents` | Sub-agents with elapsed time (running) or duration (completed) | -- |
+| `agents` | Sub-agents with model family (`(Opus)`) and elapsed time (running) or duration (completed) | -- |
 | `todos` | Task completion count, color-coded | -- |
 | `thinking` | Thinking block indicator and count | -- |
 | `skills` | Skill names invoked during the session, newest first | `max_age_mins` (int, default: 0 = show all; >0 hides invocations older than N minutes) |
@@ -38,12 +42,14 @@ Gathered from the filesystem:
 
 | Widget | Shows | Config |
 |---|---|---|
-| `directory` | Working directory | `style` (full/fish/basename), `levels` (int) |
+| `directory` | Working directory; `fish` shortens parent segments to one letter, hidden ones to the dot and one letter (`~/C/.c/w/wt`) | `style` (full/fish/basename), `levels` (int) |
 | `git` | Branch, dirty indicator, ahead/behind counts, uncommitted line deltas (`+100 -55`) | `dirty` (bool), `ahead_behind` (bool), `file_stats` (bool), `line_stats` (bool) |
 | `project` | Composite of directory + git in a single segment | inherits `[directory]` and `[git]` config |
 | `env` | MCP servers, CLAUDE.md files, rule files, hooks (e.g. "3M 2C 4R 3H") | -- |
 | `permission` | Red alert when another session needs approval (requires hooks via `--init`) | `show_project` (bool, default: true) |
-| `usage` | Anthropic 5-hour and 7-day rate-limit utilization | `five_hour_threshold` (int, default: 0), `seven_day_threshold` (int, default: 80), `cache_ttl_seconds` (int, default: 180) |
+| `usage` | Anthropic 5-hour and 7-day rate-limit utilization; warning color at 50%, critical at 80% | `five_hour_threshold` (int, default: 0), `seven_day_threshold` (int, default: 80), `cache_ttl_seconds` (int, default: 180), `display` (text/bar), `bar_width` (int, default: 8) |
+| `peers` | Count of other running interactive Claude Code sessions (`×2`) | -- |
+| `exec` | First stdout line of a user command that receives the stdin JSON | `command` (string, absolute path), `timeout_ms` (int, default: 100) |
 
 ## Config sections
 
