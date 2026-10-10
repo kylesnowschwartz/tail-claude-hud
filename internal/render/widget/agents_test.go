@@ -159,3 +159,26 @@ func TestTruncateAgentName_ExactFit(t *testing.T) {
 		t.Errorf("truncateAgentName: exact-fit name should not be truncated, got %q", got)
 	}
 }
+
+func TestAgents_ModelSuffixCapitalized(t *testing.T) {
+	for _, tt := range []struct{ model, want string }{
+		{"claude-opus-5-5", "(Opus)"},
+		{"claude-sonnet-4-6", "(Sonnet)"},
+		{"claude-haiku-5-5", "(Haiku)"},
+	} {
+		agent := longAgent("Review", "running")
+		agent.Model = tt.model
+		ctx := &model.RenderContext{
+			TerminalWidth: 120,
+			Transcript:    &model.TranscriptData{Agents: []model.AgentEntry{agent}},
+		}
+
+		got := Agents(ctx, defaultCfg()).PlainText
+		if !strings.Contains(got, tt.want) {
+			t.Errorf("model %q: want suffix %q, got %q", tt.model, tt.want, got)
+		}
+	}
+	if ModelFamily("claude-opus-5-5") != "opus" {
+		t.Errorf("ModelFamily keys stay lowercase, got %q", ModelFamily("claude-opus-5-5"))
+	}
+}

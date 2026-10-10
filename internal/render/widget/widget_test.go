@@ -792,8 +792,8 @@ func TestAgentsWidget_ModelSuffixShownWhenPresent(t *testing.T) {
 	cfg := defaultCfg()
 
 	got := Agents(ctx, cfg).Text
-	if !strings.Contains(got, "haiku") {
-		t.Errorf("Agents: expected model family 'haiku' in output, got %q", got)
+	if !strings.Contains(got, "(Haiku)") {
+		t.Errorf("Agents: expected model family '(Haiku)' in output, got %q", got)
 	}
 }
 

@@ -196,11 +196,13 @@ func formatAgentEntry(a model.AgentEntry, icons Icons) string {
 }
 
 // modelFamilySuffix returns a parenthetical suffix for the model family if
-// recognized, e.g. " (haiku)". Returns "" for unrecognized models.
+// recognized, e.g. " (Haiku)". Returns "" for unrecognized models.
 func modelFamilySuffix(modelName string) string {
 	family := ModelFamily(modelName)
 	if family == "" {
 		return ""
 	}
-	return " (" + family + ")"
+	// ModelFamily's keys are lowercase; the suffix capitalizes them to match
+	// the model widget's display names.
+	return " (" + strings.ToUpper(family[:1]) + family[1:] + ")"
 }
