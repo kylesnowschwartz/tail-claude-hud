@@ -8,7 +8,7 @@ import (
 )
 
 // Tokens renders token count and cache hit ratio from the most recent API call.
-// Format: "126k tok 98% cached"
+// Format: "126k tok · 98% cached"
 //
 // The current_usage fields from stdin are per-call snapshots (not session totals):
 //   - input_tokens: uncacheable tail after the last cache breakpoint
@@ -39,7 +39,7 @@ func Tokens(ctx *model.RenderContext, cfg *config.Config) WidgetResult {
 	cacheable := cacheCreate + cacheRead
 	if cacheable > 0 {
 		cachePercent := (cacheRead * 100) / cacheable
-		plain = fmt.Sprintf("%s %d%% cached", plain, cachePercent)
+		plain = fmt.Sprintf("%s · %d%% cached", plain, cachePercent)
 	}
 
 	return WidgetResult{

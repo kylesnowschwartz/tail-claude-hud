@@ -24,8 +24,8 @@ func TestTokensWidget_HighCacheHit(t *testing.T) {
 	if !strings.Contains(got.PlainText, "116k tok") {
 		t.Errorf("expected '116k tok', got %q", got.PlainText)
 	}
-	if !strings.Contains(got.PlainText, "99% cached") {
-		t.Errorf("expected '99%% cached', got %q", got.PlainText)
+	if got.PlainText != "116k tok · 99% cached" {
+		t.Errorf("expected '116k tok · 99%% cached', got %q", got.PlainText)
 	}
 }
 
