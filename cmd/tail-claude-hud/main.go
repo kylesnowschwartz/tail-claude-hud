@@ -23,6 +23,7 @@ import (
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/preset"
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/render"
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/stdin"
+	"github.com/kylesnowschwartz/tail-claude-hud/internal/styleexport"
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/version"
 	"github.com/lucasb-eyer/go-colorful"
 )
@@ -44,6 +45,8 @@ func main() {
 		case "update":
 			runUpdate()
 			return
+		case "style":
+			os.Exit(runStyle(os.Args[2:], os.Stdout, os.Stderr))
 		}
 	}
 
@@ -427,6 +430,34 @@ func runHook() {
 	}
 }
 
+// runStyle prints the resolved style export for the user's config and returns
+// the process exit code. JSON is the only output format; --json is required so
+// a future human-readable format can be the default without breaking callers.
+func runStyle(args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("style", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	asJSON := fs.Bool("json", false, "print the style as JSON")
+	themeName := fs.String("theme", "", "override the color theme (e.g. light, dark, nord)")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if !*asJSON {
+		fmt.Fprintln(stderr, "Usage: tail-claude-hud style --json [--theme name]")
+		return 2
+	}
+
+	cfg := config.LoadHud()
+	if *themeName != "" {
+		cfg.Style.Theme = *themeName
+		config.ResolveTheme(cfg)
+	}
+	if err := styleexport.Write(stdout, cfg, version.String()); err != nil {
+		fmt.Fprintf(stderr, "tail-claude-hud: style: %v\n", err)
+		return 1
+	}
+	return 0
+}
+
 // runUpdate installs the latest version via go install.
 func runUpdate() {
 	current := version.String()
@@ -460,6 +491,7 @@ func usage() {
 	fmt.Fprintf(os.Stderr, "Usage: tail-claude-hud [command] [flags]\n\n")
 	fmt.Fprintf(os.Stderr, "Commands:\n")
 	fmt.Fprintf(os.Stderr, "  hook <event>    handle a Claude Code hook event\n")
+	fmt.Fprintf(os.Stderr, "  style --json    print resolved icons, colors, and tool categories as JSON\n")
 	fmt.Fprintf(os.Stderr, "  update          install the latest version via go install\n")
 	fmt.Fprintf(os.Stderr, "  version         print the current version\n")
 	fmt.Fprintf(os.Stderr, "\nFlags:\n")

@@ -14,6 +14,27 @@ import (
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/stdin"
 )
 
+func TestRunStyle(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	var out, errOut bytes.Buffer
+	if code := runStyle(nil, &out, &errOut); code != 2 || out.Len() != 0 {
+		t.Errorf("without --json: code %d, stdout %q; want 2 and no stdout", code, out.String())
+	}
+
+	out.Reset()
+	errOut.Reset()
+	if code := runStyle([]string{"--json", "--theme", "nord"}, &out, &errOut); code != 0 {
+		t.Fatalf("--json: code %d, stderr %q", code, errOut.String())
+	}
+	if errOut.Len() != 0 {
+		t.Errorf("--json wrote to stderr: %q", errOut.String())
+	}
+	if !strings.Contains(out.String(), `"schema": 1`) || !strings.Contains(out.String(), `"#81a1c1"`) {
+		t.Errorf("--json --theme nord output missing schema or nord colors:\n%s", out.String())
+	}
+}
+
 // writeTempTranscript creates a temporary .jsonl transcript file and returns its path.
 func writeTempTranscript(t *testing.T, content string) string {
 	t.Helper()
