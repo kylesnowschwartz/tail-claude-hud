@@ -26,7 +26,7 @@ Answer `y` to add the marketplace, then pick a scope. If whats-agent-doing is in
 
 ## Where the look comes from
 
-At session start the mod runs `tail-claude-hud style --json` once and keeps the answer for the session. That output carries the HUD's resolved icons (Nerd Font, unicode or ascii, per your `[style] icons`), its semantic colors, the agent palette and the tool categories, so the box draws with whatever your HUD config draws with.
+At session start the mod runs `tail-claude-hud style --json` once, in the background, and keeps the answer for the session; the box draws with the built-in look until the answer arrives. That output carries the HUD's resolved icons (Nerd Font, unicode or ascii, per your `[style] icons`), its semantic colors, the agent palette and the tool categories, so the box draws with whatever your HUD config draws with.
 
 The binary is found in this order:
 
@@ -34,7 +34,9 @@ The binary is found in this order:
 2. `~/go/bin/tail-claude-hud`, where `go install` puts it. A Claude Code session runs with the login PATH, which often lacks Go's bin folder.
 3. `tail-claude-hud` on the session's PATH.
 
-If the binary is missing, too old to have `style --json`, or prints something unreadable, the box draws with a built-in unicode look (`✓ ✗ ◐ ≡ $ ◆ ∴`) in the HUD's default colors. The expanded history then ends with one dim line saying why. Nothing else is reported.
+If your `statusLine` command passes `--preset` (for example `tail-claude-hud --preset powerline`), set the `preset` option to the same value so the box reads the same look. The HUD's automatic light theme for powerline layouts on a light terminal background is not part of the export.
+
+If the binary is missing, too old to have `style --json`, or prints something unreadable, the box draws with a built-in unicode look (`✓ ✗ ◐ ≡ $ ◆ ∴`) in the HUD's default colors. The expanded history then ends with one dim line saying why. Nothing else is reported. The mod asks again after a reload or an option change, so a newer binary is picked up without a new session.
 
 ## What it shows
 
@@ -47,8 +49,8 @@ If the binary is missing, too old to have `style --json`, or prints something un
 | Running a tool | the tool's category icon and label, bold in the running color: `󰯠 Wait five seconds`, `Reading app.ts`, `󰖟 Fetching example.org` |
 | Parallel calls | the newest, then `(+N more)` |
 | A subagent at work | `󱙺 Running an agent: find the bug › Reading app.ts` |
-| Background agents | `󱙺 2 agents working`, and a row per agent: `󱙺 Draft the plan › Searching the web | 1m 12s` |
-| Waiting on you | `󰅸 Waiting for your approval: Run the tests`, `󰅸 Waiting for your answer` (permission icon and color; the border turns that color too) |
+| Background agents | `󱙺 2 agents working`, and a row per agent: `󱙺 Draft the plan › Searching the web | 1m 12s`. Each agent takes the color the HUD's agents widget gives it: its Agent call's position among the session's last 10, wrapped at the palette's 8 colors. |
+| Waiting on you | `󰅸 Waiting for approval: Run the tests`, `󰅸 Waiting for your answer` (permission icon and color; the border turns that color too). In the terminal the approval dialog takes the band's place while it is up; a subagent's row says it waits until its call runs. |
 | Reading tool results | `󰪠 Reviewing the results of 3 actions` |
 | Writing the reply | `Writing the reply · 120 words` |
 | Compacting | `󰪠 Compacting the conversation` |
@@ -62,7 +64,7 @@ The box steps aside while a survey holds the band. Other mods that draw above th
 
 ## Data and privacy
 
-The mod runs one local command per session (`tail-claude-hud style --json`) and reads `HOME` to find it. It keeps its headline, history and look in the session's own state (`$.state`). It makes no network calls and writes no files. Every hook is display only and passes its event on unchanged; it never answers a permission prompt.
+The mod runs one local command (`tail-claude-hud style --json`) when a session starts, and again after a reload while the HUD's look is not in place; it reads `HOME` to find the binary. It keeps its headline, history and look in the session's own state (`$.state`). It makes no network calls and writes no files. Every hook is display only and passes its event on unchanged; it never answers a permission prompt.
 
 The box shows your prompts, file names, URLs, command descriptions (or the command when it has none), MCP tool names and a line of the model's thinking where it streams. Labels are cleaned of control and invisible characters before they are drawn.
 
