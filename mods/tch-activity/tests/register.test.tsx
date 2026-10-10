@@ -604,6 +604,20 @@ describe('register', () => {
     expect((await ui.find({ type: 'Text', text: 'Second' }))?.props['color']).toBe('ansi256(10)')
   })
 
+  test("the headline draws an agent's name in its palette color, as the HUD does", async ($, on) => {
+    const { box } = seat(on, [])
+
+    on('agent.spawn', () => ({ model: 'claude-opus-5-5', agentId: 'a1' }))
+
+    const ui = await mount($, box)
+
+    await $.agent.spawn({ ...SPAWN, tool_use_id: 'tu1', description: 'Draft the plan' })
+
+    expect(await box.read()).toContain('◆ Draft the plan › Getting started')
+    expect((await ui.find({ type: 'Text', text: 'Draft the plan' }))?.props['color']).toBe('ansi256(12)')
+    expect((await ui.find({ type: 'Text', text: ' ◆ ' }))?.props['color']).toBe('ansi256(12)')
+  })
+
   test('a named agent is shown by its Agent call description, never its prompt', async ($, on) => {
     const { box, clock } = seat(on, [])
 

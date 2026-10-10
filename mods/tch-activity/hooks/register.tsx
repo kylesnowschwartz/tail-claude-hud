@@ -1032,8 +1032,16 @@ async function drawBox($: EngineInterface, e: AbovePromptInput) {
           <Box flexShrink={0}>
             <Text color={mark.color}>{` ${mark.glyph} `}</Text>
           </Box>
+          {/* An agent's name takes its palette color, as the HUD's agents widget draws it. */}
+          {headline.lead === null
+            ? []
+            : [
+                <Text color={mark.color} bold wrap="truncate-end">
+                  {printable(headline.lead, MAX_LABEL_CHARS)}
+                </Text>,
+              ]}
           <Text color={labelColor} bold={isToolRunning || isAlert} wrap="truncate-end">
-            {printable(headline.label, MAX_LABEL_CHARS)}
+            {`${headline.lead === null ? '' : ' › '}${printable(headline.label, MAX_LABEL_CHARS)}`}
           </Text>
           <Box flexShrink={0}>
             <Text dimColor>{isWorking ? `${SEPARATOR}${elapsedOf(nowMs - headline.sinceMs)}` : ''}</Text>

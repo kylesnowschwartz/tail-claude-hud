@@ -20,7 +20,8 @@ export type ActivityOutcome = 'ok' | 'error' | 'denied' | 'interrupted'
 /**
  * The box's headline: the phase, its words, and when it began. `tool` is the
  * tool the headline is about (its category picks the icon); `colorIndex` the
- * agent palette slot when the headline names an agent; `lastOutcome` how the
+ * agent palette slot when the headline names an agent, and `lead` the agent's
+ * name, drawn in that color, then ` › ` and `label`; `lastOutcome` how the
  * previous turn ended, for the idle glyph.
  */
 export type ActivityNow = {
@@ -29,6 +30,7 @@ export type ActivityNow = {
   sinceMs: number
   tool: string | null
   colorIndex: number | null
+  lead: string | null
   lastOutcome: ActivityOutcome | null
 }
 

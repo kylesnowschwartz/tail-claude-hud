@@ -13,6 +13,7 @@ export const IDLE: ActivityNow = {
   sinceMs: 0,
   tool: null,
   colorIndex: null,
+  lead: null,
   lastOutcome: null,
 }
 
@@ -157,7 +158,8 @@ export function current(live: Live): ActivityNow {
       : {
           ...call,
           phase: 'agent',
-          label: `${newest.label} › ${agentLabel(live, inner)}${more}`,
+          lead: newest.label,
+          label: `${agentLabel(live, inner)}${more}`,
           colorIndex: colorIndexOf(live, inner.colorKey),
         }
   }
@@ -172,8 +174,9 @@ export function current(live: Live): ActivityNow {
     return {
       ...base,
       phase: 'agent',
+      lead: isAlone ? busiest.name : null,
       label: isAlone
-        ? `${busiest.name} › ${agentLabel(live, { ...busiest, id: busiestId })}`
+        ? agentLabel(live, { ...busiest, id: busiestId })
         : `${plural(working.length, 'agent')} working`,
       sinceMs,
       tool: 'Agent',
