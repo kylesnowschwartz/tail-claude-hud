@@ -244,7 +244,7 @@ export const register: Register = (on, options) => {
       }
 
       // Decided before it was taken for a dialog: no wait of yours to leave out.
-      if (!call.isAwaitingApproval) {
+      if (!call.isPutToYou) {
         call.askedMs = null
       }
 
@@ -288,17 +288,17 @@ export const register: Register = (on, options) => {
   // A call's row is drawn running once it runs, or at once when a decider
   // other than the dialog (the auto-mode classifier) reviews it: for a call
   // that waited on you, it means you approved it.
-  on('ui.render', { component: 'ToolUse' }, ($, e, next) => {
+  on('ui.render', { component: 'ToolUse' }, async ($, e, next) => {
     if (e.props.isRunning) {
-      approved($, live, e.props.tool_use_id)
+      await approved($, live, e.props.tool_use_id)
     }
 
     return next(e)
   })
 
   // The run-in-background pill shows only under a running call: the same sign.
-  on('ui.render', { component: 'ToolProgress' }, ($, e, next) => {
-    approved($, live, e.props.tool_use_id)
+  on('ui.render', { component: 'ToolProgress' }, async ($, e, next) => {
+    await approved($, live, e.props.tool_use_id)
 
     return next(e)
   })
@@ -515,11 +515,11 @@ async function placeAgent($: EngineInterface, live: Live, agentId: string, toolU
  * Marks a call that waited on approval as approved, once it is seen running:
  * the dialog has closed, and the call's timer counts from here.
  */
-function approved($: EngineInterface, live: Live, toolUseId: string): void {
+async function approved($: EngineInterface, live: Live, toolUseId: string): Promise<void> {
   const call = live.calls.get(toolUseId)
 
   // Drawn running within the grace: no dialog is up, the decider's time is the call's.
-  if (call !== undefined && call.askedMs !== null && !call.isAwaitingApproval) {
+  if (call !== undefined && call.askedMs !== null && !call.isPutToYou) {
     call.askedMs = null
 
     return
@@ -532,11 +532,11 @@ function approved($: EngineInterface, live: Live, toolUseId: string): void {
       clearWaiting($, live, call)
     }
 
-    // Drawing may not write state or read the clock: both happen just after.
-    $.clock.after(0, async () => {
-      endWait(call, await $.clock.now())
-      await publish($, live)
-    })
+    // The wait ends now, before the call can: a fast tool's end must find it closed.
+    endWait(call, await $.clock.now())
+
+    // Drawing may not write state: the headline is published just after.
+    $.clock.after(0, () => void publish($, live))
   }
 }
 
@@ -561,6 +561,7 @@ async function putToYou($: EngineInterface, live: Live, call: Call): Promise<voi
   }
 
   call.isAwaitingApproval = true
+  call.isPutToYou = true
 
   if (call.agentId === null) {
     await markWaiting($, call.tool)

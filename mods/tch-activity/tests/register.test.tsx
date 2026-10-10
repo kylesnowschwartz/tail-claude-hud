@@ -1071,6 +1071,38 @@ describe('who decides an ask', () => {
   })
 })
 
+describe('approval timing', () => {
+  test('a call approved after a long wait that ends at once leaves the wait out', async ($, on) => {
+    const { box, clock } = seat(on, [])
+
+    on('ui.render', { component: 'ToolUse' }, ($, e) => {
+      const { Box } = $.ui.resolve(e)
+
+      return <Box key="row" />
+    })
+
+    box.verdict = 'ask'
+    box.toolAnswer = { text: 'ok', result: null } as never
+    box.onTool = async call => {
+      await putToYou($, clock, { tool: 'Read', input: {}, tool_use_id: call.tool_use_id })
+      await clock.advance(30_000)
+      // Approved, and the read finishes before any timer fires.
+      await drawRunning($, call.tool_use_id)
+    }
+
+    const ui = await mount($, box)
+
+    await $.turn.start({ text: 'read it', turnId: 't1' })
+    await $.tool.call({ tool: 'Read', file_path: 'src/app.ts' })
+    await ui.press({ key: 'toggle' })
+
+    const history = (await ui.find({ key: 'history' }))?.text ?? ''
+
+    expect(history).toContain('Read app.ts 0.0s')
+    expect(history).not.toContain('30')
+  })
+})
+
 describe('turn ends and background agents', () => {
   test("the main turn's end keeps a background agent's call waiting on approval", async ($, on) => {
     const { box, clock } = seat(on, [])

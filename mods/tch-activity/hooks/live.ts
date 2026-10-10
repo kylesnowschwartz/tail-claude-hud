@@ -37,8 +37,8 @@ export type ModelPhase = 'idle' | 'requesting' | 'thinking' | 'writing' | 'compo
  * A tool call in flight: the main loop's, or a subagent's (`agentId`). An
  * `ask` verdict (at `askedMs`) puts it to the mode's decider; it awaits your
  * approval once that turns out to be the dialog, until it is seen running or
- * ends. `waitedMs` is the approval wait already over, which its timer and
- * duration leave out.
+ * ends. `isPutToYou` stays set once it was taken for the dialog. `waitedMs`
+ * is the approval wait already over, which its timer and duration leave out.
  */
 export type Call = {
   tool: string
@@ -46,13 +46,14 @@ export type Call = {
   startMs: number
   agentId: string | null
   isAwaitingApproval: boolean
+  isPutToYou: boolean
   askedMs: number | null
   waitedMs: number
 }
 
 /** A call that has just started, not put to approval. */
 export function callOf(tool: string, label: string, startMs: number, agentId: string | null): Call {
-  return { tool, label, startMs, agentId, isAwaitingApproval: false, askedMs: null, waitedMs: 0 }
+  return { tool, label, startMs, agentId, isAwaitingApproval: false, isPutToYou: false, askedMs: null, waitedMs: 0 }
 }
 
 /**
