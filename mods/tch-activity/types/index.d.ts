@@ -95,6 +95,7 @@ declare module 'claude-code' {
       history: readonly ActivityEntry[]
       agents: readonly ActivityAgent[]
       isExpanded: boolean
+      width: number
       style: TchStyle | null
       styleSource: TchStyleSource | null
       agentOrder: readonly string[]

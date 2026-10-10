@@ -63,3 +63,46 @@ export function bandLayout(input: {
 
   return { agentRows, hasMoreAgents, isHistoryShown, historyRows, hasEarlier, hasNote }
 }
+
+/**
+ * Columns from the box's left edge to the headline label: the show/hide
+ * arrow, a space, the glyph and a space. Agent rows are indented by this, so
+ * they start under the label.
+ */
+export const AGENT_INDENT_COLUMNS = 4
+
+/** Columns the frame adds to its widest row: a border and a padding column each side. */
+const FRAME_COLUMNS = 4
+
+/**
+ * A run of text in a row, drawn in `color` (default foreground when absent),
+ * faint, and, when `isClipped`, cut short on a narrow screen rather than
+ * wrapped.
+ */
+export type Segment = {
+  text: string
+  color?: string | undefined
+  isFaint?: boolean | undefined
+  isClipped?: boolean
+}
+
+/**
+ * The columns a row's segments take. A glyph is one column, as the engine
+ * and tmux count Nerd Font icons, and an emoji drawn as one is two.
+ */
+export function columnsOf(segments: readonly Segment[]): number {
+  let columns = 0
+
+  for (const segment of segments) {
+    for (const char of segment.text) {
+      columns += /\p{Emoji_Presentation}/u.test(char) ? 2 : 1
+    }
+  }
+
+  return columns
+}
+
+/** The box's width, frame included, for rows of the given widths. */
+export function boxColumnsOf(rows: readonly number[]): number {
+  return Math.max(0, ...rows) + FRAME_COLUMNS
+}

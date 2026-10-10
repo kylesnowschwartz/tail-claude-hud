@@ -35,7 +35,9 @@ export type ModelPhase = 'idle' | 'requesting' | 'thinking' | 'writing' | 'compo
 
 /**
  * A tool call in flight: the main loop's, or a subagent's (`agentId`). It
- * awaits approval from an `ask` verdict until it is seen running or ends.
+ * awaits approval from an `ask` verdict (at `askedMs`) until it is seen
+ * running or ends; `waitedMs` is the approval wait already over, which its
+ * timer and duration leave out.
  */
 export type Call = {
   tool: string
@@ -43,6 +45,21 @@ export type Call = {
   startMs: number
   agentId: string | null
   isAwaitingApproval: boolean
+  askedMs: number | null
+  waitedMs: number
+}
+
+/** A call that has just started, not put to approval. */
+export function callOf(tool: string, label: string, startMs: number, agentId: string | null): Call {
+  return { tool, label, startMs, agentId, isAwaitingApproval: false, askedMs: null, waitedMs: 0 }
+}
+
+/** Ends a call's approval wait at `nowMs`, adding it to the time the call leaves out. */
+export function endWait(call: Call, nowMs: number): void {
+  if (call.askedMs !== null) {
+    call.waitedMs += Math.max(0, nowMs - call.askedMs)
+    call.askedMs = null
+  }
 }
 
 /**
@@ -87,6 +104,7 @@ export type Live = {
   phaseStartMs: number
   turnStartMs: number | null
   turnActions: number
+  isDeclinedLast: boolean
   isFirstRequest: boolean
   resultsToReview: number
   thought: string
@@ -114,6 +132,7 @@ export function createLive(): Live {
     phaseStartMs: 0,
     turnStartMs: null,
     turnActions: 0,
+    isDeclinedLast: false,
     isFirstRequest: false,
     resultsToReview: 0,
     thought: '',
@@ -143,10 +162,10 @@ export function current(live: Live): ActivityNow {
 
   if (newestId !== undefined && newest !== undefined) {
     const more = open.length > 1 ? ` (+${open.length - 1} more)` : ''
-    const call = { ...base, sinceMs: newest.startMs, tool: newest.tool }
+    const call = { ...base, sinceMs: newest.startMs + newest.waitedMs, tool: newest.tool }
 
     if (newest.isAwaitingApproval) {
-      return { ...call, phase: 'approval', label: `Waiting for your approval: ${newest.label}${more}` }
+      return { ...call, sinceMs: newest.askedMs ?? call.sinceMs, phase: 'approval', label: `Waiting for your approval: ${newest.label}${more}` }
     }
 
     if (newest.tool === 'AskUserQuestion') {
@@ -289,38 +308,62 @@ export function colorIndexOf(live: Live, key: string): number {
   return Math.max(0, live.agentOrder.indexOf(key)) % AGENT_PALETTE_SIZE
 }
 
+/**
+ * How a turn ended: the engine's reason, or `declined` when its last call was
+ * one you declined and nothing followed it.
+ */
+export type TurnEnd = TurnCompleteReason | 'declined'
+
+export function turnEndOf(reason: TurnCompleteReason, isDeclinedLast: boolean): TurnEnd {
+  return isDeclinedLast && (reason === 'answer' || reason === 'aborted') ? 'declined' : reason
+}
+
 /** How a turn ended, in the words the idle headline uses. */
-export function turnEndLabel(reason: TurnCompleteReason, durationMs: number, actions: number): string {
+export function turnEndLabel(end: TurnEnd, durationMs: number, actions: number): string {
   const took = durationOf(durationMs)
 
-  switch (reason) {
+  switch (end) {
     case 'aborted':
       return `interrupted after ${took}`
     case 'error':
       return `stopped on an error after ${took}`
     case 'refusal':
       return 'declined the request'
+    case 'declined':
+      return `stopped at a declined call after ${took}`
     case 'answer':
       return `done in ${took}, ${plural(actions, 'action')}`
   }
 }
 
 /** How a turn ended, as its history row says it; the row's duration follows it. */
-export function turnEndRowLabel(reason: TurnCompleteReason, actions: number): string {
-  switch (reason) {
+export function turnEndRowLabel(end: TurnEnd, actions: number): string {
+  switch (end) {
     case 'aborted':
       return 'Interrupted'
     case 'error':
       return 'Stopped on an error'
     case 'refusal':
       return 'Declined the request'
+    case 'declined':
+      return 'Stopped at a declined call'
     case 'answer':
       return `Done, ${plural(actions, 'action')}`
   }
 }
 
-export function outcomeOf(reason: TurnCompleteReason): ActivityOutcome {
-  return reason === 'aborted' ? 'interrupted' : reason === 'error' ? 'error' : reason === 'refusal' ? 'denied' : 'ok'
+export function outcomeOf(end: TurnEnd): ActivityOutcome {
+  switch (end) {
+    case 'aborted':
+      return 'interrupted'
+    case 'error':
+      return 'error'
+    case 'refusal':
+    case 'declined':
+      return 'denied'
+    case 'answer':
+      return 'ok'
+  }
 }
 
 export function entryOf(kind: ActivityEntry['kind'], label: string, outcome: ActivityOutcome = 'ok'): ActivityEntry {

@@ -16,15 +16,18 @@ import type { ActivityAgent, ActivityEntry, ActivityOutcome, TchStyle, TchStyleS
 import { activityOf, isAgentTool } from './activity-of'
 import {
   agentLabel,
+  callOf,
   colorIndexOf,
   createLive,
   current,
+  endWait,
   entryOf,
   IDLE,
   isAgentWaiting,
   outcomeOf,
   STARTING_LABEL,
   turnEndLabel,
+  turnEndOf,
   turnEndRowLabel,
   UNNAMED_AGENT,
   type Agent,
@@ -33,7 +36,7 @@ import {
   withAgentCall,
   withAgentKey,
 } from './live'
-import { bandLayout } from './layout'
+import { AGENT_INDENT_COLUMNS, bandLayout, boxColumnsOf, columnsOf, type Segment } from './layout'
 import { borderColor, entryMark, entryToolIcon, headlineMark, styleNote } from './marks'
 import {
   agentColor,
@@ -73,6 +76,9 @@ const lastTurn = atom(
 )
 
 const isExpanded = atom({ plugin: 'tch-activity', key: 'isExpanded' } as const, false)
+
+/** The widest the box has been this session, in columns: it grows to fit and never shrinks. */
+const boxWidth = atom({ plugin: 'tch-activity', key: 'width' } as const, 0)
 
 /** The HUD's look, loaded once per session; `null` until then. */
 const styleState = atom({ plugin: 'tch-activity', key: 'style' } as const, null as TchStyle | null)
@@ -121,6 +127,7 @@ export const register: Register = (on, options) => {
 
     live.turnStartMs = await $.clock.now()
     live.turnActions = 0
+    live.isDeclinedLast = false
     live.isFirstRequest = true
     live.resultsToReview = 0
     live.calls.clear()
@@ -178,7 +185,7 @@ export const register: Register = (on, options) => {
       // Kept after the call: the agent's last action stands while it thinks.
       agent.label = label
       agent.activeMs = startMs
-      live.calls.set(e.tool_use_id, { tool: e.tool, label, startMs, agentId: e.agentId, isAwaitingApproval: false })
+      live.calls.set(e.tool_use_id, callOf(e.tool, label, startMs, e.agentId))
       await publish($, live, false)
 
       try {
@@ -195,7 +202,9 @@ export const register: Register = (on, options) => {
       await rememberAgentKey($, live, e.tool_use_id)
     }
 
-    live.calls.set(e.tool_use_id, { tool: e.tool, label, startMs, agentId: null, isAwaitingApproval: false })
+    const call = callOf(e.tool, label, startMs, null)
+
+    live.calls.set(e.tool_use_id, call)
     live.turnActions += 1
     await publish($, live)
 
@@ -228,16 +237,20 @@ export const register: Register = (on, options) => {
     } finally {
       // A call put to approval that errors without ever being seen running
       // was refused at the dialog, which the engine reports as an error.
-      if (outcome === 'error' && live.calls.get(e.tool_use_id)?.isAwaitingApproval) {
+      if (outcome === 'error' && call.isAwaitingApproval) {
         outcome = 'denied'
       }
 
+      const endMs = await $.clock.now()
+
+      endWait(call, endMs)
       live.calls.delete(e.tool_use_id)
       live.resultsToReview += 1
+      live.isDeclinedLast = outcome === 'denied'
 
       await remember($, {
         ...entryOf('tool', done, outcome),
-        durationMs: (await $.clock.now()) - startMs,
+        durationMs: endMs - startMs - call.waitedMs,
         tool: e.tool,
       })
 
@@ -254,6 +267,7 @@ export const register: Register = (on, options) => {
 
     if (verdict.decision === 'ask' && call !== undefined && !call.isAwaitingApproval) {
       call.isAwaitingApproval = true
+      call.askedMs = await $.clock.now()
       await publish($, live)
     }
 
@@ -302,12 +316,6 @@ export const register: Register = (on, options) => {
     return result
   })
 
-  on('classic.SubagentStop', async ($, e, next) => {
-    await finish($, live, e.agent_id, 'ok')
-
-    return next(e)
-  })
-
   // A compaction of the main conversation, timed from the call to its
   // answer. One made ahead of time (`precompute`) runs unseen in the
   // background and is not shown.
@@ -351,11 +359,12 @@ export const register: Register = (on, options) => {
     }
 
     const durationMs = (await $.clock.now()) - live.turnStartMs
-    const outcome = outcomeOf(e.reason)
-    const label = turnEndLabel(e.reason, durationMs, live.turnActions)
+    const end = turnEndOf(e.reason, live.isDeclinedLast)
+    const outcome = outcomeOf(end)
+    const label = turnEndLabel(end, durationMs, live.turnActions)
 
     await enter($, live, 'idle')
-    await remember($, { ...entryOf('end', turnEndRowLabel(e.reason, live.turnActions), outcome), durationMs })
+    await remember($, { ...entryOf('end', turnEndRowLabel(end, live.turnActions), outcome), durationMs })
 
     live.lastTurn = { label, outcome }
     await update($, lastTurn, () => live.lastTurn)
@@ -481,14 +490,20 @@ async function placeAgent($: EngineInterface, live: Live, agentId: string, toolU
   }
 }
 
-/** Marks a call that waited on approval as approved, once it is seen running. */
+/**
+ * Marks a call that waited on approval as approved, once it is seen running:
+ * the dialog has closed, and the call's timer counts from here.
+ */
 function approved($: EngineInterface, live: Live, toolUseId: string): void {
   const call = live.calls.get(toolUseId)
 
   if (call?.isAwaitingApproval) {
     call.isAwaitingApproval = false
-    // Drawing may not write state: publish just after.
-    $.clock.after(0, () => void publish($, live))
+    // Drawing may not write state or read the clock: both happen just after.
+    $.clock.after(0, async () => {
+      endWait(call, await $.clock.now())
+      await publish($, live)
+    })
   }
 }
 
@@ -686,6 +701,11 @@ async function enter($: EngineInterface, live: Live, next: ModelPhase): Promise<
 
 /** Follows one chunk of the main loop's response. */
 async function follow($: EngineInterface, live: Live, chunk: TurnStepChunk): Promise<void> {
+  // The model went on after a declined call: the decline did not end the turn.
+  if (chunk.kind === 'text' || chunk.kind === 'tool') {
+    live.isDeclinedLast = false
+  }
+
   switch (chunk.kind) {
     case 'thinking': {
       const isNew = live.phase !== 'thinking'
@@ -907,11 +927,16 @@ const MAX_AGENT_NAME_CHARS = 40
 /** The HUD's segment separator, drawn faint as the statusline draws it. */
 const SEPARATOR = ' | '
 
+/** The headline's show/hide arrow, one column wide. */
+const TOGGLE_COLUMNS = 1
+
 type AbovePromptInput = RenderInput<'AbovePrompt'>
 
 /**
  * Draws the box above the prompt: the headline, a row per agent at work
- * beside the main loop, and, behind the triangle, the history.
+ * beside the main loop, and, behind the triangle, the history. The box is as
+ * wide as the widest row it has drawn this session, so it never shrinks
+ * between states.
  */
 async function drawBox($: EngineInterface, e: AbovePromptInput) {
   const { Box, Text, Button } = $.ui.resolve(e)
@@ -922,28 +947,38 @@ async function drawBox($: EngineInterface, e: AbovePromptInput) {
   const entries = await read($, history)
   const working = await read($, team)
   const isOpen = await read($, isExpanded)
+  const widest = await read($, boxWidth)
   const nowMs = await $.clock.now()
+
+  /**
+   * A row's segments as Text: a clipped segment gives way on a narrow
+   * screen; the others keep their width, since they would wrap.
+   */
+  const line = (segments: readonly Segment[]) =>
+    segments.map(segment => {
+      const text = (
+        <Text color={segment.color} dimColor={segment.isFaint === true} wrap={segment.isClipped ? 'truncate-end' : undefined}>
+          {segment.text}
+        </Text>
+      )
+
+      return segment.isClipped ? text : <Box flexShrink={0}>{text}</Box>
+    })
 
   /**
    * One agent's row, as the HUD's agents widget draws a running agent: the
    * task icon and name in the agent's palette color, then its latest action
    * and its running time, each after a faint separator.
    */
-  const agentRow = (agent: ActivityAgent) => {
+  const agentRow = (agent: ActivityAgent): Segment[] => {
     const tint = agentColor(style, agent.colorIndex)
 
     return [
-      <Box flexShrink={0}>
-        <Text color={tint}>{`${icon(style, 'task')} `}</Text>
-      </Box>,
-      <Text color={tint} wrap="truncate-end">{printable(agent.name, MAX_AGENT_NAME_CHARS)}</Text>,
-      <Box flexShrink={0}>
-        <Text dimColor>{SEPARATOR}</Text>
-      </Box>,
-      <Text wrap="truncate-end">{printable(agent.label, MAX_LABEL_CHARS)}</Text>,
-      <Box flexShrink={0}>
-        <Text dimColor>{`${SEPARATOR}${elapsedOf(nowMs - agent.sinceMs)}`}</Text>
-      </Box>,
+      { text: `${icon(style, 'task')} `, color: tint },
+      { text: printable(agent.name, MAX_AGENT_NAME_CHARS), color: tint, isClipped: true },
+      { text: SEPARATOR, isFaint: true },
+      { text: printable(agent.label, MAX_LABEL_CHARS), isClipped: true },
+      { text: `${SEPARATOR}${elapsedOf(nowMs - agent.sinceMs)}`, isFaint: true },
     ]
   }
 
@@ -952,29 +987,18 @@ async function drawBox($: EngineInterface, e: AbovePromptInput) {
    * label, and the duration drawn faint, as the HUD's tools widget draws a
    * finished tool.
    */
-  const historyRow = (entry: ActivityEntry) => {
+  const historyRow = (entry: ActivityEntry): Segment[] => {
     const mark = entryMark(style, entry)
     const isQuiet = entry.kind === 'thought' || entry.kind === 'end'
-    const took = entry.durationMs === null ? '' : ` ${durationOf(entry.durationMs)}`
-    const toolMark = entry.kind === 'tool' && entry.tool !== null
-      ? [
-          <Box flexShrink={0}>
-            <Text dimColor>{`${entryToolIcon(style, entry.tool)} `}</Text>
-          </Box>,
-        ]
+    const toolMark: Segment[] = entry.kind === 'tool' && entry.tool !== null
+      ? [{ text: `${entryToolIcon(style, entry.tool)} `, isFaint: true }]
       : []
 
     return [
-      <Box flexShrink={0}>
-        <Text color={mark.color} dimColor={mark.isFaint === true}>{`${mark.glyph} `}</Text>
-      </Box>,
+      { text: `${mark.glyph} `, color: mark.color, isFaint: mark.isFaint },
       ...toolMark,
-      <Text dimColor={isQuiet} wrap="truncate-end">
-        {printable(entry.label, MAX_LABEL_CHARS)}
-      </Text>,
-      <Box flexShrink={0}>
-        <Text dimColor>{took}</Text>
-      </Box>,
+      { text: printable(entry.label, MAX_LABEL_CHARS), isFaint: isQuiet, isClipped: true },
+      { text: entry.durationMs === null ? '' : ` ${durationOf(entry.durationMs)}`, isFaint: true },
     ]
   }
 
@@ -984,6 +1008,21 @@ async function drawBox($: EngineInterface, e: AbovePromptInput) {
     .filter((part): part is string => part !== null)
     .map(part => `${SEPARATOR}${part}`)
     .join('')
+
+  // An agent's name takes its palette color, as the HUD's agents widget draws it.
+  const lead: Segment[] = headline.lead === null
+    ? []
+    : [
+        { text: printable(headline.lead, MAX_LABEL_CHARS), color: mark.color, isClipped: true },
+        { text: SEPARATOR, isFaint: true },
+      ]
+
+  const headlineSegments: Segment[] = [
+    { text: ` ${mark.glyph} `, color: mark.color },
+    ...lead,
+    { text: printable(headline.label, MAX_LABEL_CHARS), isClipped: true },
+    { text: tail, isFaint: true },
+  ]
 
   // One agent the headline names; more, or one beside the main loop's
   // work, get a row each.
@@ -999,44 +1038,50 @@ async function drawBox($: EngineInterface, e: AbovePromptInput) {
 
   const listed = layout.agentRows > 0 ? working.slice(-layout.agentRows) : []
   const unlisted = working.length - listed.length
+  const agentLines = listed.map(agentRow)
+  const moreAgents: Segment[][] = layout.hasMoreAgents ? [[{ text: `… ${plural(unlisted, 'more agent')}`, isFaint: true }]] : []
 
-  const agentRows = listed.map((agent, i) => (
-    <Box key={`agent-${i}`} flexDirection="row">
-      {agentRow(agent)}
-    </Box>
-  ))
+  const shown = layout.historyRows > 0 ? entries.slice(-layout.historyRows) : []
+  const hidden = entries.length - shown.length
+  const historyLines = shown.map(historyRow)
+  const earlier: Segment[][] = layout.hasEarlier ? [[{ text: `… ${hidden} earlier`, isFaint: true }]] : []
+  const empty: Segment[][] = entries.length === 0 ? [[{ text: 'No actions yet', isFaint: true }]] : []
+  const footer: Segment[][] = layout.hasNote && note !== null ? [[{ text: note, isFaint: true, isClipped: true }]] : []
 
-  const moreAgents = layout.hasMoreAgents ? [<Text dimColor>{`… ${plural(unlisted, 'more agent')}`}</Text>] : []
+  const teamLines = isTeamListed ? [...agentLines, ...moreAgents] : []
+  const bodyLines = layout.isHistoryShown ? [...earlier, ...historyLines, ...empty, ...footer] : []
 
-  const teamBox = isTeamListed && (listed.length > 0 || layout.hasMoreAgents)
+  const natural = boxColumnsOf([
+    TOGGLE_COLUMNS + columnsOf(headlineSegments),
+    ...teamLines.map(segments => AGENT_INDENT_COLUMNS + columnsOf(segments)),
+    ...bodyLines.map(columnsOf),
+  ])
+
+  if (natural > widest) {
+    // Drawing may not write state: the wider box is kept just after.
+    $.clock.after(0, () => void update($, boxWidth, width => Math.max(width, natural)))
+  }
+
+  const teamBox = teamLines.length > 0
     ? [
-        <Box key="agents" flexDirection="column">
-          {agentRows}
-          {moreAgents}
+        <Box key="agents" flexDirection="column" paddingLeft={AGENT_INDENT_COLUMNS}>
+          {teamLines.map((segments, i) => (
+            <Box key={`agent-${i}`} flexDirection="row">
+              {line(segments)}
+            </Box>
+          ))}
         </Box>,
       ]
     : []
 
-  const shown = layout.historyRows > 0 ? entries.slice(-layout.historyRows) : []
-  const hidden = entries.length - shown.length
-
-  const historyRows = shown.map((entry, i) => (
-    <Box key={`row-${i}`} flexDirection="row">
-      {historyRow(entry)}
-    </Box>
-  ))
-
-  const earlier = layout.hasEarlier ? [<Text dimColor>{`… ${hidden} earlier`}</Text>] : []
-  const empty = entries.length === 0 ? [<Text dimColor>No actions yet</Text>] : []
-  const footer = layout.hasNote && note !== null ? [<Text dimColor wrap="truncate-end">{note}</Text>] : []
-
   const body = layout.isHistoryShown
     ? [
         <Box key="history" flexDirection="column" marginTop={1}>
-          {earlier}
-          {historyRows}
-          {empty}
-          {footer}
+          {bodyLines.map((segments, i) => (
+            <Box key={`row-${i}`} flexDirection="row">
+              {line(segments)}
+            </Box>
+          ))}
         </Box>,
       ]
     : []
@@ -1049,6 +1094,7 @@ async function drawBox($: EngineInterface, e: AbovePromptInput) {
         borderColor={borderColor(style, headline, working)}
         paddingX={1}
         alignSelf="flex-start"
+        minWidth={Math.min(Math.max(widest, natural), e.props.bodyColumns)}
       >
         <Box key="activity" flexDirection="row">
           <Button
@@ -1057,25 +1103,7 @@ async function drawBox($: EngineInterface, e: AbovePromptInput) {
             label={isOpen ? '▾' : '▸'}
             onPress={() => update($, isExpanded, open => !open)}
           />
-          {/* On a narrow screen only the label gives way: the rest would wrap. */}
-          <Box flexShrink={0}>
-            <Text color={mark.color}>{` ${mark.glyph} `}</Text>
-          </Box>
-          {/* An agent's name takes its palette color, as the HUD's agents widget draws it. */}
-          {headline.lead === null
-            ? []
-            : [
-                <Text color={mark.color} wrap="truncate-end">
-                  {printable(headline.lead, MAX_LABEL_CHARS)}
-                </Text>,
-                <Box flexShrink={0}>
-                  <Text dimColor>{SEPARATOR}</Text>
-                </Box>,
-              ]}
-          <Text wrap="truncate-end">{printable(headline.label, MAX_LABEL_CHARS)}</Text>
-          <Box flexShrink={0}>
-            <Text dimColor>{tail}</Text>
-          </Box>
+          {line(headlineSegments)}
         </Box>
         {teamBox}
         {body}

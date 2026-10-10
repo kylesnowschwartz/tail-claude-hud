@@ -413,6 +413,125 @@ describe('register', () => {
     expect((await ui.find({ key: 'history' }))?.text ?? '').toContain('⊘ $ Ask AppleScript')
   })
 
+  test('a turn whose last call you declined ends declined, the dialog time left out', async ($, on) => {
+    const { box, clock } = seat(on, [])
+
+    box.verdict = 'ask'
+    box.toolAnswer = { isError: true, text: 'The user refused this tool use.', result: null } as never
+    box.onTool = async call => {
+      await $.tool.check({ tool: 'Bash', input: { command: 'osascript' }, tool_use_id: call.tool_use_id })
+      await clock.advance(4000)
+    }
+
+    const ui = await mount($, box)
+    const { turnId } = await $.turn.start({ text: 'run it', turnId: 't1' })
+
+    await $.tool.call({ tool: 'Bash', command: 'osascript', description: 'Ask AppleScript' })
+    await $.turn.complete({ ...DONE, turnId })
+    await ui.press({ key: 'toggle' })
+
+    const history = (await ui.find({ key: 'history' }))?.text ?? ''
+
+    expect(await box.read()).toContain('⊘ Idle, last turn stopped at a declined call')
+    expect(history).toContain('⊘ $ Ask AppleScript 0.0s')
+    expect(history).toContain('⊘ Stopped at a declined call')
+    expect(history).not.toContain('Done')
+  })
+
+  test('a turn that goes on after a declined call ends done', async ($, on) => {
+    const { box } = seat(on, [[], [{ kind: 'text', index: 0, text: 'I will not run it, then.' }]])
+
+    box.toolAnswer = { deny: 'auto mode said no' }
+
+    const ui = await mount($, box)
+    const { turnId } = await $.turn.start({ text: 'run it', turnId: 't1' })
+
+    await step($, 0)
+    await $.tool.call({ tool: 'Bash', command: 'rm -rf build', description: 'Clean the build' })
+    await step($, 1)
+    await $.turn.complete({ ...DONE, turnId })
+    await ui.press({ key: 'toggle' })
+
+    expect((await ui.find({ key: 'history' }))?.text ?? '').toContain('Done, 1 action')
+  })
+
+  test('an approved call times only its run, not the dialog', async ($, on) => {
+    const { box, clock } = seat(on, [])
+
+    on('ui.render', { component: 'ToolUse' }, ($, e) => {
+      const { Box } = $.ui.resolve(e)
+
+      return <Box key="row" />
+    })
+
+    box.verdict = 'ask'
+    box.toolAnswer = { text: 'ok', result: null } as never
+    box.onTool = async call => {
+      await $.tool.check({ tool: 'Bash', input: {}, tool_use_id: call.tool_use_id })
+      await clock.advance(5000)
+      box.seen.push(await box.read())
+
+      await $.ui.mount({
+        plugin: 'tch-activity',
+        surface: 'terminal',
+        component: 'ToolUse',
+        props: { tool_use_id: call.tool_use_id, tool: 'Bash', input: {}, isRunning: true, isErrored: false, isInterrupted: false },
+      })
+      await clock.advance(1)
+      box.seen.push(await box.read())
+      await clock.advance(2000)
+    }
+
+    const ui = await mount($, box)
+
+    await $.turn.start({ text: 'run it', turnId: 't1' })
+    await $.tool.call({ tool: 'Bash', command: 'osascript', description: 'Wait in AppleScript' })
+    await ui.press({ key: 'toggle' })
+
+    // The dialog's own wait shows while it is up.
+    expect(box.seen[0]).toContain('Waiting for your approval: Wait in AppleScript | 5.0s')
+    expect(box.seen[1]).toContain('Wait in AppleScript | 0.0s')
+    expect((await ui.find({ key: 'history' }))?.text ?? '').toContain('✓ $ Wait in AppleScript 2s')
+  })
+
+  test('agent rows start under the headline label', async ($, on) => {
+    const { box } = seat(on, [])
+
+    on('agent.spawn', ($, e) => ({ model: 'claude-opus-5-5', agentId: `agent-${e.tool_use_id}` }))
+
+    const ui = await mount($, box)
+
+    await $.agent.spawn({ ...SPAWN, tool_use_id: 'tu1', description: 'First' })
+    await $.agent.spawn({ ...SPAWN, tool_use_id: 'tu2', description: 'Second' })
+
+    expect((await ui.find({ key: 'agents' }))?.props['paddingLeft']).toBe(4)
+  })
+
+  test('the box grows to its widest row and never shrinks', async ($, on) => {
+    const { box, clock } = seat(on, [])
+
+    box.toolAnswer = { text: 'ok', result: null } as never
+
+    const ui = await mount($, box)
+    const widthOf = async () => (await ui.find({ key: 'frame' }))?.props['minWidth'] as number
+    const idle = await widthOf()
+
+    const { turnId } = await $.turn.start({ text: 'read it', turnId: 't1' })
+
+    await $.tool.call({ tool: 'Read', file_path: `src/${'long-name-'.repeat(8)}.ts` })
+    await $.turn.complete({ ...DONE, turnId })
+    await ui.press({ key: 'toggle' })
+    await clock.advance(1)
+
+    const open = await widthOf()
+
+    await ui.press({ key: 'toggle' })
+    await clock.advance(1)
+
+    expect(open).toBeGreaterThan(idle)
+    expect(await widthOf()).toBe(open)
+  })
+
   test('an approved call stops waiting once it is drawn running', async ($, on) => {
     const { box, clock } = seat(on, [])
 
