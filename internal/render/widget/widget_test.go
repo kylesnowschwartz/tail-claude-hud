@@ -1996,6 +1996,21 @@ func TestIconsFor_NewFieldsNonEmpty(t *testing.T) {
 }
 
 // Skill has its own icon in every mode, apart from Bash and the Other fallback.
+// Unicode mode is the no-Nerd-Font fallback, so every glyph must take exactly
+// one terminal column (as the renderer's truncation measures it) and none may
+// ask for emoji presentation. Emoji-presentation characters measure two
+// columns, so the width check also rejects them.
+func TestIconsFor_UnicodeIconsAreOneColumnSymbols(t *testing.T) {
+	for key, glyph := range IconsFor("unicode").ByKey() {
+		if w := ansi.StringWidth(glyph); w != 1 {
+			t.Errorf("unicode %s icon %q is %d columns wide, want 1", key, glyph, w)
+		}
+		if strings.ContainsRune(glyph, '️') {
+			t.Errorf("unicode %s icon %q carries the emoji variation selector", key, glyph)
+		}
+	}
+}
+
 func TestIconsFor_SkillIsDistinct(t *testing.T) {
 	for _, mode := range []string{"nerdfont", "unicode", "ascii"} {
 		icons := IconsFor(mode)

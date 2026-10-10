@@ -38,7 +38,7 @@ If your `statusLine` command passes `--preset` (for example `tail-claude-hud --p
 
 The box uses the HUD's state colors (running, thinking, needs you, success, error, muted) and its agent palette. The per-widget colors in your theme file (`theme-active.toml`) are not used.
 
-If the binary is missing, too old to have `style --json`, or prints something unreadable, the box draws with a built-in unicode look (`✓ ✗ ⧗ ≡ $ ◆ ∴ ❝`) in the HUD's default colors. The expanded history then ends with one dim line saying why. Nothing else is reported. The mod asks again after a reload or an option change, so a newer binary is picked up without a new session.
+If the binary is missing, too old to have `style --json`, or prints something unreadable, the box draws with a built-in unicode look (`✓ ✗ ⧗ ≡ $ ◆ ∴ ❝`) in the HUD's default colors. Its icons are the HUD's own `icons = "unicode"` set: one-column symbols, no emoji (see [Style](../../docs/configuration.md#style)). The expanded history then ends with one dim line saying why. Nothing else is reported. The mod asks again after a reload or an option change, so a newer binary is picked up without a new session.
 
 ## What it shows
 

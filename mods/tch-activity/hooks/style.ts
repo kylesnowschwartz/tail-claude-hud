@@ -31,6 +31,8 @@ export const BUILTIN_STYLE: TchStyle = {
     check: '✓',
     running: '⧗',
     clock: '◷',
+    folder: '⌂',
+    branch: '⎇',
     read: '≡',
     edit: '✎',
     write: '✎',

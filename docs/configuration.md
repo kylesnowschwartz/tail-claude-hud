@@ -25,6 +25,19 @@ mode = "plain"         # plain, powerline, minimal
 theme = "default"
 ```
 
+`icons = "unicode"` needs no Nerd Font: every glyph is a one-column symbol with no emoji, the same set the tch-activity mod draws when the HUD binary is missing.
+
+| Icon | Glyph | Icon | Glyph |
+|---|---|---|---|
+| check | `✓` | bash | `$` |
+| error | `✗` | grep, glob | `⌕` |
+| running | `⧗` | web | `◎` |
+| clock | `◷` | task (agents) | `◆` |
+| folder | `⌂` | skill | `✦` |
+| branch | `⎇` | thinking | `∴` |
+| read | `≡` | other tools | `⚙` |
+| edit, write | `✎` | permission | `!` |
+
 ## Widget options
 
 ```toml

@@ -122,25 +122,27 @@ func IconsFor(mode string) Icons {
 			Permission: "󰅸",          // nf-md-bell-alert
 		}
 	case "unicode":
+		// One-column symbols with no emoji presentation, identical to the
+		// tch-activity mod's built-in look (mods/tch-activity/hooks/style.ts).
 		return Icons{
 			Check:      "✓",
-			Running:    "⏳",
-			Clock:      "⏱",
-			Folder:     "📁",
+			Running:    "⧗",
+			Clock:      "◷",
+			Folder:     "⌂",
 			Branch:     "⎇",
-			Read:       "📖",
+			Read:       "≡",
 			Edit:       "✎",
 			Write:      "✎",
-			Bash:       "⚒",
-			Grep:       "🔍",
-			Glob:       "🔍",
-			Web:        "🌐",
-			Task:       "🤖",
+			Bash:       "$",
+			Grep:       "⌕",
+			Glob:       "⌕",
+			Web:        "◎",
+			Task:       "◆",
 			Skill:      "✦",
-			Thinking:   "🧠",
+			Thinking:   "∴",
 			Other:      "⚙",
 			Error:      "✗",
-			Permission: "🔔",
+			Permission: "!",
 		}
 	default: // ascii
 		return Icons{

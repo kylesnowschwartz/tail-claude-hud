@@ -44,6 +44,16 @@ describe('parseStyle', () => {
   test('an unknown tool takes the default category icon', async () => {
     expect(toolIcon(BUILTIN_STYLE, 'mcp__x__y')).toBe(BUILTIN_STYLE.icons['other'])
   })
+
+  test('the built-in look has the HUD unicode keys, each one narrow non-emoji character', async () => {
+    expect(Object.keys(BUILTIN_STYLE.icons)).toContain('folder')
+    expect(Object.keys(BUILTIN_STYLE.icons)).toContain('branch')
+
+    for (const glyph of Object.values(BUILTIN_STYLE.icons)) {
+      expect([...glyph]).toHaveLength(1)
+      expect(glyph).not.toMatch(/\p{Emoji_Presentation}|️/u)
+    }
+  })
 })
 
 describe('isStyleStale', () => {
