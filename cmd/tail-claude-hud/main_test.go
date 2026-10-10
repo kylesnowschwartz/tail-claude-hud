@@ -35,6 +35,29 @@ func TestRunStyle(t *testing.T) {
 	}
 }
 
+func TestRunStylePreset(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
+	presetPath := filepath.Join(t.TempDir(), "plain-ascii.toml")
+	if err := os.WriteFile(presetPath, []byte("name = \"plain-ascii\"\n[style]\nicons = \"ascii\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var out, errOut bytes.Buffer
+	if code := runStyle([]string{"--json", "--preset", presetPath}, &out, &errOut); code != 0 {
+		t.Fatalf("--preset file: code %d, stderr %q", code, errOut.String())
+	}
+	if !strings.Contains(out.String(), `"iconMode": "ascii"`) {
+		t.Errorf("--preset did not reach the export's icons:\n%s", out.String())
+	}
+
+	out.Reset()
+	errOut.Reset()
+	if code := runStyle([]string{"--json", "--preset", "no-such-preset"}, &out, &errOut); code != 2 || out.Len() != 0 {
+		t.Errorf("unknown preset: code %d, stdout %q; want 2 and no stdout", code, out.String())
+	}
+}
+
 // writeTempTranscript creates a temporary .jsonl transcript file and returns its path.
 func writeTempTranscript(t *testing.T, content string) string {
 	t.Helper()

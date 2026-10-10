@@ -1,8 +1,11 @@
 // Package styleexport describes the HUD's resolved look (icons, colors, agent
 // palette, tool categories) as JSON for programs that draw HUD-style output
 // without linking Go, such as a Claude Code mod. It reads the same config,
-// theme, and widget definitions the statusline renders with, so the export
-// cannot drift from what the HUD draws.
+// theme, and widget definitions the statusline renders with. The caller
+// applies the same --preset and --theme the statusline command uses; the
+// statusline's automatic light theme for powerline layouts on a light
+// terminal background is not applied, since the export has no terminal to
+// query.
 //
 // Colors are emitted in the mod color syntax: "ansi256(N)" for terminal
 // palette indices and "#rrggbb" for hex. An empty string means "no color":

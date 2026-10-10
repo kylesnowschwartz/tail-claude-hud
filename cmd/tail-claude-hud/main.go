@@ -437,16 +437,25 @@ func runStyle(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("style", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	asJSON := fs.Bool("json", false, "print the style as JSON")
+	presetName := fs.String("preset", "", "apply a named preset or TOML file path, as the statusline's --preset does")
 	themeName := fs.String("theme", "", "override the color theme (e.g. light, dark, nord)")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
 	if !*asJSON {
-		fmt.Fprintln(stderr, "Usage: tail-claude-hud style --json [--theme name]")
+		fmt.Fprintln(stderr, "Usage: tail-claude-hud style --json [--preset name] [--theme name]")
 		return 2
 	}
 
 	cfg := config.LoadHud()
+	if *presetName != "" {
+		p, err := resolvePreset(*presetName)
+		if err != nil {
+			fmt.Fprintf(stderr, "tail-claude-hud: style: %v\n", err)
+			return 2
+		}
+		preset.ApplyPreset(cfg, p)
+	}
 	if *themeName != "" {
 		cfg.Style.Theme = *themeName
 		config.ResolveTheme(cfg)
