@@ -14,7 +14,7 @@ import (
 const agentSeparator = " | "
 
 // Agents renders running and recently-completed sub-agent entries.
-// Running agents show a colored robot icon, half-circle indicator, and elapsed time.
+// Running agents show a colored robot icon, the running indicator, and elapsed time.
 // Completed agents show a dim colored robot icon, check mark, and duration.
 // Returns an empty WidgetResult when ctx.Transcript is nil or there are no agents to show.
 // FgColor is left empty because the widget composes multiple styles internally;

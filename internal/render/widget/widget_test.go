@@ -2220,3 +2220,21 @@ func TestContextWidget_NoIconWithoutNerdfont(t *testing.T) {
 		}
 	}
 }
+
+// The running indicator must not read as a meter: it differs from every
+// context/usage pie glyph and every cache countdown ring glyph in each mode.
+func TestIconsFor_RunningIsNotAMeterGlyph(t *testing.T) {
+	for _, mode := range []string{"nerdfont", "unicode", "ascii"} {
+		running := IconsFor(mode).Running
+		for pct := 0; pct <= 100; pct++ {
+			if percentToIcon(pct) == running {
+				t.Errorf("IconsFor(%q).Running %q equals the %d%% meter glyph", mode, running, pct)
+			}
+		}
+		for _, ring := range append(cacheRingGlyphs[:], cacheColdGlyph) {
+			if ring == running {
+				t.Errorf("IconsFor(%q).Running %q equals a cache ring glyph", mode, running)
+			}
+		}
+	}
+}

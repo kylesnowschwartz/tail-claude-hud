@@ -103,7 +103,7 @@ func IconsFor(mode string) Icons {
 	case "nerdfont":
 		return Icons{
 			Check:      "\uf00c",     // nf-fa-check
-			Running:    "󰪠",          // half-filled circle: static running indicator
+			Running:    "\U000F051F", // nf-md-timer_sand: static running indicator
 			Clock:      "\uf017",     // nf-fa-clock_o
 			Folder:     "\uf07b",     // nf-fa-folder
 			Branch:     "",          // nf-pl-branch
@@ -124,7 +124,7 @@ func IconsFor(mode string) Icons {
 	case "unicode":
 		return Icons{
 			Check:      "✓",
-			Running:    "◐",
+			Running:    "⏳",
 			Clock:      "⏱",
 			Folder:     "📁",
 			Branch:     "⎇",
