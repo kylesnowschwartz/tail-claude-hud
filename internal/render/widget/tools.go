@@ -259,13 +259,15 @@ func renderToolGroupPlain(icons Icons, g toolGroup) string {
 	return renderToolEntryPlain(icons, g.Entry, g.Count)
 }
 
-// formatDuration converts a millisecond duration into a compact human-readable string.
+// formatDuration converts a millisecond duration into the compact string every
+// widget uses for elapsed time.
 //
 //   - <= 0ms:             "0.0s"  (genuinely instant or unknown)
 //   - 1ms – 99ms:        "<0.1s" (sub-100ms; avoids misleading "0.0s" for real durations)
 //   - 100ms – 999ms:     "0.Xs"  (tenths of a second)
-//   - 1000ms – 59999ms:  "Xs" or "X.Ys" (seconds, optional tenth)
-//   - >= 60000ms:         "Xm Ys"
+//   - 1s – 59.9s:        "Xs" or "X.Ys" (seconds, optional tenth)
+//   - 1m – 59m 59s:      "Xm Ys"
+//   - >= 1h:             "Xh Ym"
 func formatDuration(ms int) string {
 	if ms <= 0 {
 		return "0.0s"
@@ -276,7 +278,7 @@ func formatDuration(ms int) string {
 	if ms < 1000 {
 		return fmt.Sprintf("0.%ds", ms/100)
 	}
-	if ms < 60000 {
+	if ms < msPerMinute {
 		secs := ms / 1000
 		frac := (ms % 1000) / 100
 		if frac == 0 {
@@ -284,7 +286,20 @@ func formatDuration(ms int) string {
 		}
 		return fmt.Sprintf("%d.%ds", secs, frac)
 	}
-	mins := ms / 60000
-	secs := (ms % 60000) / 1000
-	return fmt.Sprintf("%dm %ds", mins, secs)
+	if ms < msPerHour {
+		return fmt.Sprintf("%dm %ds", ms/msPerMinute, (ms%msPerMinute)/1000)
+	}
+	return fmt.Sprintf("%dh %dm", ms/msPerHour, (ms%msPerHour)/msPerMinute)
+}
+
+const (
+	msPerMinute = 60 * 1000
+	msPerHour   = 60 * msPerMinute
+)
+
+// formatElapsed formats a live clock (session time, a running agent) in the
+// formatDuration shape at whole-second resolution, so the tenths digit does
+// not flicker between ticks.
+func formatElapsed(d time.Duration) string {
+	return formatDuration(int(d.Round(time.Second).Milliseconds()))
 }

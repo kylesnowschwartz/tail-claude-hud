@@ -2,7 +2,6 @@ package widget
 
 import (
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/config"
@@ -19,7 +18,7 @@ var durationStyle = MutedStyle
 //  2. ctx.SessionStart (RFC3339 timestamp derived from the transcript) — used as
 //     a fallback when stdin duration is not available.
 //
-// Format: "Xh Ym" for sessions >= 1 hour, "Ym Xs" for shorter sessions.
+// Format: formatElapsed ("45s", "1m 12s", "1h 3m").
 // Returns an empty WidgetResult when neither source provides usable data.
 func Duration(ctx *model.RenderContext, cfg *config.Config) WidgetResult {
 	// Resolve the elapsed string from the best available source.
@@ -46,17 +45,4 @@ func Duration(ctx *model.RenderContext, cfg *config.Config) WidgetResult {
 		PlainText: plain,
 		FgColor:   "8",
 	}
-}
-
-// formatElapsed formats a duration as "Xh Ym" or "Ym Xs".
-func formatElapsed(d time.Duration) string {
-	d = d.Round(time.Second)
-	h := int(d.Hours())
-	m := int(d.Minutes()) % 60
-	s := int(d.Seconds()) % 60
-
-	if h > 0 {
-		return strings.TrimSpace(fmt.Sprintf("%dh %dm", h, m))
-	}
-	return strings.TrimSpace(fmt.Sprintf("%dm %ds", m, s))
 }

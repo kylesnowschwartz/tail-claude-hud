@@ -65,8 +65,8 @@ export function sizeOf(chars: number): string {
 }
 
 /**
- * A finished duration as tail-claude-hud's tools widget prints it:
- * `<0.1s`, `0.6s`, `12.3s`, `1m 48s`.
+ * A finished duration as tail-claude-hud's widgets print it:
+ * `<0.1s`, `0.6s`, `12.3s`, `1m 48s`, `1h 3m`.
  */
 export function durationOf(ms: number): string {
   const whole = Math.floor(ms)
@@ -86,10 +86,17 @@ export function durationOf(ms: number): string {
     return tenths === 0 ? `${seconds}s` : `${seconds}.${tenths}s`
   }
 
-  const minutes = Math.floor(whole / 60_000)
-  const seconds = Math.floor((whole % 60_000) / 1000)
+  if (whole < 3_600_000) {
+    const minutes = Math.floor(whole / 60_000)
+    const seconds = Math.floor((whole % 60_000) / 1000)
 
-  return `${minutes}m ${seconds}s`
+    return `${minutes}m ${seconds}s`
+  }
+
+  const hours = Math.floor(whole / 3_600_000)
+  const minutes = Math.floor((whole % 3_600_000) / 60_000)
+
+  return `${hours}h ${minutes}m`
 }
 
 /** Under this, a running timer shows tenths of a second. */

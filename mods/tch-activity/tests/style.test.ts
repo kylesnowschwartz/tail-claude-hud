@@ -131,6 +131,8 @@ describe('text', () => {
     expect(durationOf(12_000)).toBe('12s')
     expect(durationOf(12_340)).toBe('12.3s')
     expect(durationOf(108_000)).toBe('1m 48s')
+    expect(durationOf(3_599_000)).toBe('59m 59s')
+    expect(durationOf(3_780_000)).toBe('1h 3m')
   })
 
   test('running timers show tenths under ten seconds, then whole seconds, then minutes', async () => {

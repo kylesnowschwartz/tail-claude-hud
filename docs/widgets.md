@@ -14,7 +14,7 @@ From Claude Code's stdin JSON:
 | `context` | Context usage, color-coded by threshold; with Nerd Font icons a pie icon comes before the value | `display` (text/bar/percent/both), `bar_width` (int), `value` (percent/tokens), `show_breakdown` (bool) |
 | `cost` | Session cost in USD, color-coded by threshold | -- |
 | `tokens` | Token count and cache hit ratio (`136k tok · 40% cached`) | -- |
-| `duration` | Elapsed session time | -- |
+| `duration` | Elapsed session time (`45s`, `1m 12s`, `1h 3m`) | -- |
 | `lines` | Lines added/removed (green +N, red -N) | -- |
 | `speed` | Output tokens/sec averaged over the window, with a ↑/↓ trend arrow when generation is ramping or slowing; hides when idle past the window | `window_secs` (int, default: 30; 0 = session average, no arrow) |
 | `messages` | Conversation turn count | -- |
@@ -29,8 +29,8 @@ Parsed incrementally from the JSONL transcript:
 
 | Widget | Shows | Config |
 |---|---|---|
-| `tools` | Running/completed tool invocations as a scrolling activity feed | -- |
-| `agents` | Sub-agents with model family (`(Opus)`) and elapsed time (running) or duration (completed) | -- |
+| `tools` | Running/completed tool invocations as a scrolling activity feed, with each finished call's duration (`0.3s`, `12.3s`, `1m 12s`) | -- |
+| `agents` | Sub-agents with model family (`(Opus)`) and elapsed time (running) or duration (completed), in the same format as `duration` | -- |
 | `todos` | Task completion count, color-coded | -- |
 | `thinking` | Thinking block indicator and count | -- |
 | `skills` | Skill names invoked during the session, newest first | `max_age_mins` (int, default: 0 = show all; >0 hides invocations older than N minutes) |

@@ -683,12 +683,37 @@ func TestFormatDuration(t *testing.T) {
 		{59999, "59.9s"},
 		{60000, "1m 0s"},
 		{90000, "1m 30s"},
-		{3661000, "61m 1s"},
+		{72000, "1m 12s"},
+		{3599000, "59m 59s"},
+		{3600000, "1h 0m"},
+		{3661000, "1h 1m"},
+		{3780000, "1h 3m"},
 	}
 	for _, tt := range tests {
 		got := formatDuration(tt.ms)
 		if got != tt.want {
 			t.Errorf("formatDuration(%d) = %q, want %q", tt.ms, got, tt.want)
+		}
+	}
+}
+
+// formatElapsed formats live clocks (session, running agents) in the same
+// shape as finished durations, at whole-second resolution.
+func TestFormatElapsed(t *testing.T) {
+	tests := []struct {
+		d    time.Duration
+		want string
+	}{
+		{0, "0.0s"},
+		{2 * time.Second, "2s"},
+		{2600 * time.Millisecond, "3s"},
+		{45 * time.Second, "45s"},
+		{72 * time.Second, "1m 12s"},
+		{time.Hour + 3*time.Minute + 20*time.Second, "1h 3m"},
+	}
+	for _, tt := range tests {
+		if got := formatElapsed(tt.d); got != tt.want {
+			t.Errorf("formatElapsed(%v) = %q, want %q", tt.d, got, tt.want)
 		}
 	}
 }
@@ -1115,6 +1140,16 @@ func TestDurationWidget_ShortSession(t *testing.T) {
 	}
 	if !strings.Contains(got, "s") {
 		t.Errorf("Duration < 1h: expected 's' in output, got %q", got)
+	}
+}
+
+func TestDurationWidget_UnderAMinuteShowsSecondsOnly(t *testing.T) {
+	ctx := &model.RenderContext{TotalDurationMs: 2_000}
+	cfg := defaultCfg()
+
+	got := Duration(ctx, cfg).PlainText
+	if !strings.HasSuffix(got, " 2s") || strings.Contains(got, "0m") {
+		t.Errorf("Duration(2000ms) = %q, want it to end in \" 2s\" with no \"0m\"", got)
 	}
 }
 
