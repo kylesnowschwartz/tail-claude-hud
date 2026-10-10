@@ -2,6 +2,7 @@ import { describe, expect, test } from 'claude-code/testing'
 
 import { bandLayout } from '../hooks/layout'
 import { withAgentCall, withAgentKey } from '../hooks/live'
+import { outcomeMark } from '../hooks/marks'
 import { BUILTIN_STYLE, color, isStyleStale, parseStyle, toolIcon } from '../hooks/style'
 import { durationOf, elapsedOf, printable, promptLabel } from '../hooks/text'
 
@@ -21,6 +22,19 @@ describe('parseStyle', () => {
     // A color outside the HUD's syntax could get the tree refused: default fg.
     expect(color(style!, 'thinking')).toBeUndefined()
     expect(style!.agentColors).toEqual(BUILTIN_STYLE.agentColors)
+  })
+
+  test('declined and interrupted calls draw the HUD icons, muted, falling back to the built-in look', async () => {
+    const style = parseStyle(JSON.stringify({ schema: 1, icons: { rejected: 'R', interrupted: 'I' } }))
+    const muted = color(style!, 'muted')
+
+    expect(outcomeMark(style!, 'denied')).toEqual({ glyph: 'R', color: muted })
+    expect(outcomeMark(style!, 'interrupted')).toEqual({ glyph: 'I', color: muted })
+
+    const older = parseStyle(JSON.stringify({ schema: 1, icons: {} }))
+
+    expect(outcomeMark(older!, 'denied').glyph).toBe('⊘')
+    expect(outcomeMark(older!, 'interrupted').glyph).toBe('■')
   })
 
   test('refuses other schemas and non-JSON', async () => {

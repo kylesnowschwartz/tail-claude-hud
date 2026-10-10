@@ -94,6 +94,11 @@ type Icons struct {
 	Other      string // fallback for unrecognized tools
 	Error      string
 	Permission string // bell icon for permission-waiting alert
+
+	// Outcomes of a finished tool call the user chose, drawn muted in place
+	// of the category icon.
+	Rejected    string // declined at the approval prompt
+	Interrupted string // interrupted while running
 }
 
 // IconsFor returns the icon set for the given mode string.
@@ -102,68 +107,74 @@ func IconsFor(mode string) Icons {
 	switch mode {
 	case "nerdfont":
 		return Icons{
-			Check:      "\uf00c",     // nf-fa-check
-			Running:    "\U000F051F", // nf-md-timer_sand: static running indicator
-			Clock:      "\uf017",     // nf-fa-clock_o
-			Folder:     "\uf07b",     // nf-fa-folder
-			Branch:     "",          // nf-pl-branch
-			Read:       "",          // nf-fae-book_open_o
-			Edit:       "\uee75",     // nf-fa-pen_nib
-			Write:      "\uee75",     // nf-fa-pen_nib (same glyph as Edit)
-			Bash:       "\U000F0BE0", // nf-md-wrench_outline
-			Grep:       "\U000F0968", // nf-md-folder_search
-			Glob:       "\U000F0968", // nf-md-folder_search (same glyph as Grep)
-			Web:        "\U000F059F", // nf-md-web
-			Task:       "\U000F167A", // nf-md-robot_outline
-			Skill:      "\uf0d0",     // nf-fa-magic
-			Thinking:   "\uf0eb",     // nf-fa-lightbulb
-			Other:      "\uf013",     // nf-fa-gear
-			Error:      "\uf00d",     // nf-fa-cross
-			Permission: "󰅸",          // nf-md-bell-alert
+			Check:       "\uf00c",     // nf-fa-check
+			Running:     "\U000F051F", // nf-md-timer_sand: static running indicator
+			Clock:       "\uf017",     // nf-fa-clock_o
+			Folder:      "\uf07b",     // nf-fa-folder
+			Branch:      "",          // nf-pl-branch
+			Read:        "",          // nf-fae-book_open_o
+			Edit:        "\uee75",     // nf-fa-pen_nib
+			Write:       "\uee75",     // nf-fa-pen_nib (same glyph as Edit)
+			Bash:        "\U000F0BE0", // nf-md-wrench_outline
+			Grep:        "\U000F0968", // nf-md-folder_search
+			Glob:        "\U000F0968", // nf-md-folder_search (same glyph as Grep)
+			Web:         "\U000F059F", // nf-md-web
+			Task:        "\U000F167A", // nf-md-robot_outline
+			Skill:       "\uf0d0",     // nf-fa-magic
+			Thinking:    "\uf0eb",     // nf-fa-lightbulb
+			Other:       "\uf013",     // nf-fa-gear
+			Error:       "\uf00d",     // nf-fa-cross
+			Permission:  "󰅸",          // nf-md-bell-alert
+			Rejected:    "\uf05e",     // nf-fa-ban
+			Interrupted: "\uf04d",     // nf-fa-stop
 		}
 	case "unicode":
 		// One-column symbols with no emoji presentation, identical to the
 		// tch-activity mod's built-in look (mods/tch-activity/hooks/style.ts).
 		return Icons{
-			Check:      "✓",
-			Running:    "⧗",
-			Clock:      "◷",
-			Folder:     "⌂",
-			Branch:     "⎇",
-			Read:       "≡",
-			Edit:       "✎",
-			Write:      "✎",
-			Bash:       "$",
-			Grep:       "⌕",
-			Glob:       "⌕",
-			Web:        "◎",
-			Task:       "◆",
-			Skill:      "✦",
-			Thinking:   "∴",
-			Other:      "⚙",
-			Error:      "✗",
-			Permission: "!",
+			Check:       "✓",
+			Running:     "⧗",
+			Clock:       "◷",
+			Folder:      "⌂",
+			Branch:      "⎇",
+			Read:        "≡",
+			Edit:        "✎",
+			Write:       "✎",
+			Bash:        "$",
+			Grep:        "⌕",
+			Glob:        "⌕",
+			Web:         "◎",
+			Task:        "◆",
+			Skill:       "✦",
+			Thinking:    "∴",
+			Other:       "⚙",
+			Error:       "✗",
+			Permission:  "!",
+			Rejected:    "⊘",
+			Interrupted: "■",
 		}
 	default: // ascii
 		return Icons{
-			Check:      "v",
-			Running:    "~",
-			Clock:      "@",
-			Folder:     ">",
-			Branch:     "#",
-			Read:       "R",
-			Edit:       "E",
-			Write:      "W",
-			Bash:       "$",
-			Grep:       "?",
-			Glob:       "?",
-			Web:        "W",
-			Task:       "@",
-			Skill:      "&",
-			Thinking:   "~",
-			Other:      "*",
-			Error:      "!",
-			Permission: "!",
+			Check:       "v",
+			Running:     "~",
+			Clock:       "@",
+			Folder:      ">",
+			Branch:      "#",
+			Read:        "R",
+			Edit:        "E",
+			Write:       "W",
+			Bash:        "$",
+			Grep:        "?",
+			Glob:        "?",
+			Web:         "W",
+			Task:        "@",
+			Skill:       "&",
+			Thinking:    "~",
+			Other:       "*",
+			Error:       "!",
+			Permission:  "!",
+			Rejected:    "/",
+			Interrupted: "-",
 		}
 	}
 }
@@ -202,24 +213,26 @@ func CategoryIcon(icons Icons, category string) string {
 // "running", "read", ...). CategoryIconKey returns keys from this map.
 func (i Icons) ByKey() map[string]string {
 	return map[string]string{
-		"check":      i.Check,
-		"running":    i.Running,
-		"clock":      i.Clock,
-		"folder":     i.Folder,
-		"branch":     i.Branch,
-		"read":       i.Read,
-		"edit":       i.Edit,
-		"write":      i.Write,
-		"bash":       i.Bash,
-		"grep":       i.Grep,
-		"glob":       i.Glob,
-		"web":        i.Web,
-		"task":       i.Task,
-		"skill":      i.Skill,
-		"thinking":   i.Thinking,
-		"other":      i.Other,
-		"error":      i.Error,
-		"permission": i.Permission,
+		"check":       i.Check,
+		"running":     i.Running,
+		"clock":       i.Clock,
+		"folder":      i.Folder,
+		"branch":      i.Branch,
+		"read":        i.Read,
+		"edit":        i.Edit,
+		"write":       i.Write,
+		"bash":        i.Bash,
+		"grep":        i.Grep,
+		"glob":        i.Glob,
+		"web":         i.Web,
+		"task":        i.Task,
+		"skill":       i.Skill,
+		"thinking":    i.Thinking,
+		"other":       i.Other,
+		"error":       i.Error,
+		"permission":  i.Permission,
+		"rejected":    i.Rejected,
+		"interrupted": i.Interrupted,
 	}
 }
 

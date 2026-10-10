@@ -29,7 +29,7 @@ Parsed incrementally from the JSONL transcript:
 
 | Widget | Shows | Config |
 |---|---|---|
-| `tools` | Running/completed tool invocations as a scrolling activity feed, with each finished call's duration (`0.3s`, `12.3s`, `1m 12s`) | -- |
+| `tools` | Running/completed tool invocations as a scrolling activity feed, with each finished call's duration (`0.3s`, `12.3s`, `1m 12s`). A failed call is red; a call you declined (`⊘`) or interrupted (`■`) is muted | -- |
 | `agents` | Sub-agents with model family (`(Opus)`) and elapsed time (running) or duration (completed), in the same format as `duration` | -- |
 | `todos` | Task completion count, color-coded | -- |
 | `thinking` | Thinking block indicator and count | -- |

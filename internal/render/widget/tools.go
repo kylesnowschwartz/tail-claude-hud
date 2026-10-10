@@ -148,7 +148,7 @@ func toolLabel(icon, name string) string {
 // renderToolEntryPlain formats a tool entry as unstyled text.
 // When count > 1, appends "×N" and omits the duration (ambiguous for groups).
 func renderToolEntryPlain(icons Icons, t model.ToolEntry, count int) string {
-	label := toolLabel(CategoryIcon(icons, t.Category), t.Name)
+	label := toolLabel(toolIcon(icons, t), t.Name)
 	if count > 1 {
 		label += fmt.Sprintf(" ×%d", count)
 		if !t.Completed {
@@ -172,6 +172,7 @@ func renderToolEntryPlain(icons Icons, t model.ToolEntry, count int) string {
 //   - Tier 2 (recent, 5-30s): green icon + dim name + dim duration
 //   - Tier 3 (faded, >30s): dim icon + dim name + dim duration
 //   - Error: red icon + name + duration (regardless of age)
+//   - Declined or interrupted: muted outcome glyph + dim name + dim duration
 func renderToolEntry(icons Icons, t model.ToolEntry, count int) string {
 	catIcon := CategoryIcon(icons, t.Category)
 	mult := ""
@@ -185,6 +186,15 @@ func renderToolEntry(icons Icons, t model.ToolEntry, count int) string {
 			return fmt.Sprintf("%s %s", yellowStyle.Render(catIcon), DimStyle.Render(t.Name+mult))
 		}
 		return yellowStyle.Bold(true).Render(toolLabel(catIcon, t.Name) + mult)
+	}
+
+	if t.Outcome == model.ToolRejected || t.Outcome == model.ToolInterrupted {
+		icon := MutedStyle.Render(toolIcon(icons, t))
+		name := DimStyle.Render(t.Name + mult)
+		if !showDuration {
+			return fmt.Sprintf("%s %s", icon, name)
+		}
+		return fmt.Sprintf("%s %s %s", icon, name, DimStyle.Render(formatDuration(t.DurationMs)))
 	}
 
 	if t.HasError {
@@ -220,6 +230,19 @@ func renderToolEntry(icons Icons, t model.ToolEntry, count int) string {
 			return fmt.Sprintf("%s %s", icon, name)
 		}
 		return fmt.Sprintf("%s %s %s", icon, name, DimStyle.Render(formatDuration(t.DurationMs)))
+	}
+}
+
+// toolIcon is the icon a tool entry leads with: the outcome glyph for a call
+// the user declined or interrupted, otherwise its category icon.
+func toolIcon(icons Icons, t model.ToolEntry) string {
+	switch t.Outcome {
+	case model.ToolRejected:
+		return icons.Rejected
+	case model.ToolInterrupted:
+		return icons.Interrupted
+	default:
+		return CategoryIcon(icons, t.Category)
 	}
 }
 

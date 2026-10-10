@@ -46,6 +46,8 @@ export const BUILTIN_STYLE: TchStyle = {
     other: '⚙',
     error: '✗',
     permission: '!',
+    rejected: '⊘',
+    interrupted: '■',
   },
   colors: {
     running: 'ansi256(3)',
@@ -104,7 +106,18 @@ export const BUILTIN_STYLE: TchStyle = {
 export type ColorName = 'running' | 'success' | 'error' | 'thinking' | 'permission' | 'muted'
 
 /** The icon keys the box draws with, beyond the per-category ones. */
-export type IconName = 'check' | 'running' | 'clock' | 'task' | 'thinking' | 'error' | 'permission' | 'write' | 'other'
+export type IconName =
+  | 'check'
+  | 'running'
+  | 'clock'
+  | 'task'
+  | 'thinking'
+  | 'error'
+  | 'permission'
+  | 'rejected'
+  | 'interrupted'
+  | 'write'
+  | 'other'
 
 /**
  * The icon for a tool: its HUD category (Read, Bash, Web, ...) mapped to

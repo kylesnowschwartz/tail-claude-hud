@@ -76,7 +76,7 @@ type internalTool struct {
 	name       string
 	target     string
 	completed  bool // false = running, true = completed or error
-	hasError   bool
+	outcome    model.ToolOutcome
 	durationMs int
 	category   string
 	startTime  time.Time
@@ -656,7 +656,7 @@ func (es *ExtractionState) handleTaskUpdate(b transcript.ToolUseBlock) {
 func (es *ExtractionState) processToolResult(b transcript.ToolResultBlock, ts time.Time) {
 	if t, ok := es.toolMap[b.ToolUseID]; ok {
 		t.completed = true
-		t.hasError = b.IsError
+		t.outcome = toolOutcome(b.Outcome)
 		// Only compute duration when startTime is set. Snapshot-restored tools
 		// have zero startTime — leave their durationMs at 0 rather than
 		// computing a nonsensical delta from the year 0001.
@@ -673,6 +673,20 @@ func (es *ExtractionState) processToolResult(b transcript.ToolResultBlock, ts ti
 	}
 }
 
+// toolOutcome maps the library's tool_result outcome to the HUD's.
+func toolOutcome(o transcript.ToolResultOutcome) model.ToolOutcome {
+	switch o {
+	case transcript.ToolResultError:
+		return model.ToolFailed
+	case transcript.ToolResultRejected:
+		return model.ToolRejected
+	case transcript.ToolResultInterrupted:
+		return model.ToolInterrupted
+	default:
+		return model.ToolSucceeded
+	}
+}
+
 // ToTranscriptData collapses the current extraction state into a
 // model.TranscriptData snapshot for the render layer.
 func (es *ExtractionState) ToTranscriptData() *model.TranscriptData {
@@ -682,7 +696,8 @@ func (es *ExtractionState) ToTranscriptData() *model.TranscriptData {
 			Name:       t.name,
 			Completed:  t.completed,
 			DurationMs: t.durationMs,
-			HasError:   t.hasError,
+			Outcome:    t.outcome,
+			HasError:   t.outcome == model.ToolFailed,
 			Category:   t.category,
 			Target:     t.target,
 			StartTime:  t.startTime,
@@ -931,7 +946,7 @@ type snapshotTool struct {
 	Target     string `json:"target"`
 	Category   string `json:"category"`
 	Completed  bool   `json:"completed"`
-	HasError   bool   `json:"has_error"`
+	Outcome    string `json:"outcome,omitempty"`
 	DurationMs int    `json:"duration_ms"`
 	StartTime  string `json:"start_time,omitempty"` // RFC3339Nano; enables duration computation after restore
 }
@@ -958,7 +973,7 @@ func (es *ExtractionState) MarshalSnapshot() (json.RawMessage, error) {
 			Target:     t.target,
 			Category:   t.category,
 			Completed:  t.completed,
-			HasError:   t.hasError,
+			Outcome:    string(t.outcome),
 			DurationMs: t.durationMs,
 		}
 		if !t.startTime.IsZero() {
@@ -1041,7 +1056,7 @@ func (es *ExtractionState) UnmarshalSnapshot(data json.RawMessage) error {
 			target:     st.Target,
 			category:   st.Category,
 			completed:  st.Completed,
-			hasError:   st.HasError,
+			outcome:    model.ToolOutcome(st.Outcome),
 			durationMs: st.DurationMs,
 		}
 		if st.StartTime != "" {
@@ -1159,4 +1174,6 @@ func truncateAgentDescription(s string) string {
 // timestamps (skill_names []string → skills []{name, ts}).
 // v7: the snapshot records the main conversation's last request time and
 // prompt-cache TTL for the cachettl widget.
-const SchemaVersion = 7
+// v8: tools record how they ended (outcome: failed, rejected, interrupted);
+// a declined or interrupted call is not a failure.
+const SchemaVersion = 8

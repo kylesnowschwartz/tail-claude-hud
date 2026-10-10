@@ -2763,6 +2763,63 @@ func parseLine(t *testing.T, line string) transcript.Entry {
 	return e
 }
 
+// toolOutcomeFixture holds tool_result entries in the shapes Claude Code
+// writes for a declined call, an interrupted Bash command, and a real failure.
+// All three set is_error.
+var toolOutcomeFixture = []string{
+	`{"uuid":"a1","type":"assistant","timestamp":"2026-08-05T08:49:40.000Z","message":{"role":"assistant","content":[` +
+		`{"type":"tool_use","id":"tu-rejected","name":"Edit","input":{"file_path":"/src/a.go"}},` +
+		`{"type":"tool_use","id":"tu-interrupted","name":"Bash","input":{"command":"sleep 60"}},` +
+		`{"type":"tool_use","id":"tu-failed","name":"Bash","input":{"command":"false"}}]}}`,
+	`{"uuid":"u1","type":"user","timestamp":"2026-08-05T08:49:45.049Z","message":{"role":"user","content":[{"type":"tool_result","content":"The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). STOP what you are doing and wait for the user to tell you how to proceed.","tool_use_id":"tu-rejected","is_error":true}]},"toolUseResult":"User rejected tool use","toolDenialKind":"user-rejected"}`,
+	`{"uuid":"u2","type":"user","timestamp":"2026-08-05T08:49:46.000Z","message":{"role":"user","content":[{"type":"tool_result","content":"[Request interrupted by user for tool use]","tool_use_id":"tu-interrupted","is_error":true}]},"toolUseResult":{"stdout":"partial output","stderr":"","interrupted":true,"isImage":false,"noOutputExpected":false}}`,
+	`{"uuid":"u3","type":"user","timestamp":"2026-08-05T08:49:47.000Z","message":{"role":"user","content":[{"type":"tool_result","content":"Exit code 1","tool_use_id":"tu-failed","is_error":true}]},"toolUseResult":"Error: Exit code 1"}`,
+}
+
+func TestLibrarySeam_ToolOutcomesSeparateDeclinedFromFailed(t *testing.T) {
+	es := NewExtractionState()
+	for _, line := range toolOutcomeFixture {
+		es.ProcessEntry(parseLine(t, line))
+	}
+
+	want := map[string]struct {
+		outcome  model.ToolOutcome
+		hasError bool
+	}{
+		"/src/a.go": {model.ToolRejected, false},
+		"sleep 60":  {model.ToolInterrupted, false},
+		"false":     {model.ToolFailed, true},
+	}
+	assertOutcomes := func(label string, tools []model.ToolEntry) {
+		t.Helper()
+		if len(tools) != len(want) {
+			t.Fatalf("%s: got %d tools, want %d", label, len(tools), len(want))
+		}
+		for _, tool := range tools {
+			w, ok := want[tool.Target]
+			if !ok {
+				t.Errorf("%s: unexpected tool target %q", label, tool.Target)
+				continue
+			}
+			if !tool.Completed || tool.Outcome != w.outcome || tool.HasError != w.hasError {
+				t.Errorf("%s: %s = {Completed:%v Outcome:%q HasError:%v}, want {true %q %v}",
+					label, tool.Target, tool.Completed, tool.Outcome, tool.HasError, w.outcome, w.hasError)
+			}
+		}
+	}
+	assertOutcomes("live", es.ToTranscriptData().Tools)
+
+	snap, err := es.MarshalSnapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	restored := NewExtractionState()
+	if err := restored.UnmarshalSnapshot(snap); err != nil {
+		t.Fatal(err)
+	}
+	assertOutcomes("restored", restored.ToTranscriptData().Tools)
+}
+
 func TestLibrarySeam_UuidlessCustomTitleNamesSession(t *testing.T) {
 	es := NewExtractionState()
 	es.ProcessEntry(parseLine(t, `{"type":"custom-title","customTitle":"Named Session"}`))

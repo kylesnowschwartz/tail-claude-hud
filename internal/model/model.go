@@ -161,13 +161,25 @@ type TranscriptData struct {
 // ToolEntry records a single tool invocation observed in the transcript.
 type ToolEntry struct {
 	Name       string
-	Completed  bool      // false = still running, true = completed or error
-	DurationMs int       // 0 = still running or unknown
-	HasError   bool      // true when the tool_result had is_error set
-	Category   string    // file, shell, search, web, agent, internal
-	Target     string    // file path, command, pattern, or other contextual string
-	StartTime  time.Time // when the tool_use was first observed in the transcript
+	Completed  bool        // false = still running, true = completed or error
+	DurationMs int         // 0 = still running or unknown
+	Outcome    ToolOutcome // how a completed call ended; ToolSucceeded while running
+	HasError   bool        // true only when the tool ran and failed (Outcome == ToolFailed)
+	Category   string      // file, shell, search, web, agent, internal
+	Target     string      // file path, command, pattern, or other contextual string
+	StartTime  time.Time   // when the tool_use was first observed in the transcript
 }
+
+// ToolOutcome is how a finished tool call ended. Claude Code marks a declined
+// or interrupted call with is_error too, so only ToolFailed is a real failure.
+type ToolOutcome string
+
+const (
+	ToolSucceeded   ToolOutcome = ""            // the tool ran without error
+	ToolFailed      ToolOutcome = "failed"      // the tool ran and failed, or a rule or hook denied it
+	ToolRejected    ToolOutcome = "rejected"    // the user declined the call at the approval prompt
+	ToolInterrupted ToolOutcome = "interrupted" // the user interrupted the call while it ran
+)
 
 // AgentEntry records a sub-agent task observed in the transcript.
 type AgentEntry struct {

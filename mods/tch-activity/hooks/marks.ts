@@ -6,10 +6,6 @@ import { printable } from './text'
 
 const MAX_NOTE_CHARS = 120
 
-/** Outcomes the HUD has no icon for, whats-agent-doing's glyphs drawn in the HUD's muted color. */
-const DENIED_GLYPH = '⊘'
-const INTERRUPTED_GLYPH = '■'
-
 /** History marks for rows that are no tool call: a prompt (default text) and a compaction (faint). */
 const PROMPT_GLYPH = '›'
 const COMPACT_GLYPH = '⇣'
@@ -62,7 +58,7 @@ export function headlineMark(style: TchStyle, headline: ActivityNow): Mark {
   }
 }
 
-/** A finished thing's glyph: the HUD's check and error icons, muted marks for the rest. */
+/** A finished thing's glyph: the HUD's check and error icons, its declined and interrupted icons muted. */
 export function outcomeMark(style: TchStyle, outcome: ActivityOutcome): Mark {
   switch (outcome) {
     case 'ok':
@@ -70,9 +66,9 @@ export function outcomeMark(style: TchStyle, outcome: ActivityOutcome): Mark {
     case 'error':
       return { glyph: icon(style, 'error'), color: color(style, 'error') }
     case 'denied':
-      return { glyph: DENIED_GLYPH, color: color(style, 'muted') }
+      return { glyph: icon(style, 'rejected'), color: color(style, 'muted') }
     case 'interrupted':
-      return { glyph: INTERRUPTED_GLYPH, color: color(style, 'muted') }
+      return { glyph: icon(style, 'interrupted'), color: color(style, 'muted') }
   }
 }
 

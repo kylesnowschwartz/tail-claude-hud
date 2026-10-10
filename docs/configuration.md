@@ -37,6 +37,7 @@ theme = "default"
 | branch | `⎇` | thinking | `∴` |
 | read | `≡` | other tools | `⚙` |
 | edit, write | `✎` | permission | `!` |
+| declined call | `⊘` | interrupted call | `■` |
 
 ## Widget options
 

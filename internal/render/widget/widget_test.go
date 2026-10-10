@@ -625,6 +625,47 @@ func TestToolsWidget_ErrorToolShowsRedCategoryIcon(t *testing.T) {
 	}
 }
 
+// A declined or interrupted call is the user's choice, not a failure: it draws
+// a muted outcome glyph in place of the category icon and nothing in red.
+func TestToolsWidget_DeclinedAndInterruptedAreMutedNotRed(t *testing.T) {
+	for _, mode := range []string{"nerdfont", "unicode", "ascii"} {
+		icons := IconsFor(mode)
+		for _, tc := range []struct {
+			outcome model.ToolOutcome
+			glyph   string
+		}{
+			{model.ToolRejected, icons.Rejected},
+			{model.ToolInterrupted, icons.Interrupted},
+		} {
+			tool := model.ToolEntry{Name: "Edit", Completed: true, Category: "Edit", DurationMs: 1200, Outcome: tc.outcome}
+			ctx := &model.RenderContext{Transcript: &model.TranscriptData{Tools: []model.ToolEntry{tool}}}
+			cfg := defaultCfg()
+			cfg.Style.Icons = mode
+
+			got := Tools(ctx, cfg)
+			wantText := MutedStyle.Render(tc.glyph) + " " + DimStyle.Render("Edit") + " " + DimStyle.Render("1.2s")
+			if got.Text != wantText {
+				t.Errorf("%s %s: Text = %q, want %q", mode, tc.outcome, got.Text, wantText)
+			}
+			if wantPlain := tc.glyph + " Edit 1.2s"; got.PlainText != wantPlain {
+				t.Errorf("%s %s: PlainText = %q, want %q", mode, tc.outcome, got.PlainText, wantPlain)
+			}
+		}
+	}
+}
+
+func TestIconsFor_OutcomeGlyphsAreDistinct(t *testing.T) {
+	for _, mode := range []string{"nerdfont", "unicode", "ascii"} {
+		icons := IconsFor(mode)
+		if icons.Rejected == "" || icons.Interrupted == "" || icons.Rejected == icons.Interrupted {
+			t.Errorf("IconsFor(%q): Rejected %q and Interrupted %q must be set and differ", mode, icons.Rejected, icons.Interrupted)
+		}
+	}
+	if u := IconsFor("unicode"); u.Rejected != "⊘" || u.Interrupted != "■" {
+		t.Errorf("unicode outcome glyphs = %q %q, want ⊘ ■", u.Rejected, u.Interrupted)
+	}
+}
+
 // Spec 11: max 5 tools shown.
 func TestToolsWidget_MaxFiveToolsShown(t *testing.T) {
 	// Six completed tools — only 5 should be rendered.
