@@ -35,6 +35,12 @@ describe('parseStyle', () => {
     expect(style!.icons['check']).toBe('[31m✓')
   })
 
+  test('Skill, Bash and other tools each have their own built-in icon', async () => {
+    const icons = ['Skill', 'Bash', 'mcp__x__y'].map(tool => toolIcon(BUILTIN_STYLE, tool))
+
+    expect(new Set(icons).size).toBe(3)
+  })
+
   test('an unknown tool takes the default category icon', async () => {
     expect(toolIcon(BUILTIN_STYLE, 'mcp__x__y')).toBe(BUILTIN_STYLE.icons['other'])
   })

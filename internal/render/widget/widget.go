@@ -110,7 +110,7 @@ func IconsFor(mode string) Icons {
 			Glob:       "\U000F0968", // nf-md-folder_search (same glyph as Grep)
 			Web:        "\U000F059F", // nf-md-web
 			Task:       "\U000F167A", // nf-md-robot_outline
-			Skill:      "\U000F0BE0", // nf-md-wrench_outline
+			Skill:      "\uf0d0",     // nf-fa-magic
 			Thinking:   "\uf0eb",     // nf-fa-lightbulb
 			Other:      "\uf013",     // nf-fa-gear
 			Error:      "\uf00d",     // nf-fa-cross
@@ -131,7 +131,7 @@ func IconsFor(mode string) Icons {
 			Glob:       "🔍",
 			Web:        "🌐",
 			Task:       "🤖",
-			Skill:      "⚙",
+			Skill:      "✦",
 			Thinking:   "🧠",
 			Other:      "⚙",
 			Error:      "✗",
@@ -152,7 +152,7 @@ func IconsFor(mode string) Icons {
 			Glob:       "?",
 			Web:        "W",
 			Task:       "@",
-			Skill:      "*",
+			Skill:      "&",
 			Thinking:   "~",
 			Other:      "*",
 			Error:      "!",

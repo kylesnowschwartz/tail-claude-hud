@@ -39,7 +39,7 @@ export const BUILTIN_STYLE: TchStyle = {
     glob: '⌕',
     web: '◎',
     task: '◆',
-    skill: '⚙',
+    skill: '✦',
     thinking: '∴',
     other: '⚙',
     error: '✗',

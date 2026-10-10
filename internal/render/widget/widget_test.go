@@ -1956,6 +1956,16 @@ func TestIconsFor_NewFieldsNonEmpty(t *testing.T) {
 	}
 }
 
+// Skill has its own icon in every mode, apart from Bash and the Other fallback.
+func TestIconsFor_SkillIsDistinct(t *testing.T) {
+	for _, mode := range []string{"nerdfont", "unicode", "ascii"} {
+		icons := IconsFor(mode)
+		if icons.Skill == icons.Bash || icons.Skill == icons.Other {
+			t.Errorf("IconsFor(%q).Skill = %q, shared with Bash %q or Other %q", mode, icons.Skill, icons.Bash, icons.Other)
+		}
+	}
+}
+
 // -- CategoryIcon -------------------------------------------------------------
 
 func TestCategoryIcon_KnownCategories(t *testing.T) {
