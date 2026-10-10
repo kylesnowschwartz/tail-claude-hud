@@ -17,11 +17,22 @@ tail-claude-hud [flags]
 The binary handles Claude Code hook events directly:
 
 ```
-tail-claude-hud hook permission-request   # write breadcrumb (PermissionRequest hook)
-tail-claude-hud hook cleanup              # remove breadcrumb (PostToolUse, Stop hooks)
+tail-claude-hud hook permission-request   # write breadcrumb; notify when [notify] permission_bell is on (PermissionRequest hook)
+tail-claude-hud hook cleanup              # remove this session's breadcrumb and any breadcrumb older than 120s (PostToolUse, PostToolUseFailure, Stop hooks)
+tail-claude-hud hook session-start        # set the terminal title when [notify] session_title is on (SessionStart hook)
 ```
 
 `--init` registers these hooks in `~/.claude/settings.json`. Re-running is idempotent.
+
+## Other commands
+
+```
+tail-claude-hud style --json [--preset NAME] [--theme NAME]   # print resolved icons, colors, agent palette, and tool categories as JSON
+tail-claude-hud version                                       # print the current version
+tail-claude-hud update                                        # install the latest version with go install
+```
+
+`style --json` reads the same config as the statusline. Pass the same `--preset` the `statusLine` command uses to get the same look. The automatic light theme for powerline on a light terminal background is not applied. The [tch-activity](../mods/tch-activity/README.md) mod reads its look from this command.
 
 ## Notes
 
