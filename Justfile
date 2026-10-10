@@ -38,6 +38,33 @@ dump: build
 run-sample:
     cat testdata/sample-stdin.json | go run ./cmd/tail-claude-hud
 
+# The activity mod (a Claude Code function-hooks plugin) under mods/.
+mod := "mods/tch-activity"
+
+# Validate the mod and the marketplace, run the mod's tests, and typecheck it
+mod-check:
+    #!/usr/bin/env zsh
+    set -e
+    claude plugin validate --strict {{mod}}
+    claude plugin validate --strict .
+    claude plugin test {{mod}}
+    if [[ ! -f {{mod}}/.claude-plugin/types/tsconfig.json ]]; then
+        echo "No API types in {{mod}}/.claude-plugin/types: run 'just mod-dev' once, which writes them, then rerun."
+        exit 1
+    fi
+    npx -y -p typescript tsc -p {{mod}}
+
+# Run Claude Code with the mod from disk and whats-agent-doing off; TCH_HUD_BINARY sets the mod's binary
+mod-dev *args:
+    #!/usr/bin/env zsh
+    set -e
+    settings='{"enabledPlugins":{"whats-agent-doing@tzafrir":false}}'
+    if [[ -n "${TCH_HUD_BINARY:-}" ]]; then
+        settings=$(jq -cn --arg bin "$TCH_HUD_BINARY" \
+            '{enabledPlugins:{"whats-agent-doing@tzafrir":false},pluginConfigs:{"tch-activity":{options:{binary:$bin}}}}')
+    fi
+    exec claude --plugin-dir {{mod}} --settings "$settings" {{args}}
+
 # Run design evaluation
 eval:
     go test ./internal/eval/ -run TestDesignEval -v -count=1
