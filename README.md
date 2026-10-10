@@ -62,7 +62,7 @@ Custom presets go in `~/.config/tail-claude-hud/presets/*.toml`.
 
 ## Documentation
 
-- [Widgets](docs/widgets.md) -- 19 available widgets and what they display
+- [Widgets](docs/widgets.md) -- 26 available widgets and what they display
 - [Configuration](docs/configuration.md) -- TOML reference, render modes, themes
 - [CLI](docs/cli.md) -- Flags and commands
 - [Architecture](docs/architecture.md) -- Pipeline design and transcript processing

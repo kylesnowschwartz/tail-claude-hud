@@ -42,6 +42,7 @@ const DefaultTemplate = `# tail-claude-hud configuration
 #   directory   — current working directory path
 #   env         — environment variable counts (opt-in)
 #   speed       — output tokens/sec with trend arrow (requires transcript)
+#   cachettl    — time left before the prompt cache expires (requires transcript)
 #   permission  — red alert when another Claude session is waiting for permission
 #   usage       — Anthropic rate-limit utilization (5-hour and 7-day windows)
 #   worktree    — current git worktree name and branch
@@ -137,6 +138,13 @@ max_age_mins = 0
 # over the whole window; the widget hides after N idle seconds.
 # Set to 0 to use the session average (no trend arrow).
 window_secs = 30
+
+# Cache TTL widget — counts down until the main conversation's prompt cache
+# expires; after that the next message re-writes the whole conversation to cache.
+[cachettl]
+# Cache lifetime: "auto" follows the transcript's latest cache write (1h until
+# one is seen); "5m" or "1h" forces it.
+ttl = "auto"
 
 # Thresholds — controls when widget colors shift from normal to warning to critical.
 [thresholds]

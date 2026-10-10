@@ -36,6 +36,12 @@ type Config struct {
 	Speed struct {
 		WindowSecs int `toml:"window_secs"`
 	} `toml:"speed"`
+	CacheTTL struct {
+		// TTL selects the prompt-cache lifetime the countdown runs against:
+		// "auto" (default) follows the transcript's latest cache write, "5m"
+		// or "1h" force that lifetime. Unrecognized values behave as "auto".
+		TTL string `toml:"ttl"`
+	} `toml:"cachettl"`
 	Directory struct {
 		Levels int    `toml:"levels"`
 		Style  string `toml:"style"`
@@ -181,6 +187,8 @@ func defaults() *Config {
 	cfg.Context.ShowBreakdown = true
 
 	cfg.Speed.WindowSecs = 30
+
+	cfg.CacheTTL.TTL = "auto"
 
 	cfg.Directory.Levels = 1
 	cfg.Directory.Style = "full"

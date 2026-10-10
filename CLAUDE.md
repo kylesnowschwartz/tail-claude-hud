@@ -42,7 +42,7 @@ stdin → gather → render → stdout
 
 3. **render** (`internal/render`): Walks configured lines, calls each widget's `RenderFunc` from the registry, joins non-empty results with the separator, and ANSI-truncates to terminal width.
 
-4. **widget** (`internal/render/widget`): 25 registered widgets (model, context, cost, directory, git, project, env, duration, tools, agents, todos, session, thinking, tokens, lines, outputstyle, messages, skills, speed, permission, usage, worktree, effort, peers, exec). Each is a pure function: `(RenderContext, Config) -> WidgetResult`. Returns empty when it has nothing to show.
+4. **widget** (`internal/render/widget`): 26 registered widgets (model, context, cost, directory, git, project, env, duration, tools, agents, todos, session, thinking, tokens, lines, outputstyle, messages, skills, speed, permission, usage, worktree, effort, peers, exec, cachettl). Each is a pure function: `(RenderContext, Config) -> WidgetResult`. Returns empty when it has nothing to show.
 
 ## Key Design Decisions
 
