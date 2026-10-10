@@ -1,7 +1,7 @@
 {
   "name": "tch-activity",
   "displayName": "tail-claude-hud activity",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "A box above the prompt that says what Claude is doing right now (reading, thinking, running a tool, waiting for you) in tail-claude-hud's icons and colors, and expands to show what it has done.",
   "author": {
     "name": "Kyle Snow Schwartz"
@@ -29,6 +29,12 @@
       "title": "tail-claude-hud preset",
       "description": "The --preset your statusLine command passes to tail-claude-hud (a preset name or TOML path), so the box reads the same look. Empty: none.",
       "default": ""
+    },
+    "hideSpinner": {
+      "type": "boolean",
+      "title": "Hide the spinner line",
+      "description": "In the terminal, hide Claude Code's spinner line (the animated word, timer and token count) and the task list, tips and retry notices drawn with it.",
+      "default": true
     }
   }
 }

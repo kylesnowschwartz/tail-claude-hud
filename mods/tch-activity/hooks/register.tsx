@@ -99,10 +99,12 @@ const styleSource = atom(
  * writing the reply or composing a tool's input; `tool.call` which tool
  * runs; `tool.check` when one is put to approval; `session.compact` when
  * the conversation compacts; a subagent's calls carry its `agentId`. Every hook is display only: it reads
- * its event and passes it on unchanged.
+ * its event and passes it on unchanged, but for the terminal's spinner line,
+ * which the box stands in for.
  *
  * @param on the engine's registrar
- * @param options `userConfig` values; `binary` names the tail-claude-hud binary
+ * @param options `userConfig` values; `binary` names the tail-claude-hud
+ *   binary, `preset` its preset, `hideSpinner` whether the spinner line is hidden
  */
 export const register: Register = (on, options) => {
   const live = createLive()
@@ -305,6 +307,20 @@ export const register: Register = (on, options) => {
 
     return next(e)
   })
+
+  // The box says what the turn does and for how long, so the terminal's
+  // spinner line draws nothing in its place. A Spinner is drawn for the
+  // conversation in view, the main one or an agent's, and the box shows both.
+  // A render hook answers a tree, never null: an empty Box draws nothing.
+  on('ui.render', { component: 'Spinner' }, ($, e, next) => {
+    if (e.surface !== 'terminal' || !isSpinnerHidden(options)) {
+      return next(e)
+    }
+
+    const { Box } = $.ui.resolve(e)
+
+    return <Box />
+  }).catch(($, e, next) => next(e))
 
   on('agent.spawn', async ($, e, next) => {
     const result = await next(e)
@@ -1017,6 +1033,11 @@ function presetOf(options: PluginOptions): string {
   const preset = options['preset']
 
   return typeof preset === 'string' ? preset.trim() : ''
+}
+
+/** The `hideSpinner` option: whether the terminal's spinner line is hidden; on unless set to false. */
+function isSpinnerHidden(options: PluginOptions): boolean {
+  return options['hideSpinner'] !== false
 }
 
 /**

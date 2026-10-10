@@ -1438,3 +1438,59 @@ describe('style', () => {
     expect((await ui.find({ key: 'history' }))?.text ?? '').toContain('Built-in look: /home/kyle/go/bin/tail-claude-hud style --json printed no style this mod reads')
   })
 })
+
+const SPINNER = {
+  plugin: 'tch-activity',
+  component: 'Spinner',
+  props: { word: 'Ionizing', message: null, suffix: '…', mode: 'thinking' },
+} as const
+
+/** Stands for the engine's own spinner line beneath the plugin. */
+function seatSpinner(on: On) {
+  on('ui.render', { component: 'Spinner' }, ($, e) => {
+    const { Box, Text } = $.ui.resolve(e)
+
+    return (
+      <Box key="engine">
+        <Text>Ionizing… (13s · ↓ 574 tokens)</Text>
+      </Box>
+    )
+  })
+}
+
+describe('spinner', () => {
+  test("the main conversation's terminal spinner line draws nothing", async ($, on) => {
+    seatSpinner(on)
+
+    // The engine names the main conversation's spinner by the session's first id.
+    const ui = await $.ui.mount({ ...SPINNER, surface: 'terminal', requestId: 'session-1' })
+
+    expect(await ui.find({ key: 'engine' })).toBeUndefined()
+    expect(await ui.drawn()).toMatchObject({ type: 'Box' })
+    expect((await ui.find({ type: 'Box' }))?.text ?? '').toBe('')
+  })
+
+  test("an agent's spinner line in view draws nothing too", async ($, on) => {
+    seatSpinner(on)
+
+    const ui = await $.ui.mount({ ...SPINNER, surface: 'terminal', requestId: 'agent-1' })
+
+    expect(await ui.find({ key: 'engine' })).toBeUndefined()
+  })
+
+  test('the hideSpinner option off leaves the spinner line', { options: { hideSpinner: false } }, async ($, on) => {
+    seatSpinner(on)
+
+    const ui = await $.ui.mount({ ...SPINNER, surface: 'terminal' })
+
+    expect((await ui.find({ key: 'engine' }))?.text ?? '').toContain('Ionizing…')
+  })
+
+  test('the desktop draws its own spinner row', async ($, on) => {
+    seatSpinner(on)
+
+    const ui = await $.ui.mount({ ...SPINNER, surface: 'desktop' })
+
+    expect((await ui.find({ key: 'engine' }))?.text ?? '').toContain('Ionizing…')
+  })
+})

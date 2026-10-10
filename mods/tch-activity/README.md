@@ -64,6 +64,8 @@ Focus the band with `ctrl+x tab` and press Enter, or click the triangle, to expa
 
 The box steps aside while a survey holds the band. Other mods that draw above the prompt keep their place beneath it.
 
+In the terminal the mod hides Claude Code's spinner line (`✶ Ionizing… (13s · ↓ 574 tokens)`), with the task list, tips and API retry notices drawn under it. Set the `hideSpinner` option to `false` to keep it.
+
 ## Data and privacy
 
 The mod runs one local command (`tail-claude-hud style --json`) when a session starts, and again after a reload while the HUD's look is not in place; it reads `HOME` to find the binary. It keeps its headline, history and look in the session's own state (`$.state`). It makes no network calls.
