@@ -180,16 +180,24 @@ func BuiltinNames() []string {
 }
 
 // MergeOverrides returns a new Theme that starts from base and then applies
-// the per-widget overrides on top. Widget entries in overrides replace the
-// corresponding base entry entirely (both Fg and Bg), so a partial override
-// must copy the fields it wants to keep.
+// the per-widget overrides on top, field by field: an override's non-empty Fg
+// or Bg replaces the base value, and an empty one keeps it. An fg-only
+// override (as theme-active.toml writes) therefore keeps the base theme's
+// powerline background.
 func MergeOverrides(base Theme, overrides map[string]WidgetColors) Theme {
 	merged := make(Theme, len(base))
 	for k, v := range base {
 		merged[k] = v
 	}
 	for k, v := range overrides {
-		merged[k] = v
+		colors := merged[k]
+		if v.Fg != "" {
+			colors.Fg = v.Fg
+		}
+		if v.Bg != "" {
+			colors.Bg = v.Bg
+		}
+		merged[k] = colors
 	}
 	return merged
 }

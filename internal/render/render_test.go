@@ -1112,3 +1112,33 @@ func TestResolveSegmentFg_StateColorWinsOverTheme(t *testing.T) {
 		t.Errorf("expected state color '1', got %q", got)
 	}
 }
+
+// TestRender_PowerlineFgOnlyOverrideKeepsThemeBgs verifies that an fg-only
+// override (as theme-active.toml writes) keeps the powerline theme's distinct
+// segment backgrounds, so arrows never draw same-on-same.
+func TestRender_PowerlineFgOnlyOverrideKeepsThemeBgs(t *testing.T) {
+	ctx := &model.RenderContext{ModelDisplayName: "Sonnet", ContextPercent: 40, ContextWindowSize: 200000}
+	cfg := config.LoadHud()
+	cfg.Style.Mode = "powerline"
+	cfg.Style.ColorLevel = "truecolor"
+	cfg.Lines = []config.Line{{Widgets: []string{"model", "context"}}}
+	base := theme.Load("dark")
+	cfg.ResolvedTheme = theme.MergeOverrides(base, map[string]theme.WidgetColors{
+		"model":   {Fg: "#ff8800"},
+		"context": {Fg: "#00ff88"},
+	})
+
+	if cfg.ResolvedTheme["model"].Bg == "" || cfg.ResolvedTheme["model"].Bg == cfg.ResolvedTheme["context"].Bg {
+		t.Fatalf("expected distinct dark-theme bgs, got %+v / %+v", cfg.ResolvedTheme["model"], cfg.ResolvedTheme["context"])
+	}
+
+	var buf bytes.Buffer
+	Render(&buf, ctx, cfg)
+	out := buf.String()
+
+	for _, bg := range []string{"48;2;45;45;45", "48;2;74;85;104"} {
+		if !strings.Contains(out, bg) {
+			t.Errorf("expected segment bg %s in %q", bg, out)
+		}
+	}
+}

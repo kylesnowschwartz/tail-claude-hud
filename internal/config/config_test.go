@@ -518,8 +518,8 @@ bg = "#001122"
 }
 
 // TestThemeOverride_fgOnly verifies that a [theme.overrides] entry with only fg
-// set updates ResolvedTheme for that widget. Bg will be empty because
-// MergeOverrides replaces the entire widget entry.
+// set updates that widget's Fg and keeps the base theme's Bg (empty in the
+// default theme).
 func TestThemeOverride_fgOnly(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("HOME", tmp)
@@ -539,14 +539,14 @@ fg = "#ff8800"
 	if cfg.ResolvedTheme["model"].Fg != "#ff8800" {
 		t.Errorf("fg-only override model Fg: got %q, want %q", cfg.ResolvedTheme["model"].Fg, "#ff8800")
 	}
-	// Bg is zeroed out by the replace-entire-entry semantics.
+	// The default theme's model Bg is empty, and an fg-only override keeps it.
 	if cfg.ResolvedTheme["model"].Bg != "" {
 		t.Errorf("fg-only override model Bg: got %q, want empty", cfg.ResolvedTheme["model"].Bg)
 	}
 }
 
 // TestThemeOverride_bgOnly verifies that a [theme.overrides] entry with only bg
-// set updates ResolvedTheme for that widget. Fg will be empty.
+// set updates that widget's Bg and keeps the base theme's Fg.
 func TestThemeOverride_bgOnly(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("HOME", tmp)
@@ -563,8 +563,9 @@ bg = "235"
 
 	cfg := LoadHud()
 
-	if cfg.ResolvedTheme["duration"].Fg != "" {
-		t.Errorf("bg-only override duration Fg: got %q, want empty", cfg.ResolvedTheme["duration"].Fg)
+	defaultDurationFg := "244" // from theme.defaultTheme
+	if cfg.ResolvedTheme["duration"].Fg != defaultDurationFg {
+		t.Errorf("bg-only override duration Fg: got %q, want the default theme's %q", cfg.ResolvedTheme["duration"].Fg, defaultDurationFg)
 	}
 	if cfg.ResolvedTheme["duration"].Bg != "235" {
 		t.Errorf("bg-only override duration Bg: got %q, want %q", cfg.ResolvedTheme["duration"].Bg, "235")

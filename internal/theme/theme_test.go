@@ -171,54 +171,6 @@ func TestMergeOverrides_noOverrideUsesTheme(t *testing.T) {
 	}
 }
 
-// TestMergeOverrides_fgOnlyOverride verifies that an override with only Fg set
-// replaces the widget entry. Bg will be empty (zero value) because MergeOverrides
-// replaces the entire entry rather than merging individual fields.
-// Callers that want to preserve the theme's Bg while changing Fg should copy
-// the base entry's Bg into the override before calling MergeOverrides.
-func TestMergeOverrides_fgOnlyOverride(t *testing.T) {
-	base := Theme{
-		"model": {Fg: "#ffffff", Bg: "#123456"},
-	}
-
-	overrides := map[string]WidgetColors{
-		"model": {Fg: "#ff8800"}, // Bg intentionally omitted
-	}
-
-	merged := MergeOverrides(base, overrides)
-
-	if merged["model"].Fg != "#ff8800" {
-		t.Errorf("fg-only override model Fg: got %q, want %q", merged["model"].Fg, "#ff8800")
-	}
-	// Bg is empty because the override entry replaced the entire base entry.
-	if merged["model"].Bg != "" {
-		t.Errorf("fg-only override model Bg: got %q, want %q (empty)", merged["model"].Bg, "")
-	}
-}
-
-// TestMergeOverrides_bgOnlyOverride verifies that an override with only Bg set
-// replaces the widget entry. Fg will be empty (zero value) for the same reason
-// as the fg-only case: MergeOverrides replaces the full entry.
-func TestMergeOverrides_bgOnlyOverride(t *testing.T) {
-	base := Theme{
-		"duration": {Fg: "244", Bg: ""},
-	}
-
-	overrides := map[string]WidgetColors{
-		"duration": {Bg: "235"}, // Fg intentionally omitted
-	}
-
-	merged := MergeOverrides(base, overrides)
-
-	// Fg is empty because the override entry replaced the entire base entry.
-	if merged["duration"].Fg != "" {
-		t.Errorf("bg-only override duration Fg: got %q, want %q (empty)", merged["duration"].Fg, "")
-	}
-	if merged["duration"].Bg != "235" {
-		t.Errorf("bg-only override duration Bg: got %q, want %q", merged["duration"].Bg, "235")
-	}
-}
-
 // TestMergeOverrides_namedAndIndexedColors verifies that named ANSI colors
 // ("red", "cyan") and 256-color index strings ("42", "114") are accepted and
 // stored as-is. MergeOverrides treats colors as opaque strings; interpretation
@@ -252,5 +204,28 @@ func TestMergeOverrides_namedAndIndexedColors(t *testing.T) {
 	}
 	if merged["model"].Fg != "#ff0000" {
 		t.Errorf("model Fg: got %q, want %q", merged["model"].Fg, "#ff0000")
+	}
+}
+
+func TestMergeOverrides_mergesFieldByField(t *testing.T) {
+	base := Theme{
+		"model":   {Fg: "#ffffff", Bg: "#000000"},
+		"context": {Fg: "#aaaaaa", Bg: "#111111"},
+	}
+	overrides := map[string]WidgetColors{
+		"model":   {Fg: "#ff0000"}, // fg only: the base bg stays
+		"context": {Bg: "#222222"}, // bg only: the base fg stays
+	}
+
+	merged := MergeOverrides(base, overrides)
+
+	if want := (WidgetColors{Fg: "#ff0000", Bg: "#000000"}); merged["model"] != want {
+		t.Errorf("fg-only override: model = %+v, want %+v", merged["model"], want)
+	}
+	if want := (WidgetColors{Fg: "#aaaaaa", Bg: "#222222"}); merged["context"] != want {
+		t.Errorf("bg-only override: context = %+v, want %+v", merged["context"], want)
+	}
+	if base["model"].Bg != "#000000" || base["model"].Fg != "#ffffff" {
+		t.Errorf("base was modified: %+v", base["model"])
 	}
 }
