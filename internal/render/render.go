@@ -5,6 +5,7 @@ package render
 import (
 	"fmt"
 	"io"
+	"math"
 	"strings"
 
 	"charm.land/lipgloss/v2"
@@ -59,17 +60,13 @@ func resolveSegmentBg(r widget.WidgetResult, widgetName string, cfg *config.Conf
 }
 
 // resolveSegmentFg returns the effective foreground color for a widget segment:
-//  1. r.StateColor (a warning or critical state the widget is in)
-//  2. cfg.ResolvedTheme[widgetName].Fg (user theme override)
-//  3. r.FgColor (widget-level explicit fg default)
-//  4. "" (no explicit fg; let lipgloss use terminal default)
+//  1. cfg.ResolvedTheme[widgetName].Fg (user theme override)
+//  2. r.FgColor (widget-level explicit fg default)
+//  3. "" (no explicit fg; let lipgloss use terminal default)
 //
-// The theme fg is the widget's identity color for its normal state: it beats
-// the widget's built-in FgColor, but never hides a warning or critical state.
+// The theme fg is the widget's identity color for its normal state; a
+// segment in a warning or critical state takes stateSegmentColors instead.
 func resolveSegmentFg(r widget.WidgetResult, widgetName string, cfg *config.Config) string {
-	if r.StateColor != "" {
-		return color.ResolveColorName(r.StateColor)
-	}
 	// Theme overrides beat widget defaults — user intent beats built-ins.
 	if cfg.ResolvedTheme != nil {
 		if colors, ok := cfg.ResolvedTheme[widgetName]; ok && colors.Fg != "" {
@@ -80,6 +77,39 @@ func resolveSegmentFg(r widget.WidgetResult, widgetName string, cfg *config.Conf
 		return color.ResolveColorName(r.FgColor)
 	}
 	return ""
+}
+
+// Text colors for a powerline segment drawn on its state color.
+const (
+	stateTextDark  = "#000000"
+	stateTextLight = "#ffffff"
+)
+
+// stateSegmentColors returns the bg and fg of a powerline segment in a
+// warning or critical state: the state color as its background, so the state
+// shows on light and dark themes alike, and black or white text, whichever
+// contrasts more with it (WCAG relative luminance; ANSI indices are read
+// through the standard xterm palette).
+func stateSegmentColors(stateColor string) (bg, fg string) {
+	bg = color.ResolveColorName(stateColor)
+	r, g, b, _ := lipgloss.Color(bg).RGBA()
+	lum := 0.2126*linearChannel(r) + 0.7152*linearChannel(g) + 0.0722*linearChannel(b)
+
+	// Contrast with black is (lum+0.05)/0.05, with white 1.05/(lum+0.05);
+	// they are equal where lum ≈ 0.179.
+	if (lum+0.05)/0.05 >= 1.05/(lum+0.05) {
+		return bg, stateTextDark
+	}
+	return bg, stateTextLight
+}
+
+// linearChannel converts a 16-bit sRGB channel to linear light.
+func linearChannel(v uint32) float64 {
+	c := float64(v) / 0xffff
+	if c <= 0.04045 {
+		return c / 12.92
+	}
+	return math.Pow((c+0.055)/1.055, 2.4)
 }
 
 // renderPowerline formats a slice of (name, WidgetResult) pairs as a
@@ -112,11 +142,15 @@ func renderPowerline(results []widget.WidgetResult, names []string, cfg *config.
 			continue
 		}
 		name := names[i]
+		bg, fg := resolveSegmentBg(r, name, cfg), resolveSegmentFg(r, name, cfg)
+		if r.StateColor != "" {
+			bg, fg = stateSegmentColors(r.StateColor)
+		}
 		segs = append(segs, seg{
 			name:   name,
 			result: r,
-			bg:     resolveSegmentBg(r, name, cfg),
-			fg:     resolveSegmentFg(r, name, cfg),
+			bg:     bg,
+			fg:     fg,
 		})
 	}
 

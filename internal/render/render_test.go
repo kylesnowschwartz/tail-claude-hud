@@ -1101,15 +1101,54 @@ func TestRender_CostCriticalBeatsThemeFg(t *testing.T) {
 	}
 }
 
-// TestResolveSegmentFg_StateColorWinsOverTheme verifies that in powerline and
-// minimal modes a widget's state color wins over the theme fg.
-func TestResolveSegmentFg_StateColorWinsOverTheme(t *testing.T) {
-	r := widget.WidgetResult{FgColor: "1", StateColor: "1"}
-	cfg := config.LoadHud()
-	cfg.ResolvedTheme = theme.Theme{"context": {Fg: "#ff8800"}}
+// TestRender_PowerlineStateSegmentReadable verifies that in powerline mode a
+// widget in a warning or critical state draws on its state color with black
+// or white text, whichever contrasts more, on light and dark themes alike,
+// instead of a state-colored fg on the theme's (possibly pale) bg.
+func TestRender_PowerlineStateSegmentReadable(t *testing.T) {
+	cases := []struct {
+		themeName string
+		themeBg   string // the theme's context bg, which a state segment must not keep
+		pct       int
+		wantBg    string
+		wantFg    string
+	}{
+		{"light", "48;2;200;220;176", 75, "43", "38;2;0;0;0"},
+		{"light", "48;2;200;220;176", 92, "41", "38;2;255;255;255"},
+		{"dark", "48;2;74;85;104", 75, "43", "38;2;0;0;0"},
+		{"dark", "48;2;74;85;104", 92, "41", "38;2;255;255;255"},
+	}
+	for _, tc := range cases {
+		ctx := &model.RenderContext{ContextPercent: tc.pct, ContextWindowSize: 200000}
+		cfg := stateTestConfig("context")
+		cfg.Style.Mode = "powerline"
+		cfg.Style.ColorLevel = "truecolor"
+		cfg.ResolvedTheme = theme.Load(tc.themeName)
 
-	if got := resolveSegmentFg(r, "context", cfg); got != "1" {
-		t.Errorf("expected state color '1', got %q", got)
+		var buf bytes.Buffer
+		Render(&buf, ctx, cfg)
+		out := buf.String()
+
+		if strings.Contains(out, tc.themeBg) {
+			t.Errorf("%s %d%%: state segment kept the theme bg %s: %q", tc.themeName, tc.pct, tc.themeBg, out)
+		}
+		for _, want := range []string{tc.wantBg, tc.wantFg} {
+			if !strings.Contains(out, want) {
+				t.Errorf("%s %d%%: expected %s in %q", tc.themeName, tc.pct, want, out)
+			}
+		}
+	}
+
+	// The normal tier keeps the theme's own segment colors.
+	ctx := &model.RenderContext{ContextPercent: 40, ContextWindowSize: 200000}
+	cfg := stateTestConfig("context")
+	cfg.Style.Mode = "powerline"
+	cfg.Style.ColorLevel = "truecolor"
+	cfg.ResolvedTheme = theme.Load("light")
+	var buf bytes.Buffer
+	Render(&buf, ctx, cfg)
+	if !strings.Contains(buf.String(), "48;2;200;220;176") {
+		t.Errorf("normal tier: expected the light theme's context bg, got %q", buf.String())
 	}
 }
 
