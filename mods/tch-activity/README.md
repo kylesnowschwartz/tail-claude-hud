@@ -4,13 +4,13 @@ A box above the Claude Code prompt that says what Claude is doing right now, dra
 
 ```
 ╭────────────────────────────────────────────────────────────────╮
-│ ▾  Idle · last turn done in 12.3s, 2 actions                  │
+│ ▾  Idle, last turn done in 12.3s, 2 actions                   │
 │                                                                │
 │ › Run the shell command `sleep 5 && echo done` with the Bash … │
-│   Reading VERSION 0.4s                                       │
+│   Read VERSION 0.4s                                          │
 │  󰯠 Wait five seconds 5.7s                                     │
-│  Wrote the reply (11 words) <0.1s                             │
-│  Done in 12.3s, 2 actions 12.3s                               │
+│  Wrote the reply (11 words) <0.1s                             │
+│  Done, 2 actions 12.3s                                        │
 ╰────────────────────────────────────────────────────────────────╯
 ```
 
@@ -36,29 +36,31 @@ The binary is found in this order:
 
 If your `statusLine` command passes `--preset` (for example `tail-claude-hud --preset powerline`), set the `preset` option to the same value so the box reads the same look. The HUD's automatic light theme for powerline layouts on a light terminal background is not part of the export.
 
-If the binary is missing, too old to have `style --json`, or prints something unreadable, the box draws with a built-in unicode look (`✓ ✗ ◐ ≡ $ ◆ ∴`) in the HUD's default colors. The expanded history then ends with one dim line saying why. Nothing else is reported. The mod asks again after a reload or an option change, so a newer binary is picked up without a new session.
+The box uses the HUD's state colors (running, thinking, needs you, success, error, muted) and its agent palette. The per-widget colors in your theme file (`theme-active.toml`) are not used.
+
+If the binary is missing, too old to have `style --json`, or prints something unreadable, the box draws with a built-in unicode look (`✓ ✗ ◐ ≡ $ ◆ ∴ ❝`) in the HUD's default colors. The expanded history then ends with one dim line saying why. Nothing else is reported. The mod asks again after a reload or an option change, so a newer binary is picked up without a new session.
 
 ## What it shows
 
 | State | Headline |
 |---|---|
-| Before any turn | `◷ Idle, waiting for your prompt` (clock icon, muted) |
+| Before any turn | ` Idle, waiting for your prompt` (clock icon, muted) |
 | Reading the prompt | `󰪠 Reading your prompt` |
-| Thinking | `Thinking: …the hook needs to await next` (the thought's latest sentence; with none streamed, the last action stands) |
-| Writing a tool call, once its input says what it does | `󰯠 Run the tests`, `Writing register.tsx · 2.3 KB` |
-| Running a tool | the tool's category icon and label, bold in the running color: `󰯠 Wait five seconds`, `Reading app.ts`, `󰖟 Fetching example.org` |
+| Thinking | ` Thinking: …the hook needs to await next` (the thought's latest sentence), or ` Thinking` while none has streamed |
+| Writing a tool call | `󰪠 Preparing the next action` until its input says what it does, then `󰯠 Run the tests`, ` Writing register.tsx \| 2.3 KB` |
+| Running a tool | the tool's category icon in the running color, then its label: `󰯠 Wait five seconds`, ` Reading app.ts`, `󰖟 Fetching example.org` |
 | Parallel calls | the newest, then `(+N more)` |
-| A subagent at work | `󱙺 Running an agent: find the bug › Reading app.ts` |
-| Background agents | `󱙺 2 agents working`, and a row per agent: `󱙺 Draft the plan › Searching the web | 1m 12s`. Each agent takes the color the HUD's agents widget gives it: its Agent call's position among the session's last 10, wrapped at the palette's 8 colors. |
-| Waiting on you | `󰅸 Waiting for approval: Run the tests`, `󰅸 Waiting for your answer` (permission icon and color; the border turns that color too). In the terminal the approval dialog takes the band's place while it is up; a subagent's row says it waits until its call runs. |
+| A subagent at work | `󱙺 Running an agent: find the bug \| Reading app.ts` |
+| Background agents | `󱙺 2 agents working`, and a row per agent under the headline label: `󱙺 Draft the plan \| Searching the web \| 1m 12s`. Each agent's icon and name take the color the HUD's agents widget gives it: its Agent call's position among the session's last 10, wrapped at the palette's 8 colors. |
+| Waiting on you | `󰅸 Waiting for your approval: Run the tests`, `󰅸 Waiting for your answer` (permission icon and color). In the terminal the approval dialog takes the band's place while it is up; a subagent's row says it waits until its call runs. |
 | Reading tool results | `󰪠 Reviewing the results of 3 actions` |
-| Writing the reply | `Writing the reply · 120 words` |
+| Writing the reply | ` Writing the reply \| 120 words` |
 | Compacting | `󰪠 Compacting the conversation` |
-| Between turns | `Idle · last turn done in 42s, 6 actions`, or interrupted, stopped on an error, declined; the glyph is the turn's outcome |
+| Between turns | `Idle, last turn done in 42s, 6 actions`, or interrupted, stopped on an error, declined the request, stopped at a declined call; the glyph is the turn's outcome |
 
-A timer after the label (`| 4s`) counts how long the current state has lasted.
+Labels are drawn in the default text color. A state's color is on its glyph and on the border: yellow while Claude works or thinks, red while it or a subagent waits on you, muted grey when idle. Numbers, timers and separators are faint. A timer after the label (`| 4.2s`) counts how long the current state has lasted, in tenths of a second under ten seconds; a tool's timer leaves out the time its approval dialog was up. The box widens to fit its widest row and keeps that width for the rest of the session.
 
-Focus the band with `ctrl+x tab` and press Enter, or click the triangle, to expand the history: each prompt (`›`), stretch of thinking, tool call, reply and turn ending, with durations. A tool row reads `<outcome> <category icon> <label> <duration>`, the outcome being the HUD's check (success color), its error icon (error color), `⊘` denied or `■` interrupted (both muted). Background agents get a history row when they finish. A prompt the engine sends for you (`<agent-message …>`, `<task-notification>`) is listed by its tag, `Agent message`.
+Focus the band with `ctrl+x tab` and press Enter, or click the triangle, to expand the history: each prompt (`›`), stretch of thinking, tool call, reply and turn ending, with durations. A tool row is in the past tense and reads `<outcome> <category icon> <label> <duration>`, as in `  Read VERSION 0.4s`. The outcome is the HUD's check (success color), its error icon (error color), `⊘` declined or `■` interrupted (both muted). A question to you shows the bell in place of the category icon. Category, thought, reply and compaction (`⇣`) icons are faint. A background agent gets a `Started an agent:` row when it is launched and a `Ran an agent:` row when it finishes. The turn ends with `Done, 2 actions 12.3s`, or, when the last call was one you declined, `⊘ Stopped at a declined call`. A prompt the engine sends for you (`<agent-message …>`, `<task-notification>`) is listed by its tag, `Agent message`.
 
 The box steps aside while a survey holds the band. Other mods that draw above the prompt keep their place beneath it.
 

@@ -1,16 +1,16 @@
 // The glyph and color each state is drawn with: tail-claude-hud's icons and
-// semantic colors where the HUD has one, muted text marks where it has none.
+// semantic colors where the HUD has one, plain text marks where it has none.
 import type { ActivityAgent, ActivityEntry, ActivityNow, ActivityOutcome, TchStyle, TchStyleSource } from '../types'
 import { agentColor, color, icon, toolIcon } from './style'
 import { printable } from './text'
 
 const MAX_NOTE_CHARS = 120
 
-/** Outcomes the HUD has no icon for: drawn muted, as whats-agent-doing marks them. */
+/** Outcomes the HUD has no icon for, whats-agent-doing's glyphs drawn in the HUD's muted color. */
 const DENIED_GLYPH = '⊘'
 const INTERRUPTED_GLYPH = '■'
 
-/** History marks for rows that are no tool call: a prompt and a compaction. */
+/** History marks for rows that are no tool call: a prompt (default text) and a compaction (faint). */
 const PROMPT_GLYPH = '›'
 const COMPACT_GLYPH = '⇣'
 
