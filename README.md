@@ -60,6 +60,16 @@ tail-claude-hud --preset powerline
 
 Custom presets go in `~/.config/tail-claude-hud/presets/*.toml`.
 
+## Activity box
+
+[tch-activity](mods/tch-activity/README.md) is a Claude Code mod that draws a box above the prompt saying what Claude is doing right now, in the HUD's icons and colors, with an expandable history of each step. Install it in Claude Code:
+
+```
+/plugin install tch-activity --marketplace kylesnowschwartz/tail-claude-hud
+```
+
+It reads its look from `tail-claude-hud style --json`, so it needs a HUD binary that has the `style` command.
+
 ## Documentation
 
 - [Widgets](docs/widgets.md) -- 26 available widgets and what they display
