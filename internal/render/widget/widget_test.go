@@ -1684,6 +1684,9 @@ func TestAbbreviateFish(t *testing.T) {
 		{"/single", "/single"},
 		{"~/project", "~/project"},
 		{"~/alpha/beta/gamma/deep", "~/a/b/g/deep"},
+		{"~/Code/.claude/worktrees/wt", "~/C/.c/w/wt"},
+		{"/a/./b/../c", "/a/./b/../c"},
+		{"~/.é/x", "~/.é/x"},
 	}
 	for _, tt := range tests {
 		got := abbreviateFish(tt.path)

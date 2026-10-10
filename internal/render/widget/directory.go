@@ -76,21 +76,29 @@ func substituteHome(path string) string {
 }
 
 // abbreviateFish abbreviates all path segments except the last to their first
-// character, mirroring fish shell's prompt_pwd behaviour. The "~" segment and
-// any empty leading segment (from an absolute path) are left intact.
+// character, mirroring fish shell's prompt_pwd behaviour; a hidden directory
+// keeps its dot and the next character. The "~" segment and any empty leading
+// segment (from an absolute path) are left intact.
 //
 // Examples:
 //
 //	~/Code/my-projects/tail-claude-hud → ~/C/m/tail-claude-hud
 //	/usr/local/bin                      → /u/l/bin
+//	~/Code/.claude/worktrees/wt         → ~/C/.c/w/wt
 func abbreviateFish(path string) string {
 	parts := strings.Split(path, "/")
 	for i := 0; i < len(parts)-1; i++ {
 		if parts[i] == "~" || parts[i] == "" {
 			continue
 		}
-		if len(parts[i]) > 0 {
-			parts[i] = string([]rune(parts[i])[:1])
+		// A hidden directory keeps its dot and the rune after it, as fish's
+		// prompt_pwd does: .claude → .c.
+		keep := 1
+		if strings.HasPrefix(parts[i], ".") {
+			keep = 2
+		}
+		if runes := []rune(parts[i]); len(runes) > keep {
+			parts[i] = string(runes[:keep])
 		}
 	}
 	return strings.Join(parts, "/")
