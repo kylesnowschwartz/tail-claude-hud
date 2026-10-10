@@ -235,7 +235,7 @@ describe('register', () => {
 
     expect(box.seen[0]).toContain('Thinking: I should check the loader first')
     // The call is named once its input says what it does.
-    expect(box.seen[1]).toContain('◐ Preparing the next action')
+    expect(box.seen[1]).toContain('⧗ Preparing the next action')
     expect(box.seen[2]).toContain('Reading app.ts')
 
     await $.tool.call({ tool: 'Read', file_path: 'src/app.ts' })
@@ -329,7 +329,7 @@ describe('register', () => {
     await $.turn.start({ text: 'test it', turnId: 't1' })
     await step($, 0)
 
-    expect(box.seen[1]).toContain('◐ Preparing the next action')
+    expect(box.seen[1]).toContain('⧗ Preparing the next action')
     expect(box.seen[2]).toContain('$ Run the tests')
     expect(box.seen.join(' ')).not.toContain('npm test')
   })
@@ -1201,7 +1201,7 @@ describe('style', () => {
     await clock.advance(1)
 
     // The turn started and the box drew while the HUD had not answered.
-    expect(await box.read()).toContain('◐ Reading your prompt')
+    expect(await box.read()).toContain('⧗ Reading your prompt')
 
     release()
     await clock.advance(1)

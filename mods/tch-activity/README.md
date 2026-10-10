@@ -38,24 +38,24 @@ If your `statusLine` command passes `--preset` (for example `tail-claude-hud --p
 
 The box uses the HUD's state colors (running, thinking, needs you, success, error, muted) and its agent palette. The per-widget colors in your theme file (`theme-active.toml`) are not used.
 
-If the binary is missing, too old to have `style --json`, or prints something unreadable, the box draws with a built-in unicode look (`✓ ✗ ◐ ≡ $ ◆ ∴ ❝`) in the HUD's default colors. The expanded history then ends with one dim line saying why. Nothing else is reported. The mod asks again after a reload or an option change, so a newer binary is picked up without a new session.
+If the binary is missing, too old to have `style --json`, or prints something unreadable, the box draws with a built-in unicode look (`✓ ✗ ⧗ ≡ $ ◆ ∴ ❝`) in the HUD's default colors. The expanded history then ends with one dim line saying why. Nothing else is reported. The mod asks again after a reload or an option change, so a newer binary is picked up without a new session.
 
 ## What it shows
 
 | State | Headline |
 |---|---|
 | Before any turn | ` Idle, waiting for your prompt` (clock icon, muted) |
-| Reading the prompt | `󰪠 Reading your prompt` |
+| Reading the prompt | `󰔟 Reading your prompt` |
 | Thinking | ` Thinking: …the hook needs to await next` (the thought's latest sentence), or ` Thinking` while none has streamed |
-| Writing a tool call | `󰪠 Preparing the next action` until its input says what it does, then `󰯠 Run the tests`, ` Writing register.tsx \| 2.3 KB` |
+| Writing a tool call | `󰔟 Preparing the next action` until its input says what it does, then `󰯠 Run the tests`, ` Writing register.tsx \| 2.3 KB` |
 | Running a tool | the tool's category icon in the running color, then its label: `󰯠 Wait five seconds`, ` Reading app.ts`, `󰖟 Fetching example.org` |
 | Parallel calls | the newest, then `(+N more)` |
 | A subagent at work | `󱙺 Running an agent: find the bug \| Reading app.ts` |
 | Background agents | `󱙺 2 agents working`, and a row per agent under the headline label: `󱙺 Draft the plan \| Searching the web \| 1m 12s`. Each agent's icon and name take the color the HUD's agents widget gives it: its Agent call's position among the session's last 10, wrapped at the palette's 8 colors. |
 | Waiting on you | `󰅸 Waiting for your approval: Run the tests`, `󰅸 Waiting for your answer` (permission icon and color). In the terminal the approval dialog takes the band's place while it is up; a subagent's row says it waits until its call runs. |
-| Reading tool results | `󰪠 Reviewing the results of 3 actions` |
+| Reading tool results | `󰔟 Reviewing the results of 3 actions` |
 | Writing the reply | ` Writing the reply \| 120 words` |
-| Compacting | `󰪠 Compacting the conversation` |
+| Compacting | `󰔟 Compacting the conversation` |
 | Between turns | `Idle · last turn done in 42s, 6 actions`, or interrupted, stopped on an error, declined the request, stopped at a declined call; the glyph is the turn's outcome |
 
 Labels are drawn in the default text color. A state's color is on its glyph and on the border: yellow while Claude works or thinks, red while it or a subagent waits on you, muted grey when idle. Numbers, timers and separators are faint. A timer after the label (`| 4.2s`) counts how long the current state has lasted, in tenths of a second under ten seconds; a tool's timer leaves out the time its approval dialog was up. The box widens to fit its widest row and keeps that width for the rest of the session.

@@ -29,7 +29,7 @@ export const BUILTIN_STYLE: TchStyle = {
   iconMode: 'unicode',
   icons: {
     check: '✓',
-    running: '◐',
+    running: '⧗',
     clock: '◷',
     read: '≡',
     edit: '✎',
