@@ -309,7 +309,8 @@ func Render(w io.Writer, ctx *model.RenderContext, cfg *config.Config) {
 			if len(parts) == 0 {
 				continue
 			}
-			output = strings.Join(parts, sep)
+			// The separator is drawn faint so it recedes behind the widgets.
+			output = strings.Join(parts, widget.DimStyle.Render(sep))
 		}
 
 		if output == "" {

@@ -223,6 +223,32 @@ func TestRender_UsesSeparator(t *testing.T) {
 	}
 }
 
+// TestRender_PlainModeSeparatorFaint verifies that plain mode draws the
+// separator faint, so it recedes behind the widgets it divides.
+func TestRender_PlainModeSeparatorFaint(t *testing.T) {
+	ctx := &model.RenderContext{
+		ModelDisplayName:  "Opus",
+		ContextWindowSize: 200000,
+		ContextPercent:    42,
+	}
+	cfg := config.LoadHud()
+	cfg.Style.Mode = "plain"
+	cfg.Style.ColorLevel = "truecolor"
+	cfg.Style.Separator = " :: "
+	cfg.Lines = []config.Line{
+		{Widgets: []string{"model", "context"}},
+	}
+
+	var buf bytes.Buffer
+	Render(&buf, ctx, cfg)
+
+	out := buf.String()
+	want := widget.DimStyle.Render(" :: ")
+	if !strings.Contains(out, want) {
+		t.Errorf("expected faint separator %q in output, got %q", want, out)
+	}
+}
+
 // TestRender_PlainModeOutputIdentical verifies that when a theme fg override
 // exists, plain mode re-renders from PlainText with the override color.
 // The default built-in theme assigns fg "135" to the env widget, so the
