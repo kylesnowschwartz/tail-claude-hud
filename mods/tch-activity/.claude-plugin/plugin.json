@@ -1,0 +1,22 @@
+{
+  "name": "tch-activity",
+  "displayName": "tail-claude-hud activity",
+  "version": "0.1.0",
+  "description": "A box above the prompt that says what Claude is doing right now (reading, thinking, running a tool, waiting for you) in tail-claude-hud's icons and colors, and expands to show what it has done.",
+  "author": {
+    "name": "Kyle Snow Schwartz"
+  },
+  "homepage": "https://github.com/kylesnowschwartz/tail-claude-hud",
+  "repository": "https://github.com/kylesnowschwartz/tail-claude-hud",
+  "license": "MIT",
+  "keywords": ["status", "activity", "hud", "mod", "function-hooks"],
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "binary": {
+      "type": "string",
+      "title": "tail-claude-hud binary",
+      "description": "Path to the tail-claude-hud binary the box reads its look from. Empty: ~/go/bin/tail-claude-hud when it exists, else tail-claude-hud on the PATH.",
+      "default": ""
+    }
+  }
+}

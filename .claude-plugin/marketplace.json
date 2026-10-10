@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
+  "name": "tail-claude-hud",
+  "description": "Claude Code mods that draw in tail-claude-hud's style",
+  "owner": {
+    "name": "Kyle Snow Schwartz"
+  },
+  "plugins": [
+    {
+      "name": "tch-activity",
+      "source": "./mods/tch-activity",
+      "description": "A box above the prompt that says what Claude is doing right now in tail-claude-hud's icons and colors, and expands to show what it has done.",
+      "category": "productivity"
+    }
+  ]
+}

@@ -1,0 +1,113 @@
+// Adapted from whats-agent-doing (MIT, Copyright (c) 2026 Tzafrir Rehan);
+// see NOTICE.
+import { clip, oneLine } from './text'
+
+const MAX_DETAIL_CHARS = 60
+
+/**
+ * Says in a few words what a tool call is doing.
+ *
+ * @param tool the tool's name; a string, as the declared names are only the
+ *   tools of the build that wrote the types (Grep and Glob are on some only)
+ * @param args the call's arguments, whole or as far as they have streamed
+ * @returns a short label such as `Reading register.tsx`
+ */
+export function activityOf(tool: string, args: Record<string, unknown>): string {
+  const raw = (key: string): string => {
+    const value = args[key]
+
+    return typeof value === 'string' ? oneLine(value) : ''
+  }
+
+  const arg = (key: string): string => clip(raw(key), MAX_DETAIL_CHARS)
+
+  // The base name is taken before the cut, so a long path still names its file.
+  const file = (key: string): string => clip(baseName(raw(key)), MAX_DETAIL_CHARS)
+
+  switch (tool) {
+    case 'Bash':
+    case 'PowerShell':
+      // The model's own description says what a command is for; the command
+      // itself is the fallback.
+      return arg('description') || `Running ${arg('command')}`
+    case 'Read':
+      return `Reading ${file('file_path')}`
+    case 'Edit':
+      return `Editing ${file('file_path')}`
+    case 'Write':
+      return `Writing ${file('file_path')}`
+    case 'NotebookEdit':
+      return `Editing ${file('notebook_path')}`
+    case 'Grep':
+      return `Searching for "${arg('pattern')}"`
+    case 'Glob':
+      return `Finding files ${arg('pattern')}`
+    case 'WebFetch':
+      return `Fetching ${hostOf(arg('url'))}`
+    case 'WebSearch':
+      return `Searching the web for "${arg('query')}"`
+    case 'Agent':
+    case 'Task':
+      return `Running an agent: ${arg('description')}`
+    case 'TodoWrite':
+      return 'Updating the todo list'
+    case 'AskUserQuestion':
+      return 'Waiting for your answer'
+    case 'Skill':
+      return `Using the ${arg('skill')} skill`
+  }
+
+  if (tool.startsWith('mcp__')) {
+    const [, server = '', name = ''] = tool.split('__')
+
+    return `Using ${server}: ${name}`
+  }
+
+  return `Using ${tool}`
+}
+
+/**
+ * The string arguments a tool call's input has streamed so far, read from
+ * its partial JSON: enough to name the file or command before it is whole.
+ */
+export function partialArgsOf(json: string): Record<string, unknown> {
+  const args: Record<string, unknown> = {}
+
+  for (const match of json.matchAll(/"([a-z_]+)"\s*:\s*"((?:[^"\\]|\\.)*)/g)) {
+    const [, key = '', raw = ''] = match
+
+    args[key] ??= unescaped(raw)
+  }
+
+  return args
+}
+
+export function isShellTool(tool: string): boolean {
+  return tool === 'Bash' || tool === 'PowerShell'
+}
+
+export function isAgentTool(tool: string): boolean {
+  return tool === 'Agent' || tool === 'Task'
+}
+
+function unescaped(raw: string): string {
+  try {
+    return JSON.parse(`"${raw}"`) as string
+  } catch {
+    // A partial escape at the stream's edge: the raw text reads well enough.
+    return raw
+  }
+}
+
+function baseName(path: string): string {
+  return path.split(/[\\/]/).pop() || path
+}
+
+function hostOf(url: string): string {
+  try {
+    return new URL(url).host
+  } catch {
+    // Not a whole URL yet (still streaming): show what there is.
+    return url
+  }
+}
