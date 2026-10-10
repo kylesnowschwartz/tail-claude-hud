@@ -10,6 +10,7 @@ import { durationOf, plural, sizeOf, thoughtOf } from './text'
 export const IDLE: ActivityNow = {
   phase: 'idle',
   label: 'Idle, waiting for your prompt',
+  detail: null,
   sinceMs: 0,
   tool: null,
   colorIndex: null,
@@ -210,13 +211,14 @@ export function current(live: Live): ActivityNow {
       return {
         ...base,
         phase: 'writing',
-        label: `Writing the reply · ${plural(live.replyWords, 'word')}`,
+        label: 'Writing the reply',
+        detail: plural(live.replyWords, 'word'),
         sinceMs,
       }
     case 'composing':
       return { ...base, ...composingHeadline(live), phase: 'composing', sinceMs }
     case 'idle':
-      return live.lastTurn === null ? base : { ...base, label: `Idle · last turn ${live.lastTurn.label}` }
+      return live.lastTurn === null ? base : { ...base, label: `Idle, last turn ${live.lastTurn.label}` }
   }
 }
 
@@ -225,7 +227,7 @@ export function current(live: Live): ActivityNow {
  * tool by its path, a command by its description, which streams after the
  * command itself. Until then the last action stands.
  */
-function composingHeadline(live: Live): { label: string; tool: string | null } {
+function composingHeadline(live: Live): { label: string; detail: string | null; tool: string | null } {
   const { composing } = live
   const args = composing ? partialArgsOf(composing.head) : {}
   const isDescribed = composing !== null && (isShellTool(composing.tool)
@@ -233,12 +235,12 @@ function composingHeadline(live: Live): { label: string; tool: string | null } {
     : Object.keys(args).length > 0)
 
   if (!composing || !isDescribed) {
-    return { label: standingLabel(live), tool: live.lastAction?.tool ?? null }
+    return { label: standingLabel(live), detail: null, tool: live.lastAction?.tool ?? null }
   }
 
-  const size = composing.chars >= LARGE_INPUT_CHARS ? ` · ${sizeOf(composing.chars)}` : ''
+  const detail = composing.chars >= LARGE_INPUT_CHARS ? sizeOf(composing.chars) : null
 
-  return { label: `${activityOf(composing.tool, args)}${size}`, tool: composing.tool }
+  return { label: activityOf(composing.tool, args), detail, tool: composing.tool }
 }
 
 /**
@@ -263,11 +265,18 @@ function agentUnder(live: Live, toolUseId: string): (Agent & { id: string }) | u
  * never stacks a second prefix.
  */
 export function agentLabel(live: Live, agent: Agent & { id: string }): string {
-  const waiting = [...live.calls.values()]
-    .reverse()
-    .find(call => call.agentId === agent.id && call.isAwaitingApproval)
+  const waiting = waitingCallOf(live, agent.id)
 
   return waiting === undefined ? agent.label : `Waiting for approval: ${waiting.label}`
+}
+
+/** Whether a call of the agent's waits on approval. */
+export function isAgentWaiting(live: Live, agentId: string): boolean {
+  return waitingCallOf(live, agentId) !== undefined
+}
+
+function waitingCallOf(live: Live, agentId: string): Call | undefined {
+  return [...live.calls.values()].reverse().find(call => call.agentId === agentId && call.isAwaitingApproval)
 }
 
 /** The order with `key` added at its end, once, the newest window kept. */
@@ -288,7 +297,7 @@ export function colorIndexOf(live: Live, key: string): number {
   return Math.max(0, live.agentOrder.indexOf(key)) % AGENT_PALETTE_SIZE
 }
 
-/** How a turn ended, in the words the idle headline and the history use. */
+/** How a turn ended, in the words the idle headline uses. */
 export function turnEndLabel(reason: TurnCompleteReason, durationMs: number, actions: number): string {
   const took = durationOf(durationMs)
 
@@ -304,10 +313,24 @@ export function turnEndLabel(reason: TurnCompleteReason, durationMs: number, act
   }
 }
 
+/** How a turn ended, as its history row says it; the row's duration follows it. */
+export function turnEndRowLabel(reason: TurnCompleteReason, actions: number): string {
+  switch (reason) {
+    case 'aborted':
+      return 'Interrupted'
+    case 'error':
+      return 'Stopped on an error'
+    case 'refusal':
+      return 'Declined the request'
+    case 'answer':
+      return `Done, ${plural(actions, 'action')}`
+  }
+}
+
 export function outcomeOf(reason: TurnCompleteReason): ActivityOutcome {
   return reason === 'aborted' ? 'interrupted' : reason === 'error' ? 'error' : reason === 'refusal' ? 'denied' : 'ok'
 }
 
 export function entryOf(kind: ActivityEntry['kind'], label: string, outcome: ActivityOutcome = 'ok'): ActivityEntry {
-  return { kind, label, durationMs: null, outcome, tool: null, colorIndex: null }
+  return { kind, label, durationMs: null, outcome, tool: null }
 }

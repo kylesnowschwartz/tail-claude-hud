@@ -21,12 +21,14 @@ export type ActivityOutcome = 'ok' | 'error' | 'denied' | 'interrupted'
  * The box's headline: the phase, its words, and when it began. `tool` is the
  * tool the headline is about (its category picks the icon); `colorIndex` the
  * agent palette slot when the headline names an agent, and `lead` the agent's
- * name, drawn in that color, then ` › ` and `label`; `lastOutcome` how the
- * previous turn ended, for the idle glyph.
+ * name, drawn in that color before `label`; `detail` a count or size drawn
+ * faint after it (`120 words`); `lastOutcome` how the previous turn ended,
+ * for the idle glyph.
  */
 export type ActivityNow = {
   phase: ActivityPhase
   label: string
+  detail: string | null
   sinceMs: number
   tool: string | null
   colorIndex: number | null
@@ -36,19 +38,21 @@ export type ActivityNow = {
 
 /**
  * A subagent at work: what it was asked to do, its latest action, when it
- * started, and its palette slot (its spawn order in the session).
+ * started, its palette slot (its spawn order in the session), and whether a
+ * call of its waits on your approval.
  */
 export type ActivityAgent = {
   name: string
   label: string
   sinceMs: number
   colorIndex: number
+  isWaiting: boolean
 }
 
 /**
  * One row of the expanded box: a prompt that started a turn, a stretch of
  * thinking, a reply, a tool call, a compaction, or how a turn ended. `tool`
- * names the tool of a `tool` row; `colorIndex` the palette slot of an agent's.
+ * names the tool of a `tool` row.
  */
 export type ActivityEntry = {
   kind: 'turn' | 'thought' | 'reply' | 'tool' | 'compact' | 'end'
@@ -56,7 +60,6 @@ export type ActivityEntry = {
   durationMs: number | null
   outcome: ActivityOutcome
   tool: string | null
-  colorIndex: number | null
 }
 
 /**

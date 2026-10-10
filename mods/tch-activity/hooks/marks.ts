@@ -1,6 +1,6 @@
 // The glyph and color each state is drawn with: tail-claude-hud's icons and
 // semantic colors where the HUD has one, muted text marks where it has none.
-import type { ActivityEntry, ActivityNow, ActivityOutcome, TchStyle, TchStyleSource } from '../types'
+import type { ActivityAgent, ActivityEntry, ActivityNow, ActivityOutcome, TchStyle, TchStyleSource } from '../types'
 import { agentColor, color, icon, toolIcon } from './style'
 import { printable } from './text'
 
@@ -14,8 +14,11 @@ const INTERRUPTED_GLYPH = '■'
 const PROMPT_GLYPH = '›'
 const COMPACT_GLYPH = '⇣'
 
-/** A glyph and the color it is drawn in (`undefined`: default foreground). */
-export type Mark = { glyph: string; color: string | undefined }
+/**
+ * A glyph, the color it is drawn in (`undefined`: default foreground), and
+ * whether it is drawn faint.
+ */
+export type Mark = { glyph: string; color: string | undefined; isFaint?: boolean }
 
 /** The headline's glyph: what kind of work, in the HUD's color for it. */
 export function headlineMark(style: TchStyle, headline: ActivityNow): Mark {
@@ -68,14 +71,33 @@ export function entryMark(style: TchStyle, entry: ActivityEntry): Mark {
     case 'turn':
       return { glyph: PROMPT_GLYPH, color: undefined }
     case 'thought':
-      return { glyph: icon(style, 'thinking'), color: color(style, 'thinking') }
+      return { glyph: icon(style, 'thinking'), color: undefined, isFaint: true }
     case 'reply':
-      return { glyph: icon(style, 'write'), color: color(style, 'success') }
+      return { glyph: icon(style, 'write'), color: undefined, isFaint: true }
     case 'compact':
-      return { glyph: COMPACT_GLYPH, color: color(style, 'muted') }
+      return { glyph: COMPACT_GLYPH, color: undefined, isFaint: true }
     case 'tool':
     case 'end':
       return outcomeMark(style, entry.outcome)
+  }
+}
+
+/**
+ * The border's color: the needs-you color while the main loop or an agent
+ * waits on you, muted when idle, else the color of the work under way.
+ */
+export function borderColor(style: TchStyle, headline: ActivityNow, agents: readonly ActivityAgent[]): string | undefined {
+  if (headline.phase === 'approval' || headline.phase === 'question' || agents.some(agent => agent.isWaiting)) {
+    return color(style, 'permission')
+  }
+
+  switch (headline.phase) {
+    case 'idle':
+      return color(style, 'muted')
+    case 'thinking':
+      return color(style, 'thinking')
+    default:
+      return color(style, 'running')
   }
 }
 

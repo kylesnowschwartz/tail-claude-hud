@@ -245,11 +245,11 @@ describe('register', () => {
 
     await step($, 1)
 
-    expect(box.seen[4]).toContain('Writing the reply · 7 words')
+    expect(box.seen[4]).toContain('Writing the reply | 7 words')
 
     await $.turn.complete({ ...DONE, turnId })
 
-    expect(await box.read()).toContain('Idle · last turn done in')
+    expect(await box.read()).toContain('Idle, last turn done in')
   })
 
   test('a turn whose start came before a reload still ends idle', async ($, on) => {
@@ -260,7 +260,7 @@ describe('register', () => {
     await step($, 0)
     await $.turn.complete({ ...DONE, turnId: 't1' })
 
-    expect(await box.read()).toContain('Idle · last turn done in')
+    expect(await box.read()).toContain('Idle, last turn done in')
   })
 
   test('the triangle opens the history of the turn', async ($, on) => {
@@ -289,7 +289,8 @@ describe('register', () => {
     // Denied: the muted mark, then the Read category's built-in icon.
     expect(history).toContain('⊘ ≡ Reading app.ts')
     expect(history).toContain('Wrote the reply (1 word)')
-    expect(history).toContain('Done in')
+    expect(history).toContain('Done, 1 action')
+    expect(history).not.toContain('Done in')
     expect((await ui.find({ key: 'activity' }))?.text).toContain('▾')
 
     await ui.press({ key: 'toggle' })
@@ -463,13 +464,13 @@ describe('register', () => {
     await $.agent.spawn({ ...SPAWN, tool_use_id: 'tu1', description: 'Test it' })
     await $.tool.call(call as Parameters<Engine['tool']['call']>[0])
 
-    expect(box.seen[0]).toContain('Test it › Waiting for approval: Run the tests')
+    expect(box.seen[0]).toContain('Test it | Waiting for approval: Run the tests')
     expect(box.seen[0]).not.toContain('approval: Waiting')
 
     // A subagent's updates land at most every 250 ms.
     await clock.advance(300)
 
-    expect(await box.read()).toContain('Test it › Run the tests')
+    expect(await box.read()).toContain('Test it | Run the tests')
     expect(await box.read()).not.toContain('Waiting')
   })
 
@@ -547,12 +548,12 @@ describe('register', () => {
     const team = (await ui.find({ key: 'agents' }))?.text ?? ''
 
     expect(await box.read()).toContain('2 agents working')
-    expect(team).toContain('◆ Draft the plan › Reading README.md')
-    expect(team).toContain('◆ Storyboard the video › Getting started')
+    expect(team).toContain('◆ Draft the plan | Reading README.md')
+    expect(team).toContain('◆ Storyboard the video | Getting started')
 
     await $.turn.complete({ ...DONE, turnId: 't2', agentId: 'a2' })
 
-    expect(await box.read()).toContain('Draft the plan › Reading README.md')
+    expect(await box.read()).toContain('Draft the plan | Reading README.md')
     expect(await ui.find({ key: 'agents' })).toBeUndefined()
 
     await $.turn.complete({ ...DONE, turnId: 't3', agentId: 'a1', reason: 'error' })
@@ -613,7 +614,7 @@ describe('register', () => {
 
     await $.agent.spawn({ ...SPAWN, tool_use_id: 'tu1', description: 'Draft the plan' })
 
-    expect(await box.read()).toContain('◆ Draft the plan › Getting started')
+    expect(await box.read()).toContain('◆ Draft the plan | Getting started')
     expect((await ui.find({ type: 'Text', text: 'Draft the plan' }))?.props['color']).toBe('ansi256(12)')
     expect((await ui.find({ type: 'Text', text: ' ◆ ' }))?.props['color']).toBe('ansi256(12)')
   })
@@ -637,7 +638,7 @@ describe('register', () => {
     await clock.advance(1000)
 
     // Before its Agent call is seen, the engine's handle for it stands.
-    expect(await box.read()).toContain('reviewer › Reading app.ts')
+    expect(await box.read()).toContain('reviewer | Reading app.ts')
 
     box.toolAnswer = { result: { status: 'teammate_spawned' } } as never
     await $.tool.call({
@@ -648,7 +649,7 @@ describe('register', () => {
     } as Parameters<Engine['tool']['call']>[0])
     await clock.advance(1000)
 
-    expect(await box.read()).toContain('Review the diff › Reading app.ts')
+    expect(await box.read()).toContain('Review the diff | Reading app.ts')
     expect(await box.read()).not.toContain('You are reviewing')
     expect(await ui.find({ key: 'agents' })).toBeUndefined()
   })
@@ -664,12 +665,124 @@ describe('register', () => {
 
     await $.tool.call({ tool: 'Agent', description: 'Tour the source', prompt: 'Read it.' } as Parameters<Engine['tool']['call']>[0])
 
-    expect(await box.read()).toContain('Tour the source › Getting started')
+    expect(await box.read()).toContain('Tour the source | Getting started')
 
     await $.tool.call({ tool: 'Read', file_path: 'src/app.ts', agentId: 'b1' } as Parameters<Engine['tool']['call']>[0])
     await clock.advance(300)
 
-    expect(await box.read()).toContain('Tour the source › Reading app.ts')
+    expect(await box.read()).toContain('Tour the source | Reading app.ts')
+  })
+})
+
+describe('emphasis', () => {
+  test('state color sits on the glyph and the border, never on a label or in bold', async ($, on) => {
+    seatHud(on, HUD_STYLE)
+    const { box, clock } = seat(on, [])
+    const ui = await mount($, box)
+    const seen: { border: unknown; label: unknown; bold: boolean }[] = []
+
+    await clock.advance(1)
+
+    box.onTool = async () => {
+      const texts = await ui.findAll({ type: 'Text' })
+
+      seen.push({
+        border: (await ui.find({ key: 'frame' }))?.props['borderColor'],
+        label: (await ui.find({ type: 'Text', text: 'Reading app.ts' }))?.props['color'],
+        bold: texts.some(text => text.props['bold'] === true),
+      })
+    }
+
+    expect((await ui.find({ key: 'frame' }))?.props['borderColor']).toBe('ansi256(8)')
+
+    const { turnId } = await $.turn.start({ text: 'read it', turnId: 't1' })
+
+    await $.tool.call({ tool: 'Read', file_path: 'src/app.ts' })
+
+    expect(seen[0]).toEqual({ border: 'ansi256(3)', label: undefined, bold: false })
+
+    await $.turn.complete({ ...DONE, turnId })
+    await ui.press({ key: 'toggle' })
+
+    const texts = await ui.findAll({ type: 'Text' })
+
+    expect(texts.some(text => text.props['bold'] === true)).toBe(false)
+    expect((await ui.find({ key: 'frame' }))?.props['borderColor']).toBe('ansi256(8)')
+  })
+
+  test('a call put to approval turns the border the needs-you color', async ($, on) => {
+    seatHud(on, HUD_STYLE)
+    const { box, clock } = seat(on, [])
+    const ui = await mount($, box)
+    let border: unknown = 'unread'
+
+    await clock.advance(1)
+
+    box.verdict = 'ask'
+    box.onTool = async call => {
+      await $.tool.check({ tool: 'Bash', input: {}, tool_use_id: call.tool_use_id })
+      border = (await ui.find({ key: 'frame' }))?.props['borderColor']
+    }
+
+    await $.turn.start({ text: 'run it', turnId: 't1' })
+    await $.tool.call({ tool: 'Bash', command: 'osascript', description: 'Ask AppleScript' })
+
+    expect(border).toBe('ansi256(1)')
+  })
+
+  test("a background agent waiting on approval turns the border red, its label default", async ($, on) => {
+    const { box, clock } = seat(on, [])
+
+    on('agent.spawn', () => ({ model: 'claude-opus-5-5', agentId: 'a1' }))
+
+    const ui = await mount($, box)
+    let border: unknown = 'unread'
+    let label: unknown = 'unread'
+
+    box.verdict = 'ask'
+    box.onTool = async ({ tool_use_id }) => {
+      await $.tool.check({ tool: 'Bash', input: {}, tool_use_id, agentId: 'a1' })
+      await clock.advance(300)
+      border = (await ui.find({ key: 'frame' }))?.props['borderColor']
+      label = (await ui.find({ type: 'Text', text: 'Waiting for approval' }))?.props['color']
+    }
+
+    await $.agent.spawn({ ...SPAWN, tool_use_id: 'tu1', description: 'Test it' })
+    await $.tool.call({ tool: 'Bash', command: 'npm test', description: 'Run the tests', agentId: 'a1' } as Parameters<Engine['tool']['call']>[0])
+
+    expect(border).toBe('ansi256(1)')
+    expect(label).toBeUndefined()
+  })
+
+  test('separators are faint and a thought, reply and agent icon in history are faint', async ($, on) => {
+    const { box } = seat(on, [
+      [{ kind: 'thinking', index: 0, text: 'Look.' }],
+      [{ kind: 'text', index: 0, text: 'Done here.' }],
+    ])
+
+    on('agent.spawn', () => ({ model: 'claude-opus-5-5', agentId: 'a1' }))
+
+    const ui = await mount($, box)
+    const { turnId } = await $.turn.start({ text: 'go', turnId: 't1' })
+
+    await step($, 0)
+    await $.agent.spawn({ ...SPAWN, tool_use_id: 'tu1', description: 'Helper' })
+    await step($, 1)
+
+    const separator = await ui.find({ type: 'Text', text: /^ \| $/ })
+
+    expect(separator?.props['dimColor']).toBe(true)
+
+    await $.turn.complete({ ...DONE, turnId: 't2', agentId: 'a1' })
+    await $.turn.complete({ ...DONE, turnId })
+    await ui.press({ key: 'toggle' })
+
+    for (const glyph of ['∴ ', '✎ ', '◆ ']) {
+      const found = await ui.find({ type: 'Text', text: glyph })
+
+      expect(found?.props['dimColor']).toBe(true)
+      expect(found?.props['color']).toBeUndefined()
+    }
   })
 })
 

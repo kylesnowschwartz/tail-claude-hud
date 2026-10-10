@@ -21,9 +21,11 @@ import {
   current,
   entryOf,
   IDLE,
+  isAgentWaiting,
   outcomeOf,
   STARTING_LABEL,
   turnEndLabel,
+  turnEndRowLabel,
   UNNAMED_AGENT,
   type Agent,
   type Live,
@@ -32,13 +34,12 @@ import {
   withAgentKey,
 } from './live'
 import { bandLayout } from './layout'
-import { entryMark, headlineMark, styleNote } from './marks'
+import { borderColor, entryMark, headlineMark, styleNote } from './marks'
 import {
   agentColor,
   BARE_BINARY,
   BUILTIN_STYLE,
   builtin,
-  color,
   GO_BIN_SUFFIX,
   icon,
   isStyleStale,
@@ -46,7 +47,7 @@ import {
   toolIcon,
   type LoadedStyle,
 } from './style'
-import { capitalized, durationOf, elapsedOf, oneLine, plural, printable, promptLabel, wordsAdded } from './text'
+import { durationOf, elapsedOf, oneLine, plural, printable, promptLabel, wordsAdded } from './text'
 
 /** The headline. */
 const now = atom({ plugin: 'tch-activity', key: 'now' } as const, IDLE)
@@ -354,7 +355,7 @@ export const register: Register = (on, options) => {
     const label = turnEndLabel(e.reason, durationMs, live.turnActions)
 
     await enter($, live, 'idle')
-    await remember($, { ...entryOf('end', capitalized(label), outcome), durationMs })
+    await remember($, { ...entryOf('end', turnEndRowLabel(e.reason, live.turnActions), outcome), durationMs })
 
     live.lastTurn = { label, outcome }
     await update($, lastTurn, () => live.lastTurn)
@@ -429,6 +430,7 @@ async function publish($: EngineInterface, live: Live, isUrgent = true): Promise
     label: agentLabel(live, { ...agent, id }),
     sinceMs: agent.startMs,
     colorIndex: colorIndexOf(live, agent.colorKey),
+    isWaiting: isAgentWaiting(live, id),
   }))
 
   await update($, now, () => headline)
@@ -536,7 +538,6 @@ async function finish(
       ...entryOf('tool', `Agent: ${agent.name}`, outcome),
       durationMs: (await $.clock.now()) - agent.startMs,
       tool: 'Agent',
-      colorIndex: colorIndexOf(live, agent.colorKey),
     })
   }
 
@@ -896,7 +897,7 @@ async function drawBox($: EngineInterface, e: AbovePromptInput) {
   /**
    * One agent's row, as the HUD's agents widget draws a running agent: the
    * task icon and name in the agent's palette color, then its latest action
-   * and its running time.
+   * and its running time, each after a faint separator.
    */
   const agentRow = (agent: ActivityAgent) => {
     const tint = agentColor(style, agent.colorIndex)
@@ -905,8 +906,11 @@ async function drawBox($: EngineInterface, e: AbovePromptInput) {
       <Box flexShrink={0}>
         <Text color={tint}>{`${icon(style, 'task')} `}</Text>
       </Box>,
-      <Text color={tint} bold wrap="truncate-end">{printable(agent.name, MAX_AGENT_NAME_CHARS)}</Text>,
-      <Text wrap="truncate-end">{` › ${printable(agent.label, MAX_LABEL_CHARS)}`}</Text>,
+      <Text color={tint} wrap="truncate-end">{printable(agent.name, MAX_AGENT_NAME_CHARS)}</Text>,
+      <Box flexShrink={0}>
+        <Text dimColor>{SEPARATOR}</Text>
+      </Box>,
+      <Text wrap="truncate-end">{printable(agent.label, MAX_LABEL_CHARS)}</Text>,
       <Box flexShrink={0}>
         <Text dimColor>{`${SEPARATOR}${elapsedOf(nowMs - agent.sinceMs)}`}</Text>
       </Box>,
@@ -925,24 +929,17 @@ async function drawBox($: EngineInterface, e: AbovePromptInput) {
     const toolMark = entry.kind === 'tool' && entry.tool !== null
       ? [
           <Box flexShrink={0}>
-            <Text color={entry.colorIndex === null ? undefined : agentColor(style, entry.colorIndex)} dimColor={entry.colorIndex === null}>
-              {`${toolIcon(style, entry.tool)} `}
-            </Text>
+            <Text dimColor>{`${toolIcon(style, entry.tool)} `}</Text>
           </Box>,
         ]
       : []
 
     return [
       <Box flexShrink={0}>
-        <Text color={mark.color}>{`${mark.glyph} `}</Text>
+        <Text color={mark.color} dimColor={mark.isFaint === true}>{`${mark.glyph} `}</Text>
       </Box>,
       ...toolMark,
-      <Text
-        bold={entry.kind === 'turn'}
-        dimColor={isQuiet}
-        color={entry.outcome === 'error' ? color(style, 'error') : undefined}
-        wrap="truncate-end"
-      >
+      <Text dimColor={isQuiet} wrap="truncate-end">
         {printable(entry.label, MAX_LABEL_CHARS)}
       </Text>,
       <Box flexShrink={0}>
@@ -953,9 +950,10 @@ async function drawBox($: EngineInterface, e: AbovePromptInput) {
 
   const isWorking = headline.phase !== 'idle'
   const mark = headlineMark(style, headline)
-  const isAlert = headline.phase === 'approval' || headline.phase === 'question'
-  const isToolRunning = headline.phase === 'tool' || headline.phase === 'composing'
-  const labelColor = isAlert ? color(style, 'permission') : isToolRunning ? color(style, 'running') : undefined
+  const tail = [headline.detail, isWorking ? elapsedOf(nowMs - headline.sinceMs) : null]
+    .filter((part): part is string => part !== null)
+    .map(part => `${SEPARATOR}${part}`)
+    .join('')
 
   // One agent the headline names; more, or one beside the main loop's
   // work, get a row each.
@@ -1015,9 +1013,10 @@ async function drawBox($: EngineInterface, e: AbovePromptInput) {
 
   return (
       <Box
+        key="frame"
         flexDirection="column"
         borderStyle="round"
-        borderColor={isAlert ? color(style, 'permission') : color(style, 'muted')}
+        borderColor={borderColor(style, headline, working)}
         paddingX={1}
         alignSelf="flex-start"
       >
@@ -1036,15 +1035,16 @@ async function drawBox($: EngineInterface, e: AbovePromptInput) {
           {headline.lead === null
             ? []
             : [
-                <Text color={mark.color} bold wrap="truncate-end">
+                <Text color={mark.color} wrap="truncate-end">
                   {printable(headline.lead, MAX_LABEL_CHARS)}
                 </Text>,
+                <Box flexShrink={0}>
+                  <Text dimColor>{SEPARATOR}</Text>
+                </Box>,
               ]}
-          <Text color={labelColor} bold={isToolRunning || isAlert} wrap="truncate-end">
-            {`${headline.lead === null ? '' : ' › '}${printable(headline.label, MAX_LABEL_CHARS)}`}
-          </Text>
+          <Text wrap="truncate-end">{printable(headline.label, MAX_LABEL_CHARS)}</Text>
           <Box flexShrink={0}>
-            <Text dimColor>{isWorking ? `${SEPARATOR}${elapsedOf(nowMs - headline.sinceMs)}` : ''}</Text>
+            <Text dimColor>{tail}</Text>
           </Box>
         </Box>
         {teamBox}
