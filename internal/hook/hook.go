@@ -88,18 +88,20 @@ func HandleSessionStart(r io.Reader, w io.Writer, enabled bool) error {
 }
 
 // HandleCleanup reads the hook payload and removes any breadcrumb for the
-// session. Called by PostToolUse, PostToolUseFailure, and Stop hooks. Removing a
-// breadcrumb that doesn't exist is a no-op.
+// session, then deletes stale breadcrumbs left by any session. Called by
+// PostToolUse, PostToolUseFailure, and Stop hooks. Removing a breadcrumb that
+// doesn't exist is a no-op.
 func HandleCleanup(r io.Reader) error {
 	p, err := hooks.Decode(r)
 	if err != nil {
 		return err
 	}
-	sid := p.EffectiveSessionID()
-	if sid == "" {
-		return nil
+	if sid := p.EffectiveSessionID(); sid != "" {
+		if err := breadcrumb.Remove(sid); err != nil {
+			return err
+		}
 	}
-	return breadcrumb.Remove(sid)
+	return breadcrumb.RemoveStale()
 }
 
 // projectName returns the last path component of cwd, or "" when cwd is empty

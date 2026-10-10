@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/breadcrumb"
 )
@@ -79,6 +80,29 @@ func TestCleanup_RemovesBreadcrumb(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, "abc")); !os.IsNotExist(err) {
 		t.Errorf("expected breadcrumb removed, stat err = %v", err)
+	}
+}
+
+func TestCleanup_RemovesStaleBreadcrumbsOfOtherSessions(t *testing.T) {
+	dir := redirectWaitingDir(t)
+	for _, sid := range []string{"crashed", "waiting-now"} {
+		if err := breadcrumb.Write(breadcrumb.Breadcrumb{SessionID: sid}); err != nil {
+			t.Fatalf("seed breadcrumb: %v", err)
+		}
+	}
+	old := time.Now().Add(-time.Hour)
+	if err := os.Chtimes(filepath.Join(dir, "crashed"), old, old); err != nil {
+		t.Fatalf("Chtimes: %v", err)
+	}
+
+	if err := HandleCleanup(strings.NewReader(`{"session_id":"abc"}`)); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "crashed")); !os.IsNotExist(err) {
+		t.Errorf("expected stale breadcrumb removed, stat err = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "waiting-now")); err != nil {
+		t.Errorf("expected another session's fresh breadcrumb kept: %v", err)
 	}
 }
 

@@ -6,7 +6,7 @@
 // permission approval. PostToolUse and Stop hooks remove the breadcrumb.
 //
 // Breadcrumbs older than staleTTL are ignored (covers hard-crash scenarios
-// where neither PostToolUse nor Stop fires).
+// where neither PostToolUse nor Stop fires), and the cleanup hook deletes them.
 package breadcrumb
 
 import (
@@ -81,6 +81,36 @@ func Remove(sessionID string) error {
 		return nil
 	}
 	return err
+}
+
+// RemoveStale deletes every file in the breadcrumb directory older than
+// staleTTL: breadcrumbs of sessions that ended without cleanup, and temp
+// files of interrupted writes. FindWaiting already ignores them; removing
+// them keeps the directory from growing. A missing directory is not an error.
+func RemoveStale() error {
+	dir := WaitingDir()
+	entries, err := os.ReadDir(dir)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+
+	now := time.Now()
+	for _, de := range entries {
+		if de.IsDir() {
+			continue
+		}
+		info, err := de.Info()
+		if err != nil || now.Sub(info.ModTime()) <= staleTTL {
+			continue
+		}
+		if err := os.Remove(filepath.Join(dir, de.Name())); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+	}
+	return nil
 }
 
 // FindWaiting scans the breadcrumb directory for a non-stale breadcrumb from

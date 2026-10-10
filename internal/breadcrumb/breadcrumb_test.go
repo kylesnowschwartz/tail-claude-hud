@@ -118,3 +118,51 @@ func TestFindWaiting_EmptyDir(t *testing.T) {
 		t.Fatalf("expected nil for empty dir, got %+v", found)
 	}
 }
+
+func TestRemoveStale_RemovesOnlyStaleFiles(t *testing.T) {
+	dir := t.TempDir()
+	origDir := WaitingDir
+	WaitingDir = func() string { return dir }
+	defer func() { WaitingDir = origDir }()
+
+	for _, sid := range []string{"sess-old", "sess-fresh"} {
+		if err := Write(Breadcrumb{SessionID: sid}); err != nil {
+			t.Fatalf("Write: %v", err)
+		}
+	}
+	// A temp file left by a crashed write is retired the same way.
+	leftover := filepath.Join(dir, ".tmp-123")
+	if err := os.WriteFile(leftover, []byte("{"), 0o644); err != nil {
+		t.Fatalf("seed temp file: %v", err)
+	}
+
+	staleTime := time.Now().Add(-staleTTL - time.Minute)
+	for _, path := range []string{filepath.Join(dir, "sess-old"), leftover} {
+		if err := os.Chtimes(path, staleTime, staleTime); err != nil {
+			t.Fatalf("Chtimes: %v", err)
+		}
+	}
+
+	if err := RemoveStale(); err != nil {
+		t.Fatalf("RemoveStale: %v", err)
+	}
+
+	for _, gone := range []string{"sess-old", ".tmp-123"} {
+		if _, err := os.Stat(filepath.Join(dir, gone)); !os.IsNotExist(err) {
+			t.Errorf("expected %s removed, stat err = %v", gone, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(dir, "sess-fresh")); err != nil {
+		t.Errorf("expected fresh breadcrumb kept: %v", err)
+	}
+}
+
+func TestRemoveStale_MissingDir(t *testing.T) {
+	origDir := WaitingDir
+	WaitingDir = func() string { return filepath.Join(t.TempDir(), "absent") }
+	defer func() { WaitingDir = origDir }()
+
+	if err := RemoveStale(); err != nil {
+		t.Fatalf("expected nil for a missing directory, got %v", err)
+	}
+}
