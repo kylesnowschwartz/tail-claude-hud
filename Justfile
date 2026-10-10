@@ -54,15 +54,17 @@ mod-check:
     fi
     npx -y -p typescript tsc -p {{mod}}
 
-# Run Claude Code with the mod from disk and whats-agent-doing off; TCH_HUD_BINARY sets the mod's binary
+# Run Claude Code with the mod from disk, this checkout's HUD binary, and whats-agent-doing off — for trying or tmux-QA'ing the mod (TCH_HUD_BINARY overrides the binary)
 mod-dev *args:
     #!/usr/bin/env zsh
     set -e
-    settings='{"enabledPlugins":{"whats-agent-doing@tzafrir":false}}'
-    if [[ -n "${TCH_HUD_BINARY:-}" ]]; then
-        settings=$(jq -cn --arg bin "$TCH_HUD_BINARY" \
-            '{enabledPlugins:{"whats-agent-doing@tzafrir":false},pluginConfigs:{"tch-activity":{options:{binary:$bin}}}}')
+    bin="${TCH_HUD_BINARY:-}"
+    if [[ -z "$bin" ]]; then
+        bin="${TMPDIR:-/tmp}/tch-activity-dev/tail-claude-hud"
+        go build -o "$bin" ./cmd/tail-claude-hud
     fi
+    settings=$(jq -cn --arg bin "$bin" \
+        '{enabledPlugins:{"whats-agent-doing@tzafrir":false},pluginConfigs:{"tch-activity":{options:{binary:$bin}}}}')
     exec claude --plugin-dir {{mod}} --settings "$settings" {{args}}
 
 # Run design evaluation

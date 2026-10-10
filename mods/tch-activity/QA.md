@@ -4,23 +4,16 @@ A script for checking the mod in a real Claude Code session driven through tmux.
 
 ## Setup
 
-1. Build a HUD binary that has `style --json`, without installing it:
+1. Start the session in a new window from the repository root. `just mod-dev` builds this checkout's HUD binary, which has `style --json`, and points the mod at it:
 
    ```
-   go build -o "$TMPDIR/tch-qa/tail-claude-hud" ./cmd/tail-claude-hud
-   "$TMPDIR/tch-qa/tail-claude-hud" style --json | head -3    # expect "schema": 1
-   ```
-
-2. Start the session in a new window from the repository root:
-
-   ```
-   tmux new-window -d -n tch-activity-qa -c "$PWD" "TCH_HUD_BINARY=$TMPDIR/tch-qa/tail-claude-hud just mod-dev"
+   tmux new-window -d -n tch-activity-qa -c "$PWD" "just mod-dev"
    tmux list-panes -t tch-activity-qa -F '#{pane_id} #{pane_current_command}'
    ```
 
    Target the pane whose command is `just` (or `claude`) by its id, `P=%NNNN`, in every later step. A sidebar pane may share the window; never send keys to it.
 
-3. Wait until `tmux capture-pane -p -t $P` shows the prompt `❯`. If a folder trust question shows first, send `Enter`.
+2. Wait until `tmux capture-pane -p -t $P` shows the prompt `❯`. If a folder trust question shows first, send `Enter`.
 
 ## Read the band
 

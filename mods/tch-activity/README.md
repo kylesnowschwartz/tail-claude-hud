@@ -60,12 +60,6 @@ Focus the band with `ctrl+x tab` and press Enter, or click the triangle, to expa
 
 The box steps aside while a survey holds the band. Other mods that draw above the prompt keep their place beneath it.
 
-## Style choices
-
-- **A rounded box with a muted border.** The HUD statusline is borderless segments separated by ` | `, but the band sits between the transcript and the prompt, where a frame keeps it from reading as transcript output. A rounded, muted frame is how tail-claude, the HUD's predecessor TUI, draws its cards. The border takes the permission color only while Claude waits on you, the one state worth catching from the corner of an eye.
-- **Segments inside follow the statusline.** The icon-space-label pairing, the faint ` | ` before the timer, durations in the tools widget's format (`0.6s`, `12.3s`, `1m 48s`), the running tool in bold running color, and agent names in their palette color (the Nth agent of the session takes `agentColors[N % 8]`) all match what the HUD prints, so the two read as one system.
-- **Muted marks where the HUD has no icon.** Denied (`⊘`), interrupted (`■`), prompt (`›`) and compaction (`⇣`) rows have no HUD icon; they keep whats-agent-doing's glyphs, drawn muted.
-
 ## Data and privacy
 
 The mod runs one local command per session (`tail-claude-hud style --json`) and reads `HOME` to find it. It keeps its headline, history and look in the session's own state (`$.state`). It makes no network calls and writes no files. Every hook is display only and passes its event on unchanged; it never answers a permission prompt.
@@ -81,7 +75,7 @@ just mod-dev      # claude with this folder loaded (hot-reloads on save), whats-
 just mod-check    # validate (mod and marketplace), run the tests, typecheck
 ```
 
-`just mod-dev` passes `--settings '{"enabledPlugins":{"whats-agent-doing@tzafrir":false}}'`, which turns the installed whats-agent-doing off for that session alone. Set `TCH_HUD_BINARY=/path/to/tail-claude-hud` to point the mod at a HUD binary for the session (say, one built from a branch with `go build -o`). Loading the mod writes the API's types to `.claude-plugin/types/` (git-ignored), which `tsconfig.json` extends; `just mod-check` typechecks only once that has happened.
+`just mod-dev` builds this checkout's HUD binary to a temporary folder and points the mod at it, and passes `--settings` with `"enabledPlugins":{"whats-agent-doing@tzafrir":false}`, which turns an installed whats-agent-doing off for that session alone. Set `TCH_HUD_BINARY=/path/to/tail-claude-hud` to use another HUD binary. Loading the mod writes the API's types to `.claude-plugin/types/` (git-ignored), which `tsconfig.json` extends; `just mod-check` typechecks only once that has happened.
 
 `QA.md` is a scripted checklist for driving the mod in tmux.
 
