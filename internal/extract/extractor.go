@@ -324,8 +324,8 @@ func (es *ExtractionState) ProcessEntry(e transcript.Entry) {
 	// Output only: input/cache tokens are processed, not generated, and would
 	// spike the rate. Usage is a value type on the library Entry; absent usage
 	// decodes to the zero value, which the OutputTokens > 0 guard filters.
-	// The transcript's message.id isn't modeled by the library, so identical
-	// usage vs the previous sample is the split-entry dedupe key.
+	// Split entries of one response repeat its usage, so identical usage vs
+	// the previous sample is the split-entry dedupe key.
 	if e.Message.Role == "assistant" {
 		key := usageKeyOf(e.Message.Usage)
 		if e.Message.Usage.OutputTokens > 0 && key != es.lastSampleUsage {
@@ -840,8 +840,8 @@ type snapshotSkill struct {
 	Timestamp string `json:"ts"` // RFC3339Nano
 }
 
-// usageKey identifies one API response by its token counts, standing in for
-// the transcript's unmodeled message.id. Comparable so split entries that
+// usageKey identifies one API response by its token counts for the speed
+// samples' split-entry dedupe. Comparable so split entries that
 // repeat the same usage dedupe with ==; the zero value means "no sample yet"
 // (unreachable for a real sample, which requires OutputTokens > 0).
 type usageKey struct {
