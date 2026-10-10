@@ -41,7 +41,7 @@ run-sample:
 # The activity mod (a Claude Code function-hooks plugin) under mods/.
 mod := "mods/tch-activity"
 
-# Validate the mod and the marketplace, run the mod's tests, and typecheck it
+# Validate the mod and the marketplace, run the mod's tests, and typecheck it (skipped until one `just mod-dev` run writes the API types)
 mod-check:
     #!/usr/bin/env zsh
     set -e
@@ -49,8 +49,8 @@ mod-check:
     claude plugin validate --strict .
     claude plugin test {{mod}}
     if [[ ! -f {{mod}}/.claude-plugin/types/tsconfig.json ]]; then
-        echo "No API types in {{mod}}/.claude-plugin/types: run 'just mod-dev' once, which writes them, then rerun."
-        exit 1
+        echo "type check skipped: run 'just mod-dev' once to write the API types"
+        exit 0
     fi
     npx -y -p typescript tsc -p {{mod}}
 
