@@ -61,6 +61,8 @@ type usageSegment struct {
 	text      string
 	plainText string
 	fgColor   string
+	// stateColor is the warning or critical color, "" in the normal tier.
+	stateColor string
 }
 
 // ---------------------------------------------------------------------------
@@ -73,6 +75,7 @@ func usageWindow(label string, pct int, resetAt time.Time, cfg *config.Config) u
 		pct = 0
 	}
 	fg := usageFgColor(pct, cfg)
+	state := usageStateColor(pct, cfg)
 	pctStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(fg))
 
 	var styled, plain strings.Builder
@@ -83,7 +86,7 @@ func usageWindow(label string, pct int, resetAt time.Time, cfg *config.Config) u
 		// A bar alone can't tell 5h from 7d apart, so the label leads.
 		append(usageLabel(label))
 		append(usageBar(pct, cfg.Usage.BarWidth, pctStyle))
-		return usageSegment{text: styled.String(), plainText: plain.String(), fgColor: fg}
+		return usageSegment{text: styled.String(), plainText: plain.String(), fgColor: fg, stateColor: state}
 	}
 
 	// 1. Circle-fill icon (nerdfont) or percentage fallback
@@ -96,7 +99,7 @@ func usageWindow(label string, pct int, resetAt time.Time, cfg *config.Config) u
 	// 2. Reset countdown
 	append(usageReset(resetAt))
 
-	return usageSegment{text: styled.String(), plainText: plain.String(), fgColor: fg}
+	return usageSegment{text: styled.String(), plainText: plain.String(), fgColor: fg, stateColor: state}
 }
 
 // ---------------------------------------------------------------------------
@@ -163,9 +166,10 @@ func usageLimitReached(u *model.UsageInfo, cfg *config.Config) WidgetResult {
 	}
 
 	return WidgetResult{
-		Text:      style.Render(label),
-		PlainText: label,
-		FgColor:   critFg,
+		Text:       style.Render(label),
+		PlainText:  label,
+		FgColor:    critFg,
+		StateColor: critFg,
 	}
 }
 
@@ -175,19 +179,21 @@ func usageJoin(windows []usageSegment) WidgetResult {
 	styledParts := make([]string, len(windows))
 	plainParts := make([]string, len(windows))
 	fgColor := ""
+	stateColor := ""
 
 	for i, w := range windows {
 		styledParts[i] = w.text
 		plainParts[i] = w.plainText
 		if usageColorPriority(w.fgColor) > usageColorPriority(fgColor) {
 			fgColor = w.fgColor
+			stateColor = w.stateColor
 		}
 	}
 
 	text := strings.Join(styledParts, DimStyle.Render(" | "))
 	plain := strings.Join(plainParts, " | ")
 
-	return WidgetResult{Text: text, PlainText: plain, FgColor: fgColor}
+	return WidgetResult{Text: text, PlainText: plain, FgColor: fgColor, StateColor: stateColor}
 }
 
 // ---------------------------------------------------------------------------
@@ -202,6 +208,13 @@ func appendPair(styled, plain *strings.Builder, s, p string) {
 	}
 	styled.WriteString(s)
 	plain.WriteString(p)
+}
+
+// usageStateColor returns the warning or critical color for a usage
+// percentage, or "" below the warning tier.
+func usageStateColor(pct int, cfg *config.Config) string {
+	return thresholdStateColor(pct, 50, 80,
+		cfg.Style.Colors.Context, cfg.Style.Colors.Warning, cfg.Style.Colors.Critical)
 }
 
 // usageFgColor returns the ANSI foreground color for a usage percentage.

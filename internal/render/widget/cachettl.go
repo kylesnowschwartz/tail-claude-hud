@@ -68,9 +68,10 @@ func cacheTTLAt(ctx *model.RenderContext, cfg *config.Config, now time.Time) Wid
 		warnFg = color.ResolveColorName(cfg.Style.Colors.Warning)
 	}
 	return WidgetResult{
-		Text:      colorStyle(cfg.Style.Colors.Warning, yellowStyle).Render(text),
-		PlainText: text,
-		FgColor:   warnFg,
+		Text:       colorStyle(cfg.Style.Colors.Warning, yellowStyle).Render(text),
+		PlainText:  text,
+		FgColor:    warnFg,
+		StateColor: warnFg,
 	}
 }
 

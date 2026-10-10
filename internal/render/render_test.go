@@ -2,6 +2,7 @@ package render
 
 import (
 	"bytes"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -1023,5 +1024,91 @@ func TestRender_CompletedAgentWithLowDurationHidden(t *testing.T) {
 
 	if strings.Contains(out, "Ghost") {
 		t.Errorf("expected agent 'Ghost' with DurationMs=6 to be hidden, but found in %q", out)
+	}
+}
+
+// regexpSGR matches one SGR escape sequence.
+var regexpSGR = regexp.MustCompile(`\x1b\[[0-9;]*m`)
+
+// stateTestConfig is a plain-mode config on the built-in default theme, whose
+// context and cost entries carry an fg, with the default threshold colors.
+func stateTestConfig(widgetName string) *config.Config {
+	cfg := config.LoadHud()
+	cfg.Style.Mode = "plain"
+	cfg.Style.ColorLevel = "256"
+	cfg.Style.Icons = "ascii"
+	cfg.Style.Colors.Context = ""
+	cfg.Style.Colors.Warning = ""
+	cfg.Style.Colors.Critical = ""
+	cfg.Thresholds.ContextWarning = 70
+	cfg.Thresholds.ContextCritical = 85
+	cfg.Thresholds.CostWarning = 5
+	cfg.Thresholds.CostCritical = 10
+	cfg.Lines = []config.Line{{Widgets: []string{widgetName}}}
+	cfg.ResolvedTheme = theme.Load("default")
+	return cfg
+}
+
+// TestRender_ContextStateColorsBeatThemeFg verifies that the theme's context
+// fg colors only the normal tier: warning and critical keep their own colors
+// and bold, so 40%, 75% and 92% render in three different styles.
+func TestRender_ContextStateColorsBeatThemeFg(t *testing.T) {
+	styles := map[string]int{}
+	for _, pct := range []int{40, 75, 92} {
+		ctx := &model.RenderContext{ContextPercent: pct, ContextWindowSize: 200000}
+		cfg := stateTestConfig("context")
+
+		var buf bytes.Buffer
+		Render(&buf, ctx, cfg)
+		out := buf.String()
+
+		escapes := strings.Join(regexpSGR.FindAllString(out, -1), "")
+		styles[escapes] = pct
+
+		themeFg := "38;5;42"
+		if pct == 40 && !strings.Contains(out, themeFg) {
+			t.Errorf("40%%: expected the theme's context fg %s, got %q", themeFg, out)
+		}
+		if pct != 40 {
+			if strings.Contains(out, themeFg) {
+				t.Errorf("%d%%: theme fg %s replaced the state color, got %q", pct, themeFg, out)
+			}
+			if want := widget.Context(ctx, cfg).Text; !strings.Contains(out, want) {
+				t.Errorf("%d%%: expected the widget's own styled text %q in %q", pct, want, out)
+			}
+		}
+	}
+	if len(styles) != 3 {
+		t.Errorf("expected three distinct styles for 40/75/92%%, got %v", styles)
+	}
+}
+
+// TestRender_CostCriticalBeatsThemeFg verifies that cost at its critical
+// threshold renders its critical color, not the theme's cost fg.
+func TestRender_CostCriticalBeatsThemeFg(t *testing.T) {
+	ctx := &model.RenderContext{SessionCostUSD: 12.5}
+	cfg := stateTestConfig("cost")
+
+	var buf bytes.Buffer
+	Render(&buf, ctx, cfg)
+	out := buf.String()
+
+	if strings.Contains(out, "38;5;87") {
+		t.Errorf("theme cost fg replaced the critical color: %q", out)
+	}
+	if want := widget.Cost(ctx, cfg).Text; !strings.Contains(out, want) {
+		t.Errorf("expected the critical-styled %q in %q", want, out)
+	}
+}
+
+// TestResolveSegmentFg_StateColorWinsOverTheme verifies that in powerline and
+// minimal modes a widget's state color wins over the theme fg.
+func TestResolveSegmentFg_StateColorWinsOverTheme(t *testing.T) {
+	r := widget.WidgetResult{FgColor: "1", StateColor: "1"}
+	cfg := config.LoadHud()
+	cfg.ResolvedTheme = theme.Theme{"context": {Fg: "#ff8800"}}
+
+	if got := resolveSegmentFg(r, "context", cfg); got != "1" {
+		t.Errorf("expected state color '1', got %q", got)
 	}
 }

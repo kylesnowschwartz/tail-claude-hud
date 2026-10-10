@@ -12,8 +12,8 @@ import (
 // critical at cfg.Thresholds.CostCritical USD.
 //
 // Returns an empty WidgetResult when SessionCostUSD is zero (no cost data available).
-// FgColor is left empty because the widget selects among multiple styles dynamically;
-// the renderer passes the pre-styled Text through as-is.
+// FgColor carries the tier's color; StateColor is set at warning and above so
+// the tier's color survives a theme fg override.
 func Cost(ctx *model.RenderContext, cfg *config.Config) WidgetResult {
 	if ctx.SessionCostUSD == 0 {
 		return WidgetResult{}
@@ -48,5 +48,7 @@ func Cost(ctx *model.RenderContext, cfg *config.Config) WidgetResult {
 		Text:      activeStyle.Render(plain),
 		PlainText: plain,
 		FgColor:   fgColor,
+		StateColor: thresholdStateColor(scaledPct, scaledWarn, 100,
+			cfg.Style.Colors.Context, cfg.Style.Colors.Warning, cfg.Style.Colors.Critical),
 	}
 }

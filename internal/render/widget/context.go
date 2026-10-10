@@ -100,6 +100,15 @@ func thresholdFgColor(pct, warnAt, critAt int, cfgContext, cfgWarning, cfgCritic
 	}
 }
 
+// thresholdStateColor returns the warning or critical color once pct reaches
+// warnAt, and "" in the normal tier, where a theme fg may color the widget.
+func thresholdStateColor(pct, warnAt, critAt int, cfgContext, cfgWarning, cfgCritical string) string {
+	if pct < warnAt {
+		return ""
+	}
+	return thresholdFgColor(pct, warnAt, critAt, cfgContext, cfgWarning, cfgCritical)
+}
+
 // renderBar builds a block-character progress bar of the given width.
 // Filled cells use █ and empty cells use ░.
 // Example for 40% at width 10: "████░░░░░░"
@@ -137,8 +146,8 @@ func renderBar(pct, width int) string {
 // true, a token breakdown is appended: " in:84k cr:12k rd:8k".
 //
 // Returns an empty WidgetResult when both ContextPercent and ContextWindowSize are zero.
-// FgColor is left empty because the widget composes multiple styles internally;
-// the renderer passes the pre-styled Text through as-is.
+// FgColor carries the tier's color; StateColor is set at warning and above so
+// the tier's color, bold and breakdown survive a theme fg override.
 func Context(ctx *model.RenderContext, cfg *config.Config) WidgetResult {
 	if ctx.ContextPercent == 0 && ctx.ContextWindowSize == 0 {
 		return WidgetResult{}
@@ -233,6 +242,8 @@ func Context(ctx *model.RenderContext, cfg *config.Config) WidgetResult {
 		Text:      text,
 		PlainText: plainText,
 		FgColor:   fgColor,
+		StateColor: thresholdStateColor(pct, warnAt, critAt,
+			cfg.Style.Colors.Context, cfg.Style.Colors.Warning, cfg.Style.Colors.Critical),
 	}
 }
 

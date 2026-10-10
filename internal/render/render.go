@@ -59,14 +59,18 @@ func resolveSegmentBg(r widget.WidgetResult, widgetName string, cfg *config.Conf
 }
 
 // resolveSegmentFg returns the effective foreground color for a widget segment:
-//  1. cfg.ResolvedTheme[widgetName].Fg (user theme override — highest priority)
-//  2. r.FgColor (widget-level explicit fg default)
-//  3. "" (no explicit fg; let lipgloss use terminal default)
+//  1. r.StateColor (a warning or critical state the widget is in)
+//  2. cfg.ResolvedTheme[widgetName].Fg (user theme override)
+//  3. r.FgColor (widget-level explicit fg default)
+//  4. "" (no explicit fg; let lipgloss use terminal default)
 //
-// Theme overrides take priority over widget defaults so that user config is
-// never silently blocked by a widget's built-in FgColor.
+// The theme fg is the widget's identity color for its normal state: it beats
+// the widget's built-in FgColor, but never hides a warning or critical state.
 func resolveSegmentFg(r widget.WidgetResult, widgetName string, cfg *config.Config) string {
-	// Theme overrides take priority — user intent beats widget defaults.
+	if r.StateColor != "" {
+		return color.ResolveColorName(r.StateColor)
+	}
+	// Theme overrides beat widget defaults — user intent beats built-ins.
 	if cfg.ResolvedTheme != nil {
 		if colors, ok := cfg.ResolvedTheme[widgetName]; ok && colors.Fg != "" {
 			return color.ResolveColorName(colors.Fg)
@@ -305,8 +309,10 @@ func Render(w io.Writer, ctx *model.RenderContext, cfg *config.Config) {
 // applyWidgetStyle converts a WidgetResult to a styled string for plain mode.
 //
 // When ResolvedTheme has an fg override for this widget AND the widget signals
-// it accepts theme coloring (r.FgColor != ""), PlainText is re-rendered with
-// the override color. This avoids double-wrapping: r.Text already has the
+// it accepts theme coloring (r.FgColor != "") AND it is in no warning or
+// critical state (r.StateColor == ""), PlainText is re-rendered with the
+// override color. In a state, the widget's own styled Text (its state color,
+// bold, dim detail) is kept. This avoids double-wrapping: r.Text already has the
 // widget's ANSI codes baked in, so wrapping it again with a different fg
 // produces conflicting escape sequences.
 //
@@ -335,7 +341,7 @@ func applyWidgetStyle(r widget.WidgetResult, widgetName string, cfg *config.Conf
 	// styles (e.g. tools with yellow/dim separators, green/red icons).
 	// Skip the theme fg override to preserve per-element ANSI styling.
 	// Widgets that want theme fg to apply set FgColor to a non-empty value.
-	if fgOverride != "" && r.FgColor != "" {
+	if fgOverride != "" && r.FgColor != "" && r.StateColor == "" {
 		// Re-render from PlainText to avoid double-styling.
 		text := r.PlainText
 		if text == "" {

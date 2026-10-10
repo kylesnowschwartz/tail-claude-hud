@@ -26,6 +26,11 @@ type WidgetResult struct {
 	PlainText string // unstyled text (for powerline/minimal modes)
 	FgColor   string // foreground color (lipgloss color string) for PlainText
 	BgColor   string // background color (lipgloss color string); empty means use theme
+
+	// StateColor is set when the widget is in a state that demands its own
+	// color (a warning or critical threshold). It wins over a theme fg
+	// override, which is the widget's identity color for its normal state.
+	StateColor string
 }
 
 // IsEmpty reports whether the result has no content to display.
