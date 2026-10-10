@@ -205,9 +205,10 @@ func Context(ctx *model.RenderContext, cfg *config.Config) WidgetResult {
 		text = activeStyle.Render(label)
 	}
 
-	// Prepend a circle-slice Nerd Font icon that fills proportionally with usage.
+	// A circle-slice Nerd Font icon that fills with usage leads the value,
+	// as the clock and branch icons lead theirs.
 	if cfg.Style.Icons == "nerdfont" {
-		text = text + " " + percentToIcon(pct)
+		text = percentToIcon(pct) + " " + text
 	}
 
 	// Build PlainText: the unstyled version for powerline/minimal rendering.
@@ -221,7 +222,7 @@ func Context(ctx *model.RenderContext, cfg *config.Config) WidgetResult {
 		plainText = label
 	}
 	if cfg.Style.Icons == "nerdfont" {
-		plainText = plainText + " " + percentToIcon(pct)
+		plainText = percentToIcon(pct) + " " + plainText
 	}
 
 	// Append token breakdown when context exceeds the critical threshold and breakdown is enabled.

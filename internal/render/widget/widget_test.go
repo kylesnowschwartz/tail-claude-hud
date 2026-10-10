@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/config"
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/model"
@@ -2200,8 +2201,11 @@ func TestContextWidget_NerdfontIconPrepended(t *testing.T) {
 	got := Context(ctx, cfg)
 	// 50% maps to index 3 (44-56% range) → circle_slice_4 (U+F0AA1).
 	wantIcon := "\U000F0AA1"
-	if !strings.Contains(got.Text, wantIcon) {
-		t.Errorf("Context(nerdfont, 50%%): expected circle-slice icon %q in output, got %q", wantIcon, got.Text)
+	if plain := ansi.Strip(got.Text); !strings.HasPrefix(plain, wantIcon+" 50%") {
+		t.Errorf("Context(nerdfont, 50%%): want icon before the value, got %q", plain)
+	}
+	if !strings.HasPrefix(got.PlainText, wantIcon+" 50%") {
+		t.Errorf("Context(nerdfont, 50%%) PlainText: want icon before the value, got %q", got.PlainText)
 	}
 }
 
