@@ -571,7 +571,7 @@ describe('register', () => {
     expect((await ui.find({ key: 'agents' }))?.props['paddingLeft']).toBe(4)
   })
 
-  test('the box grows to its widest row and never shrinks', async ($, on) => {
+  test('between turns the box grows to its widest row and holds that width', async ($, on) => {
     const { box, clock } = seat(on, [])
 
     box.toolAnswer = { text: 'ok', result: null } as never
@@ -1437,6 +1437,107 @@ describe('style', () => {
     await ui.press({ key: 'toggle' })
 
     expect((await ui.find({ key: 'history' }))?.text ?? '').toContain('Built-in look: /home/kyle/go/bin/tail-claude-hud style --json printed no style this mod reads')
+  })
+})
+
+describe('box width', () => {
+  const LONG_PATH = `src/${'long-name-'.repeat(8)}.ts`
+
+  /** The frame's width, and what its rows ask for: the widest row plus the border and padding. */
+  async function widthsOf(ui: Awaited<ReturnType<typeof mount>>) {
+    const width = (await ui.find({ key: 'frame' }))?.props['minWidth'] as number
+    const headline = (await ui.find({ key: 'activity' }))?.text ?? ''
+    const agentRows = await Promise.all([0, 1, 2].map(async i => (await ui.find({ key: `agent-${i}` }))?.text))
+    const rows = [headline.length, ...agentRows.filter(row => row !== undefined).map(row => 4 + row.length)]
+
+    return { width, fit: Math.max(...rows) + 4 }
+  }
+
+  test('the box grows within a turn and holds its width between steps', async ($, on) => {
+    const { box, clock } = seat(on, [])
+    const ui = await mount($, box)
+    const widths: number[] = []
+
+    box.toolAnswer = { text: 'ok', result: null } as never
+    box.onTool = async () => {
+      widths.push((await widthsOf(ui)).width)
+    }
+    box.onCompact = async () => {
+      widths.push((await widthsOf(ui)).width)
+    }
+
+    await $.turn.start({ text: 'read it', turnId: 't1' })
+    await $.tool.call({ tool: 'Read', file_path: LONG_PATH })
+    await clock.advance(1)
+    await $.session.compact({ trigger: 'auto', messages: TRANSCRIPT })
+
+    // The compaction's headline is far shorter than the read's; the box keeps the read's width.
+    expect((await ui.find({ key: 'activity' }))?.text ?? '').not.toContain('long-name')
+    expect(widths[1]).toBe(widths[0])
+    expect((await widthsOf(ui)).width).toBe(widths[0])
+  })
+
+  test("the box shrinks to fit the idle headline at the turn's end", async ($, on) => {
+    const { box, clock } = seat(on, [])
+    const ui = await mount($, box)
+    let turnWidth = 0
+
+    box.toolAnswer = { text: 'ok', result: null } as never
+    box.onTool = async () => {
+      turnWidth = (await widthsOf(ui)).width
+    }
+
+    const { turnId } = await $.turn.start({ text: 'read it', turnId: 't1' })
+
+    await $.tool.call({ tool: 'Read', file_path: LONG_PATH })
+    await $.turn.complete({ ...DONE, turnId })
+    await clock.advance(1)
+
+    const { width, fit } = await widthsOf(ui)
+
+    expect((await ui.find({ key: 'activity' }))?.text ?? '').toContain('Idle · last turn done')
+    expect(width).toBe(fit)
+    expect(width).toBeLessThan(turnWidth)
+
+    // The next turn starts from there and grows again.
+    const next = await $.turn.start({ text: 'read it again', turnId: 't2' })
+
+    await $.tool.call({ tool: 'Read', file_path: LONG_PATH })
+    await $.turn.complete({ ...DONE, turnId: next.turnId })
+    await clock.advance(1)
+
+    expect(turnWidth).toBeGreaterThan(width)
+    expect((await widthsOf(ui)).width).toBe((await widthsOf(ui)).fit)
+  })
+
+  test("agents still at work after the turn keep the width their rows need", async ($, on) => {
+    const { box, clock } = seat(on, [])
+
+    on('agent.spawn', ($, e) => ({ model: 'claude-opus-5-5', agentId: `agent-${e.tool_use_id}` }))
+
+    const ui = await mount($, box)
+    let turnWidth = 0
+
+    box.toolAnswer = { text: 'ok', result: null } as never
+    box.onTool = async () => {
+      turnWidth = (await widthsOf(ui)).width
+    }
+
+    const { turnId } = await $.turn.start({ text: 'start the agents', turnId: 't1' })
+
+    await $.agent.spawn({ ...SPAWN, tool_use_id: 'tu1', description: 'Survey the configuration loaders' })
+    await $.agent.spawn({ ...SPAWN, tool_use_id: 'tu2', description: 'Draft the plan' })
+    await $.tool.call({ tool: 'Read', file_path: LONG_PATH })
+    await $.turn.complete({ ...DONE, turnId })
+    await clock.advance(1)
+
+    const { width, fit } = await widthsOf(ui)
+
+    expect((await ui.find({ key: 'agents' }))?.text ?? '').toContain('Survey the configuration loaders')
+    expect(width).toBe(fit)
+    // An agent's row, not the idle headline, is what sets the width.
+    expect(width).toBeGreaterThan(((await ui.find({ key: 'activity' }))?.text ?? '').length + 4)
+    expect(width).toBeLessThan(turnWidth)
   })
 })
 

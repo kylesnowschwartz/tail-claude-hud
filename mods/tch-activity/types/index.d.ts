@@ -99,6 +99,15 @@ export type TchStyleSource =
   | { kind: 'hud'; binary: string; preset: string }
   | { kind: 'builtin'; reason: string; binary: string; preset: string }
 
+/**
+ * The widest the box has been since the last turn ended (`columns`), and how
+ * many turns have ended, each of which set `columns` back to 0.
+ */
+export type BoxWidth = {
+  columns: number
+  turnEnds: number
+}
+
 declare module 'claude-code' {
   interface PluginState {
     'tch-activity': {
@@ -106,7 +115,7 @@ declare module 'claude-code' {
       history: readonly ActivityEntry[]
       agents: readonly ActivityAgent[]
       isExpanded: boolean
-      width: number
+      boxWidth: BoxWidth
       style: TchStyle | null
       styleSource: TchStyleSource | null
       agentOrder: readonly string[]

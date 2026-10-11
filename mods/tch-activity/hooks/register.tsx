@@ -12,7 +12,7 @@ import type {
   TurnStepChunk,
 } from 'claude-code'
 
-import type { ActivityAgent, ActivityEntry, ActivityOutcome, TchStyle, TchStyleSource } from '../types'
+import type { ActivityAgent, ActivityEntry, ActivityOutcome, BoxWidth, TchStyle, TchStyleSource } from '../types'
 import { activityOf, isAgentTool } from './activity-of'
 import {
   agentLabel,
@@ -96,8 +96,16 @@ const lastTurn = atom(
 
 const isExpanded = atom({ plugin: 'tch-activity', key: 'isExpanded' } as const, false)
 
-/** The widest the box has been this session, in columns: it grows to fit and never shrinks. */
-const boxWidth = atom({ plugin: 'tch-activity', key: 'width' } as const, 0)
+/**
+ * The widest the box has been since the last turn ended, in columns: it grows
+ * to fit, and a turn's end sets it back to 0 so the box fits what it shows.
+ * `turnEnds` counts those resets, so a width a draw measured before one is
+ * not kept after it.
+ */
+const boxWidth = atom(
+  { plugin: 'tch-activity', key: 'boxWidth' } as const,
+  { columns: 0, turnEnds: 0 } as BoxWidth,
+)
 
 /** The HUD's look, loaded once per session; `null` until then. */
 const styleState = atom({ plugin: 'tch-activity', key: 'style' } as const, null as TchStyle | null)
@@ -415,6 +423,9 @@ export const register: Register = (on, options) => {
 
       return next(e)
     }
+
+    // The box grew to fit the turn; between turns it fits what it shows.
+    await update($, boxWidth, width => ({ columns: 0, turnEnds: width.turnEnds + 1 }))
 
     const clock = turnClockOf(live)
 
@@ -1114,9 +1125,9 @@ type AbovePromptInput = RenderInput<'AbovePrompt'>
 /**
  * Draws the box above the prompt: the headline, a row per agent at work
  * beside the main loop, and, behind the triangle, the history. The box is as
- * wide as the widest row it has drawn this session, so it never shrinks
- * between states. While a turn runs, its total is drawn just right of the
- * box, on the headline's line.
+ * wide as the widest row it has drawn since the last turn ended, so it never
+ * shrinks between a turn's steps. While a turn runs, its total is drawn just
+ * right of the box, on the headline's line.
  */
 async function drawBox($: EngineInterface, e: AbovePromptInput) {
   const { Box, Text, Button } = $.ui.resolve(e)
@@ -1127,7 +1138,7 @@ async function drawBox($: EngineInterface, e: AbovePromptInput) {
   const entries = await read($, history)
   const working = await read($, team)
   const isOpen = await read($, isExpanded)
-  const widest = await read($, boxWidth)
+  const { columns: widest, turnEnds } = await read($, boxWidth)
   const nowMs = await $.clock.now()
 
   /**
@@ -1235,7 +1246,10 @@ async function drawBox($: EngineInterface, e: AbovePromptInput) {
 
   if (natural > widest) {
     // Drawing may not write state: the wider box is kept just after.
-    $.clock.after(0, () => void update($, boxWidth, width => Math.max(width, natural)))
+    // A turn that ended since this draw has reset the width, which stands.
+    $.clock.after(0, () => void update($, boxWidth, width => width.turnEnds === turnEnds
+      ? { columns: Math.max(width.columns, natural), turnEnds }
+      : width))
   }
 
   const boxColumns = Math.min(Math.max(widest, natural), e.props.bodyColumns)
