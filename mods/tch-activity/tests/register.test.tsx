@@ -1441,39 +1441,44 @@ describe('style', () => {
 })
 
 describe('turn total', () => {
-  test('a running turn shows its total in whole seconds at the right of the headline', async ($, on) => {
+  test('a running turn shows its total in whole seconds beside the box, on the headline line', async ($, on) => {
     const { box, clock } = seat(on, [])
     const ui = await mount($, box)
-
-    /**
-     * The frame's width less what the headline itself takes: the gap and the
-     * room kept for the total, plus the frame's border and padding.
-     */
-    const roomBeyondHeadline = async () => {
-      const width = (await ui.find({ key: 'frame' }))?.props['minWidth'] as number
-      const row = (await ui.find({ key: 'activity' }))?.text ?? ''
-      const total = (await ui.find({ key: 'turn-total' }))?.text ?? ''
-
-      return width - (row.length - total.length)
-    }
+    const widthOf = async () => (await ui.find({ key: 'frame' }))?.props['minWidth'] as number
+    const idleWidth = await widthOf()
 
     await $.turn.start({ text: 'go', turnId: 't1' })
     await clock.advance(9900)
 
     const total = await ui.find({ key: 'turn-total' })
-    const row = await ui.find({ key: 'activity' })
+    const band = await ui.find({ key: 'band-row' })
 
-    expect(total?.text).toBe('9s')
-    expect(total?.props).toMatchObject({ flexGrow: 1, justifyContent: 'flex-end' })
-    expect(row?.children.at(-1)).toMatchObject({ props: { key: 'turn-total' } })
-    expect(await ui.find({ type: 'Text', text: '9s' })).toMatchObject({ props: { dimColor: true } })
-    expect(await roomBeyondHeadline()).toBe(1 + 7 + 4)
+    expect(total?.text).toBe(' · 9s')
+    expect(total?.props).toMatchObject({ marginTop: 1 })
+    expect(band?.children).toMatchObject([{ props: { key: 'frame' } }, { props: { key: 'turn-total' } }])
+    expect((await ui.find({ key: 'frame' }))?.text ?? '').not.toContain('·')
+    expect(await ui.find({ type: 'Text', text: ' · 9s' })).toMatchObject({ props: { dimColor: true } })
+
+    // The headline here is narrower than the idle one: the box keeps its width.
+    expect(await widthOf()).toBe(idleWidth)
 
     await clock.advance(60_100)
 
-    // A longer total fills the room kept for it: the box grows only with the headline.
-    expect((await ui.find({ key: 'turn-total' }))?.text).toBe('1m 10s')
-    expect(await roomBeyondHeadline()).toBe(1 + 7 + 4)
+    expect((await ui.find({ key: 'turn-total' }))?.text).toBe(' · 1m 10s')
+    expect(await widthOf()).toBe(idleWidth)
+  })
+
+  test('the expanded history leaves the total on the headline line', async ($, on) => {
+    const { box, clock } = seat(on, [])
+    const ui = await mount($, box)
+
+    await $.turn.start({ text: 'go', turnId: 't1' })
+    await ui.press({ key: 'toggle' })
+    await clock.advance(2000)
+
+    expect((await ui.find({ key: 'history' }))?.text ?? '').not.toContain('·')
+    expect((await ui.find({ key: 'turn-total' }))?.props).toMatchObject({ marginTop: 1 })
+    expect((await ui.find({ key: 'band-row' }))?.children).toHaveLength(2)
   })
 
   test('the total leaves out the wait on your approval, and the turn end agrees', async ($, on) => {
@@ -1514,7 +1519,7 @@ describe('turn total', () => {
     await $.turn.complete({ ...DONE, turnId })
 
     // Held at 2s while the dialog is up, then on from there.
-    expect(totals).toEqual(['2s', '3s'])
+    expect(totals).toEqual([' · 2s', ' · 3s'])
     expect(await box.read()).toContain('done in 3.5s, 1 action')
   })
 
@@ -1533,7 +1538,7 @@ describe('turn total', () => {
     await $.tool.call({ tool: 'AskUserQuestion', questions: [] } as Parameters<Engine['tool']['call']>[0])
     await clock.advance(1000)
 
-    expect((await ui.find({ key: 'turn-total' }))?.text).toBe('5s')
+    expect((await ui.find({ key: 'turn-total' }))?.text).toBe(' · 5s')
 
     await $.turn.complete({ ...DONE, turnId })
 

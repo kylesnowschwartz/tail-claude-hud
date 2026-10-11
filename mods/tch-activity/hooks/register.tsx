@@ -43,7 +43,7 @@ import {
   withAgentCall,
   withAgentKey,
 } from './live'
-import { AGENT_INDENT_COLUMNS, bandLayout, boxColumnsOf, columnsOf, rowColumnsOf, type Segment } from './layout'
+import { AGENT_INDENT_COLUMNS, bandLayout, boxColumnsOf, columnsOf, type Segment } from './layout'
 import { borderColor, entryMark, headlineMark, styleNote } from './marks'
 import {
   agentColor,
@@ -1103,14 +1103,11 @@ const SEPARATOR = ' | '
 /** The headline's show/hide arrow, one column wide. */
 const TOGGLE_COLUMNS = 1
 
-/** The least space between the headline and the turn's total at its right. */
-const TURN_TOTAL_GAP_COLUMNS = 1
+/** What sets the turn's total apart from the box's right border. */
+const TURN_TOTAL_LEAD = ' · '
 
-/**
- * The room a running turn keeps for its total, as wide as `59m 59s`: the box
- * widens for it once, not as the total grows.
- */
-const TURN_TOTAL_COLUMNS = 7
+/** The box's top border: the headline is on the line below it. */
+const HEADLINE_TOP_ROWS = 1
 
 type AbovePromptInput = RenderInput<'AbovePrompt'>
 
@@ -1118,7 +1115,8 @@ type AbovePromptInput = RenderInput<'AbovePrompt'>
  * Draws the box above the prompt: the headline, a row per agent at work
  * beside the main loop, and, behind the triangle, the history. The box is as
  * wide as the widest row it has drawn this session, so it never shrinks
- * between states.
+ * between states. While a turn runs, its total is drawn just right of the
+ * box, on the headline's line.
  */
 async function drawBox($: EngineInterface, e: AbovePromptInput) {
   const { Box, Text, Button } = $.ui.resolve(e)
@@ -1229,12 +1227,8 @@ async function drawBox($: EngineInterface, e: AbovePromptInput) {
   const teamLines = isTeamListed ? [...agentLines, ...moreAgents] : []
   const bodyLines = layout.isHistoryShown ? [...earlier, ...historyLines, ...empty, ...footer] : []
 
-  const turn = headline.turn ?? null
-  const turnTotal = turn === null ? null : wholeElapsedOf(turnTotalOf(turn, nowMs))
-  const headlineColumns = TOGGLE_COLUMNS + columnsOf(headlineSegments)
-
   const natural = boxColumnsOf([
-    turn === null ? headlineColumns : headlineColumns + TURN_TOTAL_GAP_COLUMNS + TURN_TOTAL_COLUMNS,
+    TOGGLE_COLUMNS + columnsOf(headlineSegments),
     ...teamLines.map(segments => AGENT_INDENT_COLUMNS + columnsOf(segments)),
     ...bodyLines.map(columnsOf),
   ])
@@ -1245,12 +1239,13 @@ async function drawBox($: EngineInterface, e: AbovePromptInput) {
   }
 
   const boxColumns = Math.min(Math.max(widest, natural), e.props.bodyColumns)
+  const turn = headline.turn ?? null
+  const turnTotal = turn === null ? null : `${TURN_TOTAL_LEAD}${wholeElapsedOf(turnTotalOf(turn, nowMs))}`
 
-  // The headline keeps its room: a total that would crowd it is left off.
-  const totalBox = turnTotal !== null
-    && headlineColumns + TURN_TOTAL_GAP_COLUMNS + columnsOf([{ text: turnTotal }]) <= rowColumnsOf(boxColumns)
+  // Beside the box on the headline's line; left off rather than crowd the box.
+  const totalBox = turnTotal !== null && boxColumns + columnsOf([{ text: turnTotal }]) <= e.props.bodyColumns
     ? [
-        <Box key="turn-total" flexGrow={1} flexShrink={0} justifyContent="flex-end" paddingLeft={TURN_TOTAL_GAP_COLUMNS}>
+        <Box key="turn-total" flexShrink={0} marginTop={HEADLINE_TOP_ROWS}>
           <Text dimColor>{turnTotal}</Text>
         </Box>,
       ]
@@ -1281,6 +1276,7 @@ async function drawBox($: EngineInterface, e: AbovePromptInput) {
     : []
 
   return (
+    <Box key="band-row" flexDirection="row">
       <Box
         key="frame"
         flexDirection="column"
@@ -1298,10 +1294,11 @@ async function drawBox($: EngineInterface, e: AbovePromptInput) {
             onPress={() => update($, isExpanded, open => !open)}
           />
           {line(headlineSegments)}
-          {totalBox}
         </Box>
         {teamBox}
         {body}
       </Box>
+      {totalBox}
+    </Box>
   )
 }
