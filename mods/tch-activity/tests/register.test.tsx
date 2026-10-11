@@ -496,9 +496,9 @@ describe('register', () => {
 
     const history = (await ui.find({ key: 'history' }))?.text ?? ''
 
-    expect(await box.read()).toContain('⊘ Idle · last turn stopped at a declined call after 1.5s')
+    expect(await box.read()).toContain('⊘ Idle · last turn stopped at a declined call after 1.7s')
     expect(history).toContain('⊘ Ask AppleScript 0.0s')
-    expect(history).toMatch(/⊘ Stopped at a declined call after 1\.5s(?!\s*[<\d])/)
+    expect(history).toMatch(/⊘ Stopped at a declined call after 1\.7s(?!\s*[<\d])/)
     expect(history).not.toContain('Done')
   })
 
@@ -1477,6 +1477,46 @@ describe('box width', () => {
     expect((await widthsOf(ui)).width).toBe(widths[0])
   })
 
+  test("a redraw while the turn ends keeps no width from the working headline", async ($, on) => {
+    const { box, clock } = seat(on, [[]])
+    const gapHeadlines: string[] = []
+    let isEnding = false
+
+    // Redraws the band as the turn's closing row is written, before the idle headline is.
+    on('state.set', async ($, e, next) => {
+      const result = await next(e)
+
+      if (isEnding && e.key === 'history') {
+        await ui.redraw()
+        gapHeadlines.push((await ui.find({ key: 'activity' }))?.text ?? '')
+      }
+
+      return result
+    })
+
+    const ui = await mount($, box)
+
+    box.toolAnswer = { text: 'ok', result: null } as never
+
+    const { turnId } = await $.turn.start({ text: 'read it', turnId: 't1' })
+
+    await step($, 0)
+    await $.tool.call({ tool: 'Read', file_path: LONG_PATH })
+    await clock.advance(1)
+    isEnding = true
+    await $.turn.complete({ ...DONE, turnId })
+    isEnding = false
+    await clock.advance(1)
+    await ui.redraw()
+    await clock.advance(1)
+
+    const { width, fit } = await widthsOf(ui)
+
+    // The redraw in the gap measured the working headline.
+    expect(gapHeadlines.some(headline => headline.includes('long-name'))).toBe(true)
+    expect(width).toBe(fit)
+  })
+
   test("the box shrinks to fit the idle headline at the turn's end", async ($, on) => {
     const { box, clock } = seat(on, [])
     const ui = await mount($, box)
@@ -1619,9 +1659,33 @@ describe('turn total', () => {
     await clock.advance(500)
     await $.turn.complete({ ...DONE, turnId })
 
-    // Held at 2s while the dialog is up, then on from there.
+    // Held at 2s while the dialog is up, then on from there; the grace before
+    // the dialog is taken up counts as the turn's.
     expect(totals).toEqual([' · 2s', ' · 3s'])
-    expect(await box.read()).toContain('done in 3.5s, 1 action')
+    expect(await box.read()).toContain('done in 3.7s, 1 action')
+  })
+
+  test('a dialog taken up after the grace never sets the total back', async ($, on) => {
+    const { box, clock } = seat(on, [])
+    const ui = await mount($, box)
+    const totals: (string | undefined)[] = []
+    const totalOf = async () => (await ui.find({ key: 'turn-total' }))?.text
+
+    box.verdict = 'ask'
+    box.toolAnswer = { text: 'ok', result: null } as never
+    box.onTool = async call => {
+      await $.tool.check({ tool: 'Bash', input: {}, tool_use_id: call.tool_use_id })
+      await clock.advance(200)
+      totals.push(await totalOf())
+      await clock.advance(200)
+      totals.push(await totalOf())
+    }
+
+    await $.turn.start({ text: 'run it', turnId: 't1' })
+    await clock.advance(11_900)
+    await $.tool.call({ tool: 'Bash', command: 'osascript', description: 'Wait in AppleScript' })
+
+    expect(totals).toEqual([' · 12s', ' · 12s'])
   })
 
   test('the total leaves out the wait on your answer', async ($, on) => {
@@ -1696,6 +1760,18 @@ function seatSpinner(on: On) {
 }
 
 describe('spinner', () => {
+  test('a survey holding the band leaves the spinner line to the engine', async ($, on) => {
+    mock.clock(on)
+    seatBand(on)
+    seatSpinner(on)
+
+    await $.ui.mount({ ...BAND, props: { ...BAND.props, hasSurvey: true } })
+
+    const ui = await $.ui.mount({ ...SPINNER, surface: 'terminal' })
+
+    expect((await ui.find({ key: 'engine' }))?.text ?? '').toContain('Ionizing…')
+  })
+
   test("the main conversation's terminal spinner line draws nothing", async ($, on) => {
     seatSpinner(on)
 

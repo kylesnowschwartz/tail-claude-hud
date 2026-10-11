@@ -134,6 +134,8 @@ const styleSource = atom(
 export const register: Register = (on, options) => {
   const live = createLive()
   const asked: StyleAsked = { isAsked: false, options }
+  /** Whether the terminal's last band draw drew the box. */
+  const band = { isBoxDrawn: true }
 
   on('session.start', async ($, e, next) => {
     const result = await next(e)
@@ -344,7 +346,7 @@ export const register: Register = (on, options) => {
   // conversation in view, the main one or an agent's, and the box shows both.
   // A render hook answers a tree, never null: an empty Box draws nothing.
   on('ui.render', { component: 'Spinner' }, ($, e, next) => {
-    if (e.surface !== 'terminal' || !isSpinnerHidden(options)) {
+    if (e.surface !== 'terminal' || !isSpinnerHidden(options) || !band.isBoxDrawn) {
       return next(e)
     }
 
@@ -424,12 +426,11 @@ export const register: Register = (on, options) => {
       return next(e)
     }
 
-    // The box grew to fit the turn; between turns it fits what it shows.
-    await update($, boxWidth, width => ({ columns: 0, turnEnds: width.turnEnds + 1 }))
-
     const clock = turnClockOf(live)
 
     if (clock === null) {
+      await shrinkBox($)
+
       return next(e)
     }
 
@@ -449,12 +450,22 @@ export const register: Register = (on, options) => {
 
     keepTicking($, live)
     await publish($, live)
+    // After the idle headline is out: a draw before it measured the working one.
+    await shrinkBox($)
 
     return next(e)
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
-    if (e.props.hasSurvey) {
+    const isBoxDrawn = !e.props.hasSurvey
+
+    // The spinner line is hidden only while the box stands in for it.
+    if (e.surface === 'terminal' && isBoxDrawn !== band.isBoxDrawn) {
+      band.isBoxDrawn = isBoxDrawn
+      $.clock.after(0, () => $.ui.invalidate('ui.render'))
+    }
+
+    if (!isBoxDrawn) {
       return next(e)
     }
 
@@ -622,7 +633,8 @@ async function putToYou($: EngineInterface, live: Live, call: Call): Promise<voi
   call.isPutToYou = true
 
   if (call.agentId === null) {
-    pauseTurn(live, call.askedMs)
+    // From now, not from when it was asked: the total already shown never goes back.
+    pauseTurn(live, await $.clock.now())
     await markWaiting($, call.tool)
   }
 
@@ -835,6 +847,14 @@ function hasTenthsTimer(live: Live, nowMs: number): boolean {
   }
 
   return starts.some(startMs => nowMs - startMs < TENTHS_UNDER_MS)
+}
+
+/**
+ * Lets the box shrink to fit what it shows, as a turn ends: the width the turn
+ * grew to is dropped, with any a draw measured before now.
+ */
+async function shrinkBox($: EngineInterface): Promise<void> {
+  await update($, boxWidth, width => ({ columns: 0, turnEnds: width.turnEnds + 1 }))
 }
 
 async function remember($: EngineInterface, entry: ActivityEntry): Promise<void> {
