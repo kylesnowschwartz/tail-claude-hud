@@ -3,7 +3,9 @@
 // When Claude Code's PermissionRequest hook fires, the hook handler writes a
 // small file to ~/.config/tail-claude-hud/waiting/{session_id}. The statusline
 // gather stage scans this directory to detect other sessions blocked on
-// permission approval. PostToolUse and Stop hooks remove the breadcrumb.
+// permission approval. The Stop hook removes the breadcrumb; PostToolUse and
+// PostToolUseFailure remove it unless Claude Code still reports the session
+// waiting on a dialog.
 //
 // Breadcrumbs older than staleTTL are ignored (covers hard-crash scenarios
 // where neither PostToolUse nor Stop fires), and the cleanup hook deletes them.
@@ -17,8 +19,10 @@ import (
 )
 
 // staleTTL is the maximum age of a breadcrumb before it is considered stale
-// and ignored. Covers the case where a session is killed without cleanup.
-const staleTTL = 120 * time.Second
+// and ignored. Covers the case where a session is killed without cleanup. The
+// breadcrumb is written once, so the limit also bounds how long an unanswered
+// dialog keeps its alert.
+const staleTTL = 10 * time.Minute
 
 // Breadcrumb represents a permission-waiting marker for a Claude Code session.
 type Breadcrumb struct {
@@ -70,6 +74,13 @@ func Write(b Breadcrumb) error {
 	}
 
 	return os.Rename(tmpPath, target)
+}
+
+// Exists reports whether a breadcrumb file is present for the session,
+// without parsing it.
+func Exists(sessionID string) bool {
+	_, err := os.Stat(filepath.Join(WaitingDir(), sessionID))
+	return err == nil
 }
 
 // Remove deletes the breadcrumb for a session. Returns nil if the file

@@ -166,3 +166,42 @@ func TestRemoveStale_MissingDir(t *testing.T) {
 		t.Fatalf("expected nil for a missing directory, got %v", err)
 	}
 }
+
+func TestFindWaiting_AgesAgainstTenMinutes(t *testing.T) {
+	dir := t.TempDir()
+	origDir := WaitingDir
+	WaitingDir = func() string { return dir }
+	defer func() { WaitingDir = origDir }()
+
+	for name, age := range map[string]time.Duration{"sess-5m": 5 * time.Minute, "sess-11m": 11 * time.Minute} {
+		if err := Write(Breadcrumb{SessionID: name, Project: name}); err != nil {
+			t.Fatalf("Write: %v", err)
+		}
+		past := time.Now().Add(-age)
+		if err := os.Chtimes(filepath.Join(dir, name), past, past); err != nil {
+			t.Fatalf("Chtimes: %v", err)
+		}
+	}
+
+	found := FindWaiting("sess-other")
+	if found == nil || found.SessionID != "sess-5m" {
+		t.Fatalf("expected only the 5-minute-old breadcrumb, got %+v", found)
+	}
+}
+
+func TestExists(t *testing.T) {
+	dir := t.TempDir()
+	origDir := WaitingDir
+	WaitingDir = func() string { return dir }
+	defer func() { WaitingDir = origDir }()
+
+	if Exists("s1") {
+		t.Error("expected no breadcrumb before Write")
+	}
+	if err := Write(Breadcrumb{SessionID: "s1", Project: "p"}); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	if !Exists("s1") {
+		t.Error("expected breadcrumb after Write")
+	}
+}

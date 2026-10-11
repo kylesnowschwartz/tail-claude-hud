@@ -70,7 +70,7 @@ In the terminal the mod hides Claude Code's spinner line (`✶ Ionizing… (13s 
 
 The mod runs one local command (`tail-claude-hud style --json`) when a session starts, and again after a reload while the HUD's look is not in place; it reads `HOME` to find the binary. It keeps its headline, history and look in the session's own state (`$.state`). It makes no network calls.
 
-It writes one file: while a call of the main conversation waits on your approval, `~/.config/tail-claude-hud/waiting/<session id>` holds the session id, the working folder's name and the tool's name, the file the HUD's `hook permission-request` writes. Other sessions' status lines read it to show that this one waits on you. The mod removes it, by running `/bin/rm -f` on that path, as soon as you approve or decline the call and when the session ends or is cleared. A file it fails to remove is ignored by the HUD after two minutes.
+It writes one file: while a call of the main conversation waits on your approval, `~/.config/tail-claude-hud/waiting/<session id>` holds the session id, the working folder's name and the tool's name, the file the HUD's `hook permission-request` writes. Other sessions' status lines read it to show that this one waits on you. The mod removes it, by running `/bin/rm -f` on that path, as soon as you approve or decline the call and when the session ends or is cleared. A file it fails to remove is ignored by the HUD after ten minutes.
 
 Every hook passes its event on unchanged; it never answers a permission prompt.
 

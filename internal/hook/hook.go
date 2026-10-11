@@ -14,7 +14,9 @@ import (
 	"io"
 	"path/filepath"
 
+	"github.com/kylesnowschwartz/agent-ouija/claude/claudedir"
 	"github.com/kylesnowschwartz/agent-ouija/claude/hooks"
+	"github.com/kylesnowschwartz/agent-ouija/claude/registry"
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/breadcrumb"
 	"github.com/kylesnowschwartz/tail-claude-hud/internal/git"
 )
@@ -87,21 +89,71 @@ func HandleSessionStart(r io.Reader, w io.Writer, enabled bool) error {
 	return json.NewEncoder(w).Encode(hooks.NewSessionStartOutput(title))
 }
 
-// HandleCleanup reads the hook payload and removes any breadcrumb for the
-// session, then deletes stale breadcrumbs left by any session. Called by
-// PostToolUse, PostToolUseFailure, and Stop hooks. Removing a breadcrumb that
-// doesn't exist is a no-op.
+// HandleCleanup reads the hook payload and removes the session's breadcrumb,
+// then deletes stale breadcrumbs left by any session. Called by PostToolUse,
+// PostToolUseFailure, and Stop hooks. Removing a breadcrumb that doesn't exist
+// is a no-op.
+//
+// A tool outcome does not end the dialog that wrote the breadcrumb: a
+// background subagent or a parallel call can finish while a dialog is still
+// open, and hooks from subagents carry the parent's session ID. So a tool
+// outcome removes the breadcrumb only when Claude Code no longer reports the
+// session as waiting. Any other event ends the turn and removes it.
 func HandleCleanup(r io.Reader) error {
 	p, err := hooks.Decode(r)
 	if err != nil {
 		return err
 	}
 	if sid := p.EffectiveSessionID(); sid != "" {
-		if err := breadcrumb.Remove(sid); err != nil {
+		if err := removeBreadcrumb(sid, p.HookEventName); err != nil {
 			return err
 		}
 	}
 	return breadcrumb.RemoveStale()
+}
+
+// SessionsDir returns the directory of Claude Code's live-session files. It is
+// a variable so tests can redirect to a temp directory.
+var SessionsDir = func() string {
+	root, err := claudedir.DefaultRoot()
+	if err != nil {
+		return ""
+	}
+	return root.SessionsDir()
+}
+
+// removeBreadcrumb removes the session's breadcrumb, except on a tool outcome
+// while Claude Code still reports the session waiting. A declined dialog fires
+// no hook, so the session status is the only signal that the dialog is over;
+// when it cannot be read the breadcrumb is removed. The registry is read only
+// when a breadcrumb exists.
+func removeBreadcrumb(sid, event string) error {
+	isToolOutcome := event == "PostToolUse" || event == "PostToolUseFailure"
+	if isToolOutcome {
+		if !breadcrumb.Exists(sid) {
+			return nil
+		}
+		if isSessionWaiting(sid) {
+			return nil
+		}
+	}
+	return breadcrumb.Remove(sid)
+}
+
+// isSessionWaiting reports whether a running process of session sid records an
+// open dialog. Session files outlive their process, so entries of dead
+// processes (an earlier run of a resumed session) are skipped.
+func isSessionWaiting(sid string) bool {
+	dir := SessionsDir()
+	if dir == "" {
+		return false
+	}
+	for _, live := range registry.Read(dir) {
+		if live.SessionID == sid && live.Alive() {
+			return live.Status == "waiting"
+		}
+	}
+	return false
 }
 
 // projectName returns the last path component of cwd, or "" when cwd is empty

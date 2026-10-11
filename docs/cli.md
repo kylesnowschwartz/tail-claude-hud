@@ -18,7 +18,7 @@ The binary handles Claude Code hook events directly:
 
 ```
 tail-claude-hud hook permission-request   # write breadcrumb; notify when [notify] permission_bell is on (PermissionRequest hook)
-tail-claude-hud hook cleanup              # remove this session's breadcrumb and any breadcrumb older than 120s (PostToolUse, PostToolUseFailure, Stop hooks)
+tail-claude-hud hook cleanup              # remove this session's breadcrumb (a tool outcome keeps it while the session still waits on a dialog) and any breadcrumb older than 10 minutes (PostToolUse, PostToolUseFailure, Stop hooks)
 tail-claude-hud hook session-start        # set the terminal title when [notify] session_title is on (SessionStart hook)
 ```
 
