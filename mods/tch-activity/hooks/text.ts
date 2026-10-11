@@ -113,7 +113,15 @@ export function elapsedOf(ms: number): string {
     return `${(Math.floor(clamped / 100) / 10).toFixed(1)}s`
   }
 
-  const total = Math.floor(clamped / 1000)
+  return wholeElapsedOf(clamped)
+}
+
+/**
+ * A running timer in whole seconds, never ahead of the time passed: `7s`,
+ * `46s`, `1m 12s`, `1h 3m`.
+ */
+export function wholeElapsedOf(ms: number): string {
+  const total = Math.floor(Math.max(0, ms) / 1000)
 
   if (total < 60) {
     return `${total}s`

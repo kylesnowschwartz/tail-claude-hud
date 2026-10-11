@@ -489,15 +489,16 @@ describe('register', () => {
     const ui = await mount($, box)
     const { turnId } = await $.turn.start({ text: 'run it', turnId: 't1' })
 
+    await clock.advance(1500)
     await $.tool.call({ tool: 'Bash', command: 'osascript', description: 'Ask AppleScript' })
     await $.turn.complete({ ...DONE, turnId })
     await ui.press({ key: 'toggle' })
 
     const history = (await ui.find({ key: 'history' }))?.text ?? ''
 
-    expect(await box.read()).toContain('⊘ Idle · last turn stopped at a declined call after 4.0s')
+    expect(await box.read()).toContain('⊘ Idle · last turn stopped at a declined call after 1.5s')
     expect(history).toContain('⊘ Ask AppleScript 0.0s')
-    expect(history).toMatch(/⊘ Stopped at a declined call after 4\.0s(?!\s*[<\d])/)
+    expect(history).toMatch(/⊘ Stopped at a declined call after 1\.5s(?!\s*[<\d])/)
     expect(history).not.toContain('Done')
   })
 
@@ -1436,6 +1437,136 @@ describe('style', () => {
     await ui.press({ key: 'toggle' })
 
     expect((await ui.find({ key: 'history' }))?.text ?? '').toContain('Built-in look: /home/kyle/go/bin/tail-claude-hud style --json printed no style this mod reads')
+  })
+})
+
+describe('turn total', () => {
+  test('a running turn shows its total in whole seconds at the right of the headline', async ($, on) => {
+    const { box, clock } = seat(on, [])
+    const ui = await mount($, box)
+
+    /**
+     * The frame's width less what the headline itself takes: the gap and the
+     * room kept for the total, plus the frame's border and padding.
+     */
+    const roomBeyondHeadline = async () => {
+      const width = (await ui.find({ key: 'frame' }))?.props['minWidth'] as number
+      const row = (await ui.find({ key: 'activity' }))?.text ?? ''
+      const total = (await ui.find({ key: 'turn-total' }))?.text ?? ''
+
+      return width - (row.length - total.length)
+    }
+
+    await $.turn.start({ text: 'go', turnId: 't1' })
+    await clock.advance(9900)
+
+    const total = await ui.find({ key: 'turn-total' })
+    const row = await ui.find({ key: 'activity' })
+
+    expect(total?.text).toBe('9s')
+    expect(total?.props).toMatchObject({ flexGrow: 1, justifyContent: 'flex-end' })
+    expect(row?.children.at(-1)).toMatchObject({ props: { key: 'turn-total' } })
+    expect(await ui.find({ type: 'Text', text: '9s' })).toMatchObject({ props: { dimColor: true } })
+    expect(await roomBeyondHeadline()).toBe(1 + 7 + 4)
+
+    await clock.advance(60_100)
+
+    // A longer total fills the room kept for it: the box grows only with the headline.
+    expect((await ui.find({ key: 'turn-total' }))?.text).toBe('1m 10s')
+    expect(await roomBeyondHeadline()).toBe(1 + 7 + 4)
+  })
+
+  test('the total leaves out the wait on your approval, and the turn end agrees', async ($, on) => {
+    const { box, clock } = seat(on, [])
+    const totals: (string | undefined)[] = []
+
+    on('ui.render', { component: 'ToolUse' }, ($, e) => {
+      const { Box } = $.ui.resolve(e)
+
+      return <Box key="row" />
+    })
+
+    const ui = await mount($, box)
+    const totalOf = async () => (await ui.find({ key: 'turn-total' }))?.text
+
+    box.verdict = 'ask'
+    box.toolAnswer = { text: 'ok', result: null } as never
+    box.onTool = async call => {
+      await $.tool.check({ tool: 'Bash', input: {}, tool_use_id: call.tool_use_id })
+      await clock.advance(5000)
+      totals.push(await totalOf())
+
+      await $.ui.mount({
+        plugin: 'tch-activity',
+        surface: 'terminal',
+        component: 'ToolUse',
+        props: { tool_use_id: call.tool_use_id, tool: 'Bash', input: {}, isRunning: true, isErrored: false, isInterrupted: false },
+      })
+      await clock.advance(1001)
+      totals.push(await totalOf())
+    }
+
+    const { turnId } = await $.turn.start({ text: 'run it', turnId: 't1' })
+
+    await clock.advance(2000)
+    await $.tool.call({ tool: 'Bash', command: 'osascript', description: 'Wait in AppleScript' })
+    await clock.advance(500)
+    await $.turn.complete({ ...DONE, turnId })
+
+    // Held at 2s while the dialog is up, then on from there.
+    expect(totals).toEqual(['2s', '3s'])
+    expect(await box.read()).toContain('done in 3.5s, 1 action')
+  })
+
+  test('the total leaves out the wait on your answer', async ($, on) => {
+    const { box, clock } = seat(on, [])
+    const ui = await mount($, box)
+
+    box.toolAnswer = { text: 'ok', result: null } as never
+    box.onTool = async () => {
+      await clock.advance(30_000)
+    }
+
+    const { turnId } = await $.turn.start({ text: 'ask me', turnId: 't1' })
+
+    await clock.advance(4000)
+    await $.tool.call({ tool: 'AskUserQuestion', questions: [] } as Parameters<Engine['tool']['call']>[0])
+    await clock.advance(1000)
+
+    expect((await ui.find({ key: 'turn-total' }))?.text).toBe('5s')
+
+    await $.turn.complete({ ...DONE, turnId })
+
+    expect(await box.read()).toContain('done in 5.0s, 1 action')
+  })
+
+  test('no total shows between turns', async ($, on) => {
+    const { box, clock } = seat(on, [])
+    const ui = await mount($, box)
+
+    expect(await ui.find({ key: 'turn-total' })).toBeUndefined()
+
+    const { turnId } = await $.turn.start({ text: 'go', turnId: 't1' })
+
+    await clock.advance(3000)
+
+    expect(await ui.find({ key: 'turn-total' })).toBeDefined()
+
+    await $.turn.complete({ ...DONE, turnId })
+    await clock.advance(1000)
+
+    expect(await ui.find({ key: 'turn-total' })).toBeUndefined()
+  })
+
+  test('a row with no room for the total leaves it off, the headline whole', async ($, on) => {
+    const { clock } = seat(on, [])
+    const ui = await $.ui.mount({ ...BAND, props: { ...BAND.props, bodyColumns: 30 } })
+
+    await $.turn.start({ text: 'go', turnId: 't1' })
+    await clock.advance(3000)
+
+    expect(await ui.find({ key: 'turn-total' })).toBeUndefined()
+    expect((await ui.find({ key: 'activity' }))?.text ?? '').toContain('Reading your prompt | 3.0s')
   })
 })
 

@@ -2,7 +2,7 @@
 // Tzafrir Rehan); see NOTICE.
 import type { Timer, TurnCompleteReason } from 'claude-code'
 
-import type { ActivityEntry, ActivityNow, ActivityOutcome } from '../types'
+import type { ActivityEntry, ActivityNow, ActivityOutcome, TurnClock } from '../types'
 import { activityOf, isAgentTool, isShellTool, partialArgsOf } from './activity-of'
 import { elapsedOf, plural, sizeOf, thoughtOf } from './text'
 
@@ -16,7 +16,11 @@ export const IDLE: ActivityNow = {
   colorIndex: null,
   lead: null,
   lastOutcome: null,
+  turn: null,
 }
+
+/** The tool that asks you questions; the main loop waits on your answer while it runs. */
+export const QUESTION_TOOL = 'AskUserQuestion'
 
 const MAX_THOUGHT_CHARS = 70
 
@@ -106,6 +110,9 @@ export type Agent = {
 /**
  * The module's live view of the session, from which the headline is drawn:
  * started over on a reload, while the headline and history in `$.state` stay.
+ * `turnPausedMs` is the time the turn has waited on you in waits now over,
+ * `turnPauseStartMs` when the wait still on began, and `turnPauseEndMs`
+ * when the last one ended.
  */
 export type Live = {
   calls: Map<string, Call>
@@ -117,6 +124,9 @@ export type Live = {
   phase: ModelPhase
   phaseStartMs: number
   turnStartMs: number | null
+  turnPausedMs: number
+  turnPauseStartMs: number | null
+  turnPauseEndMs: number
   turnActions: number
   isDeclinedLast: boolean
   isFirstRequest: boolean
@@ -146,6 +156,9 @@ export function createLive(): Live {
     phase: 'idle',
     phaseStartMs: 0,
     turnStartMs: null,
+    turnPausedMs: 0,
+    turnPauseStartMs: null,
+    turnPauseEndMs: 0,
     turnActions: 0,
     isDeclinedLast: false,
     isFirstRequest: false,
@@ -165,9 +178,57 @@ export function createLive(): Live {
   }
 }
 
+/** Starts the turn's clock at `startMs`, with no wait on you yet. */
+export function startTurn(live: Live, startMs: number): void {
+  live.turnStartMs = startMs
+  live.turnPausedMs = 0
+  live.turnPauseStartMs = null
+  live.turnPauseEndMs = startMs
+}
+
+/** Whether a call holds the main loop on you: its approval dialog is up, or it asks you a question. */
+function isOnYou(call: Call): boolean {
+  return call.agentId === null && (call.isAwaitingApproval || call.tool === QUESTION_TOOL)
+}
+
+/**
+ * Pauses the turn's clock from `fromMs`, as a main-loop call starts waiting
+ * on you; a pause already on stands, and none reaches back into one over.
+ */
+export function pauseTurn(live: Live, fromMs: number): void {
+  if (live.turnStartMs === null || live.turnPauseStartMs !== null) {
+    return
+  }
+
+  live.turnPauseStartMs = Math.max(fromMs, live.turnStartMs, live.turnPauseEndMs)
+}
+
+/** Resumes the turn's clock at `nowMs`, once no main-loop call in flight waits on you. */
+export function resumeTurn(live: Live, nowMs: number): void {
+  if (live.turnPauseStartMs === null || [...live.calls.values()].some(isOnYou)) {
+    return
+  }
+
+  live.turnPausedMs += Math.max(0, nowMs - live.turnPauseStartMs)
+  live.turnPauseStartMs = null
+  live.turnPauseEndMs = nowMs
+}
+
+/** The running turn's clock, or null between turns. */
+export function turnClockOf(live: Live): TurnClock | null {
+  return live.turnStartMs === null
+    ? null
+    : { sinceMs: live.turnStartMs + live.turnPausedMs, pausedAtMs: live.turnPauseStartMs }
+}
+
+/** The turn's total at `nowMs`: its time so far, less its waits on you. */
+export function turnTotalOf(clock: TurnClock, nowMs: number): number {
+  return Math.max(0, (clock.pausedAtMs ?? nowMs) - clock.sinceMs)
+}
+
 /** The headline as the live view has it. */
 export function current(live: Live): ActivityNow {
-  const base = { ...IDLE, lastOutcome: live.lastTurn?.outcome ?? null }
+  const base = { ...IDLE, lastOutcome: live.lastTurn?.outcome ?? null, turn: turnClockOf(live) }
 
   if (live.phase === 'compacting') {
     return { ...base, phase: 'compacting', label: 'Compacting the conversation', sinceMs: live.phaseStartMs }
@@ -184,7 +245,7 @@ export function current(live: Live): ActivityNow {
       return { ...call, sinceMs: newest.askedMs ?? call.sinceMs, phase: 'approval', label: `Waiting for your approval: ${newest.label}${more}` }
     }
 
-    if (newest.tool === 'AskUserQuestion') {
+    if (newest.tool === QUESTION_TOOL) {
       return { ...call, phase: 'question', label: newest.label }
     }
 

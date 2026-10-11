@@ -23,7 +23,7 @@ export type ActivityOutcome = 'ok' | 'error' | 'denied' | 'interrupted'
  * agent palette slot when the headline names an agent, and `lead` the agent's
  * name, drawn in that color before `label`; `detail` a count or size drawn
  * faint after it (`120 words`); `lastOutcome` how the previous turn ended,
- * for the idle glyph.
+ * for the idle glyph; `turn` the running turn's clock, null between turns.
  */
 export type ActivityNow = {
   phase: ActivityPhase
@@ -34,6 +34,17 @@ export type ActivityNow = {
   colorIndex: number | null
   lead: string | null
   lastOutcome: ActivityOutcome | null
+  turn: TurnClock | null
+}
+
+/**
+ * A running turn's clock, which leaves out the time the main loop waits on
+ * you: the total runs from `sinceMs` (the turn's start, moved on by the
+ * waits already over) to now, or to `pausedAtMs` while a wait is on.
+ */
+export type TurnClock = {
+  sinceMs: number
+  pausedAtMs: number | null
 }
 
 /**

@@ -26,9 +26,15 @@ import {
   IDLE,
   isAgentWaiting,
   outcomeOf,
+  pauseTurn,
+  QUESTION_TOOL,
+  resumeTurn,
   STARTING_LABEL,
+  startTurn,
+  turnClockOf,
   turnEndLabel,
   turnEndOf,
+  turnTotalOf,
   UNNAMED_AGENT,
   type Agent,
   type Call,
@@ -37,7 +43,7 @@ import {
   withAgentCall,
   withAgentKey,
 } from './live'
-import { AGENT_INDENT_COLUMNS, bandLayout, boxColumnsOf, columnsOf, type Segment } from './layout'
+import { AGENT_INDENT_COLUMNS, bandLayout, boxColumnsOf, columnsOf, rowColumnsOf, type Segment } from './layout'
 import { borderColor, entryMark, headlineMark, styleNote } from './marks'
 import {
   agentColor,
@@ -51,7 +57,18 @@ import {
   type LoadedStyle,
 } from './style'
 import { breadcrumbOf, waitingPathOf } from './waiting'
-import { capitalized, durationOf, elapsedOf, oneLine, TENTHS_UNDER_MS, plural, printable, promptLabel, wordsAdded } from './text'
+import {
+  capitalized,
+  durationOf,
+  elapsedOf,
+  oneLine,
+  TENTHS_UNDER_MS,
+  plural,
+  printable,
+  promptLabel,
+  wholeElapsedOf,
+  wordsAdded,
+} from './text'
 
 /** The headline. */
 const now = atom({ plugin: 'tch-activity', key: 'now' } as const, IDLE)
@@ -129,7 +146,7 @@ export const register: Register = (on, options) => {
       return next(e)
     }
 
-    live.turnStartMs = await $.clock.now()
+    startTurn(live, await $.clock.now())
     live.turnActions = 0
     live.isDeclinedLast = false
     live.isFirstRequest = true
@@ -159,7 +176,7 @@ export const register: Register = (on, options) => {
     // A module reloaded mid-turn missed the turn's start: it takes the turn
     // up here, so the turn's end returns the box to idle.
     if (live.turnStartMs === null) {
-      live.turnStartMs = await $.clock.now()
+      startTurn(live, await $.clock.now())
       keepTicking($, live)
     }
 
@@ -210,6 +227,11 @@ export const register: Register = (on, options) => {
     const call = callOf(e.tool, label, startMs, null)
 
     live.calls.set(e.tool_use_id, call)
+
+    if (e.tool === QUESTION_TOOL) {
+      pauseTurn(live, startMs)
+    }
+
     // Kept after the call: the turn's last action stands while the model works.
     live.lastAction = label
     live.turnActions += 1
@@ -262,6 +284,7 @@ export const register: Register = (on, options) => {
 
       endWait(call, endMs)
       live.calls.delete(e.tool_use_id)
+      resumeTurn(live, endMs)
       live.resultsToReview += 1
       live.isDeclinedLast = outcome === 'denied'
 
@@ -393,11 +416,13 @@ export const register: Register = (on, options) => {
       return next(e)
     }
 
-    if (live.turnStartMs === null) {
+    const clock = turnClockOf(live)
+
+    if (clock === null) {
       return next(e)
     }
 
-    const durationMs = (await $.clock.now()) - live.turnStartMs
+    const durationMs = turnTotalOf(clock, await $.clock.now())
     const end = turnEndOf(e.reason, live.isDeclinedLast)
     const outcome = outcomeOf(end)
     const label = turnEndLabel(end, durationMs, live.turnActions)
@@ -552,7 +577,10 @@ async function approved($: EngineInterface, live: Live, toolUseId: string): Prom
     }
 
     // The wait ends now, before the call can: a fast tool's end must find it closed.
-    endWait(call, await $.clock.now())
+    const nowMs = await $.clock.now()
+
+    endWait(call, nowMs)
+    resumeTurn(live, nowMs)
 
     // Drawing may not write state: the headline is published just after.
     $.clock.after(0, () => void publish($, live))
@@ -583,6 +611,7 @@ async function putToYou($: EngineInterface, live: Live, call: Call): Promise<voi
   call.isPutToYou = true
 
   if (call.agentId === null) {
+    pauseTurn(live, call.askedMs)
     await markWaiting($, call.tool)
   }
 
@@ -1074,6 +1103,15 @@ const SEPARATOR = ' | '
 /** The headline's show/hide arrow, one column wide. */
 const TOGGLE_COLUMNS = 1
 
+/** The least space between the headline and the turn's total at its right. */
+const TURN_TOTAL_GAP_COLUMNS = 1
+
+/**
+ * The room a running turn keeps for its total, as wide as `59m 59s`: the box
+ * widens for it once, not as the total grows.
+ */
+const TURN_TOTAL_COLUMNS = 7
+
 type AbovePromptInput = RenderInput<'AbovePrompt'>
 
 /**
@@ -1191,8 +1229,12 @@ async function drawBox($: EngineInterface, e: AbovePromptInput) {
   const teamLines = isTeamListed ? [...agentLines, ...moreAgents] : []
   const bodyLines = layout.isHistoryShown ? [...earlier, ...historyLines, ...empty, ...footer] : []
 
+  const turn = headline.turn ?? null
+  const turnTotal = turn === null ? null : wholeElapsedOf(turnTotalOf(turn, nowMs))
+  const headlineColumns = TOGGLE_COLUMNS + columnsOf(headlineSegments)
+
   const natural = boxColumnsOf([
-    TOGGLE_COLUMNS + columnsOf(headlineSegments),
+    turn === null ? headlineColumns : headlineColumns + TURN_TOTAL_GAP_COLUMNS + TURN_TOTAL_COLUMNS,
     ...teamLines.map(segments => AGENT_INDENT_COLUMNS + columnsOf(segments)),
     ...bodyLines.map(columnsOf),
   ])
@@ -1201,6 +1243,18 @@ async function drawBox($: EngineInterface, e: AbovePromptInput) {
     // Drawing may not write state: the wider box is kept just after.
     $.clock.after(0, () => void update($, boxWidth, width => Math.max(width, natural)))
   }
+
+  const boxColumns = Math.min(Math.max(widest, natural), e.props.bodyColumns)
+
+  // The headline keeps its room: a total that would crowd it is left off.
+  const totalBox = turnTotal !== null
+    && headlineColumns + TURN_TOTAL_GAP_COLUMNS + columnsOf([{ text: turnTotal }]) <= rowColumnsOf(boxColumns)
+    ? [
+        <Box key="turn-total" flexGrow={1} flexShrink={0} justifyContent="flex-end" paddingLeft={TURN_TOTAL_GAP_COLUMNS}>
+          <Text dimColor>{turnTotal}</Text>
+        </Box>,
+      ]
+    : []
 
   const teamBox = teamLines.length > 0
     ? [
@@ -1234,7 +1288,7 @@ async function drawBox($: EngineInterface, e: AbovePromptInput) {
         borderColor={borderColor(style, headline, working)}
         paddingX={1}
         alignSelf="flex-start"
-        minWidth={Math.min(Math.max(widest, natural), e.props.bodyColumns)}
+        minWidth={boxColumns}
       >
         <Box key="activity" flexDirection="row">
           <Button
@@ -1244,6 +1298,7 @@ async function drawBox($: EngineInterface, e: AbovePromptInput) {
             onPress={() => update($, isExpanded, open => !open)}
           />
           {line(headlineSegments)}
+          {totalBox}
         </Box>
         {teamBox}
         {body}

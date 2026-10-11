@@ -106,3 +106,8 @@ export function columnsOf(segments: readonly Segment[]): number {
 export function boxColumnsOf(rows: readonly number[]): number {
   return Math.max(0, ...rows) + FRAME_COLUMNS
 }
+
+/** The columns a row has inside a box this wide, frame included. */
+export function rowColumnsOf(boxColumns: number): number {
+  return Math.max(0, boxColumns - FRAME_COLUMNS)
+}
