@@ -1,6 +1,6 @@
 // The turn, history, approval and agent scenarios are adapted from
 // whats-agent-doing's tests (MIT, Copyright (c) 2026 Tzafrir Rehan); see NOTICE.
-import type { On, TurnStepChunk } from 'claude-code'
+import type { AgentInfo, On, TurnStepChunk } from 'claude-code'
 import { describe, expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
@@ -10,6 +10,7 @@ const BAND = {
   component: 'AbovePrompt',
   props: {
     hasSurvey: false,
+    isCollapsed: false,
     isWorking: false,
     maxRows: 20,
     bodyColumns: 100,
@@ -35,6 +36,22 @@ const SPAWN = {
   background: true,
   fork: false,
 } as const
+
+/** A running subagent as `agent.list` answers it; a test spreads in the fields it is about. */
+const LISTED = {
+  id: 'a1',
+  description: 'Do the work',
+  type: 'general-purpose',
+  status: 'running',
+  kind: 'local_agent',
+  taskStatus: 'running',
+  label: 'Do the work',
+  startTime: 0,
+  cwd: '/repo',
+  tokenCount: 0,
+  tokenSamples: [],
+  hasRow: true,
+} satisfies AgentInfo
 
 /** A conversation to compact: a compaction always leaves at least one message. */
 const TRANSCRIPT = [{ role: 'user', text: 'fix the config', toolUses: [] }] as never
@@ -127,6 +144,10 @@ function seat(on: On, script: readonly (readonly TurnStepChunk[])[]) {
   on('turn.start', ($, e) => ({ turnId: e.turnId }))
   on('turn.complete', ($, e) => ({ text: e.answer }))
   on('tool.check', () => ({ decision: box.verdict }))
+  // `$.tool.call` puts an ask to `classic.PermissionRequest`, as for a
+  // background subagent: the person's yes, so the call runs and `toolAnswer`
+  // settles it.
+  on('classic.PermissionRequest', () => ({ decision: { behavior: 'allow' } }))
   on('session.compact', async () => {
     await box.onCompact()
 
@@ -817,11 +838,11 @@ describe('register', () => {
 
     on('agent.list', () => ({
       value: [{
+        ...LISTED,
         id: 'areviewer-1f2e',
         description: 'You are reviewing the diff. Read every file and',
+        label: 'You are reviewing the diff. Read every file and',
         name: 'reviewer',
-        type: 'general-purpose',
-        status: 'running',
       }],
     }))
 
