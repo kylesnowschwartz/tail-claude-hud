@@ -108,8 +108,13 @@ Claude Code pipes this JSON to stdin on every tick. Canonical reference: https:/
 | `vim.mode` | Vim mode ("NORMAL"/"INSERT") when enabled |
 | `agent.name` | Agent name (when `--agent` flag is used) |
 | `worktree.*` | Worktree metadata: name, path, branch, original_cwd, original_branch |
+| `prompt_cache.last_request_at`, `prompt_cache.ttl_seconds` | Not sent by Claude Code. A harness with no Claude Code transcript sends when the prompt cache was last written (RFC 3339) and its lifetime; `cachettl` uses them when the transcript has no answered request |
 
 **Token semantics**: `current_usage` fields are per-call snapshots, not session totals. With prompt caching, `input_tokens` is only the uncacheable tail after the last cache breakpoint. `used_percentage` = `(input_tokens + cache_creation + cache_read) / context_window_size`. Session-level cumulative totals are in `total_input_tokens` and `total_output_tokens`.
+
+## Pi Extension
+
+`pi/` is an extension for the Pi coding agent, loaded through the `pi` key of the root `package.json`. `pi/index.ts` builds a stdin document in the format above from Pi's state (`pi/payload.ts`), runs the binary, and shows its stdout as Pi's footer. It sends no `transcript_path`, because Pi's session file is not a Claude Code transcript. Check it with `npm run test:pi` and `npm run typecheck:pi` (after `npm install`).
 
 ## Reference Projects
 

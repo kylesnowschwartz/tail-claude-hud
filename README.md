@@ -70,6 +70,20 @@ Custom presets go in `~/.config/tail-claude-hud/presets/*.toml`.
 
 It reads its look from `tail-claude-hud style --json`, so it needs a HUD binary that has the `style` command.
 
+## Pi
+
+The same binary draws the status line of the [Pi coding agent](https://pi.dev), from the same configuration and theme. Install the extension in Pi:
+
+```sh
+pi install git:github.com/kylesnowschwartz/tail-claude-hud
+```
+
+The extension replaces Pi's footer with the HUD's output and shows the thinking level right-aligned above the prompt, where Claude Code shows its effort level. Statuses that other Pi extensions set follow the first row. It runs the `tail-claude-hud` on your `PATH`; set `TCH_HUD_BINARY` to use another one. The HUD binary must accept `prompt_cache` on stdin (0.12.0 or later) for the `cachettl` widget to count down.
+
+Pi shows one footer at a time, and the extension loaded last wins. List this package after any other package that sets a footer.
+
+Widgets that read a Claude Code transcript (`tools`, `agents`, `todos`, `skills` and the others marked "requires transcript") stay empty in Pi. `cachettl` shows only for models that declare a prompt-cache lifetime in Pi's model catalog.
+
 ## Documentation
 
 - [Widgets](docs/widgets.md) -- 26 available widgets and what they display

@@ -1,0 +1,24 @@
+{
+  "name": "tail-claude-hud-pi",
+  "private": true,
+  "type": "module",
+  "description": "Pi extension that draws pi's status line with the tail-claude-hud binary. The Go binary needs none of this.",
+  "scripts": {
+    "test:pi": "node --test pi/*.spec.ts",
+    "typecheck:pi": "tsc -p pi/tsconfig.json"
+  },
+  "pi": {
+    "extensions": [
+      "./pi/index.ts"
+    ]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "1.5.2",
+    "@types/node": "24.6.0",
+    "typescript": "5.9.3"
+  }
+}

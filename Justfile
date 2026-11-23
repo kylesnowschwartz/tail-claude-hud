@@ -67,6 +67,11 @@ mod-dev *args:
         '{enabledPlugins:{"whats-agent-doing@tzafrir":false},pluginConfigs:{"tch-activity":{options:{binary:$bin}}}}')
     exec claude --plugin-dir {{mod}} --settings "$settings" {{args}}
 
+# Test and typecheck the Pi extension under pi/ (run `npm install` once first)
+pi-check:
+    npm run test:pi
+    npm run typecheck:pi
+
 # Run design evaluation
 eval:
     go test ./internal/eval/ -run TestDesignEval -v -count=1

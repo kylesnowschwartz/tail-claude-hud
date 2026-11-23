@@ -10,3 +10,6 @@ bin/
 .cloned-sources
 .beads-lite
 .claude/agents
+
+# Node tooling for the pi extension
+node_modules
