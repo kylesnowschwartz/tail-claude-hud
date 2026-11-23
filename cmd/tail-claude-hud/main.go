@@ -128,7 +128,9 @@ func main() {
 		}
 	} else {
 		input, err = stdin.Read(os.Stdin)
-		if err == nil && input != nil {
+		// The snapshot records the Claude Code session for --dump-current. A
+		// document with no transcript comes from another harness and is not saved.
+		if err == nil && input != nil && input.TranscriptPath != "" {
 			stdin.SaveSnapshot(input)
 		}
 	}

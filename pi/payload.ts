@@ -47,7 +47,9 @@ export function lastCacheWriteAt(
 			if (stopReason === "error" || stopReason === "aborted") continue;
 			keep(timestamp);
 		} else if (entry.type === "usage" && entry.kind === "cache_warm") {
-			if (entry.provider !== model.provider || entry.model !== model.id) continue;
+			// A refresh is stored under the name the provider answers with, which
+			// for an alias is the model id plus a suffix.
+			if (entry.provider !== model.provider || !entry.model?.startsWith(model.id)) continue;
 			keep(entry.timestamp === undefined ? undefined : Date.parse(entry.timestamp));
 		}
 	}

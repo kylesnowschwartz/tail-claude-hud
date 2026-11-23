@@ -17,12 +17,17 @@ const effortWidget = "tail-claude-hud-effort";
 const idleRefreshMs = 15_000;
 const binaryTimeoutMs = 2000;
 
+/** Failed runs in a row after which pi's own footer comes back. */
+const maxFailedRuns = 3;
+
 export default function (pi: ExtensionAPI): void {
 	let ctx: ExtensionContext | undefined;
 	let rows: string[] = [];
 	let requestRender = (): void => {};
 	let running = false;
 	let rerun = false;
+	let failedRuns = 0;
+	let columns = 0;
 	let timer: NodeJS.Timeout | undefined;
 
 	const schedule = (delay: number): void => {
@@ -64,19 +69,28 @@ export default function (pi: ExtensionAPI): void {
 			return;
 		}
 		running = true;
-		const columns = Math.max(20, (process.stdout.columns || 120) - 2);
 		const child = execFile(
 			binary,
 			[],
-			{ timeout: binaryTimeoutMs, env: { ...process.env, COLUMNS: String(columns) } },
+			{ timeout: binaryTimeoutMs, env: { ...process.env, COLUMNS: String(Math.max(20, (columns || 120) - 2)) } },
 			(error, stdout) => {
 				running = false;
-				if (!ctx) return;
+				if (!ctx) {
+					rerun = false;
+					return;
+				}
 				if (error && (error as NodeJS.ErrnoException).code === "ENOENT") {
 					stop(`"${binary}" is not on the PATH.`);
 					return;
 				}
-				if (!error) {
+				if (error) {
+					failedRuns += 1;
+					if (failedRuns >= maxFailedRuns) {
+						stop(`"${binary}" failed or took longer than ${binaryTimeoutMs / 1000} s, ${maxFailedRuns} times in a row.`);
+						return;
+					}
+				} else {
+					failedRuns = 0;
 					rows = hudRows(stdout);
 					requestRender();
 				}
@@ -103,6 +117,10 @@ export default function (pi: ExtensionAPI): void {
 				dispose: unsubscribe,
 				invalidate() {},
 				render(width: number): string[] {
+					if (width !== columns) {
+						columns = width;
+						refresh();
+					}
 					const statuses = [...footerData.getExtensionStatuses()]
 						.sort(([a], [b]) => a.localeCompare(b))
 						.map(([, text]) => text);
@@ -125,7 +143,7 @@ export default function (pi: ExtensionAPI): void {
 	};
 
 	pi.on("session_start", (_event, startCtx) => {
-		if (!startCtx.hasUI) return;
+		if (startCtx.mode !== "tui") return;
 		ctx = startCtx;
 		install(startCtx);
 		refresh();

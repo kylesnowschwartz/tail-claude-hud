@@ -91,6 +91,10 @@ test("the last cache write is the newest answered request or refresh of the mode
 	];
 	assert.equal(lastCacheWriteAt(entries, model), Date.parse("2026-10-10T09:04:00Z"));
 	assert.equal(lastCacheWriteAt([], model), undefined);
+	const dated: CacheEntry[] = [
+		{ type: "usage", kind: "cache_warm", provider: "anthropic", model: "claude-fable-5-2-20261001", timestamp: "2026-10-10T09:04:00Z" },
+	];
+	assert.equal(lastCacheWriteAt(dated, model), Date.parse("2026-10-10T09:04:00Z"));
 });
 
 test("the redraw runs each second only in the countdown's last minute", () => {
