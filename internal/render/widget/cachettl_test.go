@@ -100,3 +100,31 @@ func TestCacheTTL_WarnUsesConfiguredWarningColor(t *testing.T) {
 		t.Errorf("FgColor = %q, want configured warning %q", got.FgColor, "214")
 	}
 }
+
+func TestCacheTTL_StdinPromptCache(t *testing.T) {
+	cfg := config.LoadHud()
+	cfg.CacheTTL.TTL = "auto"
+	stdinCache := &model.PromptCache{LastRequestAt: cacheSentAt, TTLSeconds: 300}
+
+	tests := []struct {
+		name string
+		ctx  *model.RenderContext
+		want string
+	}{
+		{"no transcript", &model.RenderContext{PromptCache: stdinCache}, "◑ 3m"},
+		{"transcript without a request", &model.RenderContext{Transcript: &model.TranscriptData{}, PromptCache: stdinCache}, "◑ 3m"},
+		{"no lifetime uses the default", &model.RenderContext{PromptCache: &model.PromptCache{LastRequestAt: cacheSentAt}}, "● 58m"},
+		{"transcript request wins", &model.RenderContext{
+			Transcript:  &model.TranscriptData{LastRequestAt: cacheSentAt, CacheTTL: time.Hour},
+			PromptCache: stdinCache,
+		}, "● 58m"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := cacheTTLAt(tt.ctx, cfg, cacheSentAt.Add(2*time.Minute))
+			if got.PlainText != tt.want {
+				t.Errorf("got %q, want %q", got.PlainText, tt.want)
+			}
+		})
+	}
+}

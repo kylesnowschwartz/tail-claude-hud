@@ -54,6 +54,10 @@ type RenderContext struct {
 	// "xhigh", "max"). Empty when Claude Code does not report it.
 	EffortLevel string
 
+	// PromptCache is the prompt-cache state from stdin. Nil when the harness
+	// does not send it; the cachettl widget then reads the transcript alone.
+	PromptCache *PromptCache
+
 	// ExtraOutput is the label returned by the user's extra command.
 	// Empty when no extra command is configured or the command fails/times out.
 	ExtraOutput string
@@ -241,6 +245,21 @@ type StdinData struct {
 
 	// ContextPercent is computed by the stdin package — not decoded from JSON.
 	ContextPercent int `json:"-"`
+
+	// PromptCache is the optional prompt_cache object. A harness with no
+	// Claude Code transcript sends it so the cachettl widget can count down.
+	PromptCache *PromptCache `json:"prompt_cache,omitempty"`
+}
+
+// PromptCache is the main conversation's prompt-cache state as a harness
+// reports it on stdin.
+type PromptCache struct {
+	// LastRequestAt is when the cache was last written or refreshed.
+	LastRequestAt time.Time `json:"last_request_at"`
+
+	// TTLSeconds is the cache lifetime in seconds. Zero leaves the lifetime
+	// to the cachettl widget's configuration.
+	TTLSeconds int `json:"ttl_seconds"`
 }
 
 // PluginDir returns the directory used for plugin state files:

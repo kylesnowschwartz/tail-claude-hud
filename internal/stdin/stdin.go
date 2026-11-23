@@ -56,8 +56,24 @@ func decode(r io.Reader) (*model.StdinData, error) {
 	}
 
 	data := &model.StdinData{Payload: *p}
+	data.PromptCache = decodePromptCache(p.Raw)
 	data.ContextPercent = computeContextPercent(data)
 	return data, nil
+}
+
+// decodePromptCache reads the optional prompt_cache object from the raw
+// document. Returns nil when it is absent, malformed, or has no request time.
+func decodePromptCache(raw json.RawMessage) *model.PromptCache {
+	var doc struct {
+		PromptCache *model.PromptCache `json:"prompt_cache"`
+	}
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		return nil
+	}
+	if doc.PromptCache == nil || doc.PromptCache.LastRequestAt.IsZero() {
+		return nil
+	}
+	return doc.PromptCache
 }
 
 // SaveSnapshot persists data as JSON to snapshotDir/last-stdin.json.

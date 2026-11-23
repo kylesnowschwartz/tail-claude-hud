@@ -188,3 +188,44 @@ func TestRead_MissingCostObject_NilCost(t *testing.T) {
 		t.Errorf("expected nil OutputStyle when absent from JSON, got %+v", data.OutputStyle)
 	}
 }
+
+func TestRead_PromptCache(t *testing.T) {
+	tests := []struct {
+		name    string
+		payload string
+		wantTTL int
+		wantNil bool
+	}{
+		{"present", `{"prompt_cache": {"last_request_at": "2026-10-10T09:00:00Z", "ttl_seconds": 300}}`, 300, false},
+		{"no lifetime", `{"prompt_cache": {"last_request_at": "2026-10-10T09:00:00Z"}}`, 0, false},
+		{"absent", `{"cwd": "/tmp"}`, 0, true},
+		{"no request time", `{"prompt_cache": {"ttl_seconds": 300}}`, 0, true},
+		{"malformed", `{"prompt_cache": {"last_request_at": 12}}`, 0, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := writeTemp(t, tt.payload)
+			defer f.Close()
+
+			data, err := Read(f)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if tt.wantNil {
+				if data.PromptCache != nil {
+					t.Fatalf("PromptCache: got %+v, want nil", data.PromptCache)
+				}
+				return
+			}
+			if data.PromptCache == nil {
+				t.Fatal("PromptCache: got nil")
+			}
+			if got := data.PromptCache.TTLSeconds; got != tt.wantTTL {
+				t.Errorf("TTLSeconds: got %d, want %d", got, tt.wantTTL)
+			}
+			if got := data.PromptCache.LastRequestAt.UTC().Format("15:04:05"); got != "09:00:00" {
+				t.Errorf("LastRequestAt: got %s, want 09:00:00", got)
+			}
+		})
+	}
+}

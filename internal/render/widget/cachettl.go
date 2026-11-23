@@ -38,19 +38,21 @@ const cacheColdGlyph = "◌"
 //
 // The countdown starts at Transcript.LastRequestAt and runs for the TTL
 // chosen by cfg.CacheTTL.TTL ("auto" follows the transcript's latest cache
-// write, defaulting to 1h). Returns empty before any answered request.
+// write, defaulting to 1h). With no transcript request, the prompt_cache
+// object from stdin supplies both. Returns empty before any answered request.
 func CacheTTL(ctx *model.RenderContext, cfg *config.Config) WidgetResult {
 	return cacheTTLAt(ctx, cfg, time.Now())
 }
 
 // cacheTTLAt renders the countdown as of now.
 func cacheTTLAt(ctx *model.RenderContext, cfg *config.Config, now time.Time) WidgetResult {
-	if ctx.Transcript == nil || ctx.Transcript.LastRequestAt.IsZero() {
+	lastRequestAt, observed := cacheState(ctx)
+	if lastRequestAt.IsZero() {
 		return WidgetResult{}
 	}
 
-	ttl := effectiveCacheTTL(cfg.CacheTTL.TTL, ctx.Transcript.CacheTTL)
-	left := ctx.Transcript.LastRequestAt.Add(ttl).Sub(now)
+	ttl := effectiveCacheTTL(cfg.CacheTTL.TTL, observed)
+	left := lastRequestAt.Add(ttl).Sub(now)
 
 	if left <= 0 {
 		text := cacheColdGlyph + " Cold"
@@ -73,6 +75,20 @@ func cacheTTLAt(ctx *model.RenderContext, cfg *config.Config, now time.Time) Wid
 		FgColor:    warnFg,
 		StateColor: warnFg,
 	}
+}
+
+// cacheState returns when the prompt cache was last written and the lifetime
+// seen for it. The transcript is the source when it holds an answered
+// request; otherwise the prompt_cache object from stdin is. A zero time
+// means neither source has a request.
+func cacheState(ctx *model.RenderContext) (lastRequestAt time.Time, observed time.Duration) {
+	if ctx.Transcript != nil && !ctx.Transcript.LastRequestAt.IsZero() {
+		return ctx.Transcript.LastRequestAt, ctx.Transcript.CacheTTL
+	}
+	if ctx.PromptCache != nil {
+		return ctx.PromptCache.LastRequestAt, time.Duration(ctx.PromptCache.TTLSeconds) * time.Second
+	}
+	return time.Time{}, 0
 }
 
 // effectiveCacheTTL picks the lifetime the countdown runs against: a forced

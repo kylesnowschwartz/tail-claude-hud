@@ -34,7 +34,7 @@ Parsed incrementally from the JSONL transcript:
 | `todos` | Task completion count, color-coded | -- |
 | `thinking` | Thinking block indicator and count | -- |
 | `skills` | Skill names invoked during the session, newest first | `max_age_mins` (int, default: 0 = show all; >0 hides invocations older than N minutes) |
-| `cachettl` | Time left before the main conversation's prompt cache expires: a ring that empties plus `47m`, `0:42` in the last minute, or `◌ Cold` once expired (the next message re-writes the whole conversation to cache). Warning color in the last 20% of the TTL; hidden before the first request | `ttl` (`"auto"` default follows the transcript's latest cache write and assumes 1h until one is seen; `"5m"` or `"1h"` forces it) |
+| `cachettl` | Time left before the main conversation's prompt cache expires: a ring that empties plus `47m`, `0:42` in the last minute, or `◌ Cold` once expired (the next message re-writes the whole conversation to cache). Warning color in the last 20% of the TTL; hidden before the first request. With no transcript, counts from the `prompt_cache` object on stdin, which the Pi extension sends | `ttl` (`"auto"` default follows the transcript's latest cache write and assumes 1h until one is seen; `"5m"` or `"1h"` forces it) |
 
 ## Environment
 

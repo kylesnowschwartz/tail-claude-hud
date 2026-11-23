@@ -82,6 +82,8 @@ func Gather(input *model.StdinData, cfg *config.Config) *model.RenderContext {
 		ctx.EffortLevel = os.Getenv("CLAUDE_EFFORT")
 	}
 
+	ctx.PromptCache = input.PromptCache
+
 	// Determine which widget names are active across all configured lines.
 	active := activeWidgets(cfg)
 
